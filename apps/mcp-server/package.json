@@ -1,0 +1,36 @@
+{
+  "name": "@tallymcp/mcp-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "tallymcp-server": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@tallymcp/analytics-engine": "workspace:^",
+    "@tallymcp/config-store": "workspace:*",
+    "@tallymcp/excel-engine": "workspace:*",
+    "@tallymcp/output-store": "workspace:*",
+    "@tallymcp/report-engine": "workspace:*",
+    "@tallymcp/shared-types": "workspace:*",
+    "@tallymcp/tally-connector": "workspace:*",
+    "@tallymcp/tally-xml": "workspace:*",
+    "zod": "^3.25.56"
+  }
+}

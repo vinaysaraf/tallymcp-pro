@@ -171,6 +171,42 @@ export const FindingSchema = z.object({
 });
 export type Finding = z.infer<typeof FindingSchema>;
 
+// ---------- Books score + audit-lite result ----------
+
+export const BooksScoreComponentSchema = z.object({
+  category: z.string().min(1),
+  /** Negative value = penalty deducted from the headline score. */
+  delta: z.number(),
+  reason: z.string().min(1),
+});
+export type BooksScoreComponent = z.infer<typeof BooksScoreComponentSchema>;
+
+export const BooksScoreSchema = z.object({
+  score: z.number().min(0).max(100),
+  components: z.array(BooksScoreComponentSchema),
+  generatedAt: z.string().min(1),
+});
+export type BooksScore = z.infer<typeof BooksScoreSchema>;
+
+export const AuditLiteSummarySchema = z.object({
+  high: z.number().int().nonnegative(),
+  medium: z.number().int().nonnegative(),
+  low: z.number().int().nonnegative(),
+});
+export type AuditLiteSummary = z.infer<typeof AuditLiteSummarySchema>;
+
+export const AuditLiteResultSchema = z.object({
+  findings: z.array(FindingSchema),
+  summary: AuditLiteSummarySchema,
+  booksScore: BooksScoreSchema,
+  generatedAt: z.string().min(1),
+  meta: z.object({
+    company: z.string().min(1),
+    period: z.object({ from: TallyDateSchema, to: TallyDateSchema }),
+  }),
+});
+export type AuditLiteResult = z.infer<typeof AuditLiteResultSchema>;
+
 // ---------- Generated files ----------
 
 export const GeneratedFileSchema = z.object({

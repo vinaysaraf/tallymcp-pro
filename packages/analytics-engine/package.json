@@ -1,0 +1,25 @@
+{
+  "name": "@tallymcp/analytics-engine",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tallymcp/excel-engine": "workspace:*",
+    "@tallymcp/shared-types": "workspace:*",
+    "zod": "^3.25.56"
+  }
+}

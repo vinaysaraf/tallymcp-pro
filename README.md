@@ -8,8 +8,15 @@ generates CA-grade Excel workbooks, without ever writing back to Tally.
 
 ## Status
 
-**Phase 0 (bootstrap)** complete. **Phase 1** in progress — the `@tallymcp/tally-xml`
-export-envelope builder and XML response parser are done; the report engine is next.
+**Read-only v0.5 MVP — feature complete.** The stdio MCP server is live with:
+
+- 15 MCP tools (10 reports, masters/voucher CSV export, audit-lite, dashboards, config)
+- 6 prompts and 3 resources for guided AI flows
+- 18 rule-based audit-lite checks + explainable 0–100 books score
+- 3 Excel dashboards (Management Snapshot, Sales Trend, Exceptions Overview)
+- Network guard restricting egress to the configured Tally host
+
+Next: live-Tally calibration and the demo screen recording.
 
 ## Prerequisites
 
@@ -62,6 +69,32 @@ packages/
 | `pnpm typecheck` | TypeScript checks |
 | `pnpm hello-tally` | Smoke-test a live Tally connection |
 | `pnpm diagnose-tally` | Diagnose connection problems |
+| `pnpm read-report --report TrialBalance --company "..."` | Run any report against a live Tally |
+
+## Wiring to an AI client
+
+After `pnpm build`, the MCP server entry is `apps/mcp-server/dist/main.js`. To
+connect from **Claude Desktop** or **Cursor**, add an entry like:
+
+```json
+{
+  "mcpServers": {
+    "tallymcp-pro": {
+      "command": "node",
+      "args": ["C:/Projects/Tally MCP/apps/mcp-server/dist/main.js"],
+      "env": {
+        "TALLYMCP_CONFIG": "C:/Users/YOU/.tallymcp/config.json"
+      }
+    }
+  }
+}
+```
+
+…or call `tally_export_mcp_config` from inside the running server and paste
+its output. Available clients: `cursor`, `claude-desktop`, `lm-studio`, `ollama`.
+
+The first launch creates `config.json` with safe defaults
+(`security.readOnly: true`, local Tally at `127.0.0.1:9000`).
 
 ## Documentation
 

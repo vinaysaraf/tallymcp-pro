@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../packages/shared-types" },
+    { "path": "../../packages/tally-xml" },
+    { "path": "../../packages/tally-connector" },
+    { "path": "../../packages/report-engine" },
+    { "path": "../../packages/excel-engine" },
+    { "path": "../../packages/output-store" },
+    { "path": "../../packages/config-store" }
+  ]
+}
