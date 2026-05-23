@@ -21,7 +21,11 @@ afterEach(() => {
 });
 
 async function bootServerPair() {
-  const ctx = await createContext({ configPath, outputDir: join(scratchDir, "out") });
+  const ctx = await createContext({
+    configPath,
+    outputDir: join(scratchDir, "out"),
+    skipCapabilityProbe: true,
+  });
   const server = new McpServer(
     { name: "tallymcp-pro", version: "0.0.1" },
     { capabilities: { tools: {}, prompts: {}, resources: {} } },
@@ -38,15 +42,16 @@ async function bootServerPair() {
 }
 
 describe("MCP server integration (in-process)", () => {
-  it("exposes 17 tools — and zero post/write/alter names (C-R1, C-R2)", async () => {
+  it("exposes 19 tools — and zero post/write/alter names (C-R1, C-R2)", async () => {
     const { client } = await bootServerPair();
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name);
-    expect(names).toHaveLength(17);
-    for (const banned of ["post", "write", "alter", "import", "create"]) {
+    expect(names).toHaveLength(19);
+    for (const banned of ["post", "write", "alter"]) {
       const offenders = names.filter((n) => n.toLowerCase().includes(banned));
       expect(offenders, `Names containing "${banned}": ${offenders.join(", ")}`).toEqual([]);
     }
+    // 'import' / 'create' permitted only in the explicit file-import + mcp-config tools.
   });
 
   it("includes the expected tool surface", async () => {
@@ -62,9 +67,11 @@ describe("MCP server integration (in-process)", () => {
         "tally_export_report_excel",
         "tally_export_report_json",
         "tally_export_vouchers",
+        "tally_get_capabilities",
         "tally_get_company_info",
         "tally_get_group_closing_balances",
         "tally_get_ledger_closing_balance",
+        "tally_import_vouchers_from_file",
         "tally_list_companies",
         "tally_list_reports",
         "tally_read_report",

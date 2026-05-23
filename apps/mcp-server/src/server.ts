@@ -31,6 +31,24 @@ const PERIOD_OPTIONAL = {
 };
 
 /**
+ * Refuses voucher / closing-balance / audit-lite work when the boot-time
+ * capability probe found Tally to be Silver-class (or unreachable). Returning
+ * `null` means "proceed"; otherwise the returned object is an MCP error
+ * result to bail out with.
+ *
+ * Override: set `config.tally.unsafeSlow=true` (e.g., on a small Silver book).
+ */
+function gateOnVouchers(ctx: McpContext): null | ReturnType<typeof errorResult> {
+  if (ctx.config.tally.unsafeSlow) return null;
+  if (ctx.capabilities.voucherQueriesViable) return null;
+  return errorResult(
+    new Error(
+      `Voucher / balance / audit tools are disabled on this Tally instance (edition=${ctx.capabilities.edition}). ${ctx.capabilities.message} Either (a) export from Tally UI and call tally_import_vouchers_from_file, or (b) set config tally.unsafeSlow=true to attempt anyway.`,
+    ),
+  );
+}
+
+/**
  * Registers the full read-only tool/prompt/resource catalogue on `server`.
  * No write/post/alter tool is ever registered (constraint C-R1, C-R2).
  */
@@ -221,16 +239,18 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 10. tally_export_vouchers
+  // 10. tally_export_vouchers (gated: voucher-class)
   server.tool(
     "tally_export_vouchers",
-    "Stream the Day Book for a period to a single CSV (memory-safe).",
+    "Stream the Day Book for a period to a single CSV (memory-safe). Requires Tally edition that can serve voucher collections — see tally_get_capabilities.",
     {
       company: z.string().optional(),
       fromDate: TallyDateSchema,
       toDate: TallyDateSchema,
     },
     async ({ company, fromDate, toDate }) => {
+      const gate = gateOnVouchers(ctx);
+      if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
@@ -247,16 +267,18 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 11a. tally_get_ledger_closing_balance — single-ledger ClosingBalance
+  // 11a. tally_get_ledger_closing_balance — single-ledger ClosingBalance (gated)
   server.tool(
     "tally_get_ledger_closing_balance",
-    "Get the closing balance for a single named ledger over a period. Works on TallyPrime 4.x; on TallyPrime Silver against large datasets this may time out — see resource tally://docs/edition-notes.",
+    "Get the closing balance for a single named ledger over a period. Works on TallyPrime 4.x; gated off on Silver (see tally_get_capabilities). Override: config tally.unsafeSlow=true.",
     {
       ledger: z.string().min(1).describe("Exact ledger name as in Tally."),
       company: z.string().optional(),
       ...PERIOD_OPTIONAL,
     },
     async ({ ledger, company, fromDate, toDate }) => {
+      const gate = gateOnVouchers(ctx);
+      if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
@@ -278,10 +300,10 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 11b. tally_get_group_closing_balances — sum of closing balances under a group
+  // 11b. tally_get_group_closing_balances — sum of closing balances under a group (gated)
   server.tool(
     "tally_get_group_closing_balances",
-    "Sum closing balances across every ledger whose parent group matches groupName (e.g., 'Sales Accounts' for the sales figure). Returns per-ledger breakdown + total. Same edition caveats as tally_get_ledger_closing_balance.",
+    "Sum closing balances across every ledger whose parent group matches groupName (e.g., 'Sales Accounts' for the sales figure). Per-ledger breakdown + total. Gated on Silver — same as tally_get_ledger_closing_balance.",
     {
       groupName: z
         .string()
@@ -291,6 +313,8 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       ...PERIOD_OPTIONAL,
     },
     async ({ groupName, company, fromDate, toDate }) => {
+      const gate = gateOnVouchers(ctx);
+      if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
@@ -312,15 +336,17 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 12. tally_run_audit_lite — wired in S4.3
+  // 12. tally_run_audit_lite — wired in S4.3 (gated: needs voucher data)
   server.tool(
     "tally_run_audit_lite",
-    "Run the 18 rule-based audit-lite checks against the company books and return findings + books score.",
+    "Run the 18 rule-based audit-lite checks against the company books and return findings + books score. Requires voucher-viable Tally — gated off on Silver; use tally_import_vouchers_from_file first.",
     {
       company: z.string().optional(),
       ...PERIOD_OPTIONAL,
     },
     async ({ company, fromDate, toDate }) => {
+      const gate = gateOnVouchers(ctx);
+      if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
@@ -334,16 +360,18 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 12. tally_export_dashboard — wired in S4.3
+  // 13. tally_export_dashboard — wired in S4.3 (gated: pulls TB/PL/BS/vouchers)
   server.tool(
     "tally_export_dashboard",
-    "Render one of the 3 Excel dashboards (ManagementSnapshot, SalesTrend, ExceptionsOverview).",
+    "Render one of the 3 Excel dashboards (ManagementSnapshot, SalesTrend, ExceptionsOverview). Gated on Silver.",
     {
       kind: z.enum(["ManagementSnapshot", "SalesTrend", "ExceptionsOverview"]),
       company: z.string().optional(),
       ...PERIOD_OPTIONAL,
     },
     async ({ kind, company, fromDate, toDate }) => {
+      const gate = gateOnVouchers(ctx);
+      if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
@@ -383,7 +411,37 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 15. tally_export_mcp_config
+  // 16. tally_get_capabilities — what this Tally instance can and can't serve
+  server.tool(
+    "tally_get_capabilities",
+    "Returns the boot-time capability probe: edition (silver/gold/unknown), whether voucher / balance / audit tools are viable on this Tally, and a human-readable explanation. The LLM should read this BEFORE attempting voucher-class work.",
+    {},
+    async () => jsonResult(ctx.capabilities),
+  );
+
+  // 17. tally_import_vouchers_from_file — Silver-class workaround
+  server.tool(
+    "tally_import_vouchers_from_file",
+    "Parse a voucher dump exported from Tally UI (Display → Day Book → E: Export → XML) — the cross-edition workaround when live voucher collections aren't viable. Accepts .xml (Tally export) or .json (Voucher[] array). Returns the parsed Voucher list.",
+    {
+      filePath: z.string().min(1).describe("Absolute or working-directory-relative path to an XML or JSON file."),
+    },
+    async ({ filePath }) => {
+      try {
+        const { importVouchersFromFile } = await import("./voucher-import.js");
+        const vouchers = await importVouchersFromFile(filePath);
+        return jsonResult({
+          source: filePath,
+          count: vouchers.length,
+          vouchers,
+        });
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  // 18. tally_export_mcp_config
   server.tool(
     "tally_export_mcp_config",
     "Emit a copy-pasteable MCP client config snippet for Claude Desktop, Cursor, LM Studio, or Ollama.",
