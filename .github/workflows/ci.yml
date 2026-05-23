@@ -16,9 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm version is taken from `packageManager` in package.json
+      # (Corepack convention). Don't also pass `with: version:` here —
+      # the action errors on a version mismatch.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
@@ -31,7 +32,10 @@ jobs:
       - run: pnpm install
         if: hashFiles('pnpm-lock.yaml') == ''
 
+      # Build first: cross-package imports resolve through each package's
+      # `exports` field → `dist/index.js`. Tests, lint, and typecheck all
+      # depend on built outputs from upstream workspace packages.
+      - run: pnpm build
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
