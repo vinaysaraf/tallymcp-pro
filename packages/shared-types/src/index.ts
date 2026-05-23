@@ -15,7 +15,8 @@ export type TallyDate = z.infer<typeof TallyDateSchema>;
 export const CompanySchema = z.object({
   id: CompanyIdSchema,
   name: z.string(),
-  startingFrom: TallyDateSchema,
+  /** Older TallyPrime editions (Silver) sometimes return only the company name. */
+  startingFrom: TallyDateSchema.optional(),
   booksFrom: TallyDateSchema.optional(),
   baseCurrency: z.string().default("INR"),
   gstin: z.string().optional(),

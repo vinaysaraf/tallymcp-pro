@@ -40,7 +40,7 @@ function parseFyAnchor(date: TallyDate): { month: number; day: number } {
 }
 
 export function resolvePeriod(
-  company: { startingFrom: TallyDate } | undefined | null,
+  company: { startingFrom?: TallyDate } | undefined | null,
   options: ResolvePeriodOptions = {},
 ): ResolvedPeriod {
   const { fromDate, toDate } = options;
@@ -58,7 +58,7 @@ export function resolvePeriod(
   }
 
   const asOf = options.asOf ?? new Date();
-  const anchor = company
+  const anchor = company?.startingFrom
     ? parseFyAnchor(company.startingFrom)
     : { month: INDIAN_FY_START_MONTH, day: INDIAN_FY_START_DAY };
 

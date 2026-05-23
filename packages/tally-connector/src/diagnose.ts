@@ -22,8 +22,20 @@ function extractLineError(body: string): string | undefined {
 }
 
 function countCompanies(body: string): number {
-  const matches = body.match(/<COMPANY[\s>]/gi);
-  return matches?.length ?? 0;
+  // Tally varies the element name across editions:
+  //   TallyPrime 4.x:   <COMPANY NAME="...">
+  //   TallyPrime Silver / older: <COMPANYNAME>...</COMPANYNAME> under <CMPINFO>
+  // Prefer the rich <COMPANY> count when present; fall back to the bare
+  // <COMPANYNAME> count so older editions still register as "loaded".
+  const richMatches = body.match(/<COMPANY[\s>]/gi);
+  if (richMatches && richMatches.length > 0) return richMatches.length;
+  const nameMatches = body.match(/<COMPANYNAME[\s>]/gi);
+  return nameMatches?.length ?? 0;
+}
+
+function previewBody(body: string, maxChars = 400): string {
+  const collapsed = body.replace(/\s+/g, " ").trim();
+  return collapsed.length > maxChars ? `${collapsed.slice(0, maxChars)}…` : collapsed;
 }
 
 function extractTallyVersion(body: string): string | undefined {
@@ -50,6 +62,7 @@ export function analyzeDiagnoseResponse(body: string): DiagnosticResult {
     return fail(
       "NO_COMPANY_LOADED",
       "Tally responded but no companies were found in the export.",
+      `Tally responded but no <COMPANY> or <COMPANYNAME> elements were found. Body preview: ${previewBody(body)}`,
     );
   }
 
