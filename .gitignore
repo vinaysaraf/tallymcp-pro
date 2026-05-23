@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+
+# Internal planning documents — kept local for maintainers, not published
+/TallyMCP_Business_Requirements.md
+/TallyMCP_Detailed_Implementation_Plan.md
+/TallyMCP_Implementation_Plan_v2.1_Errata.md
+/TallyMCP_Implementation_Plan_ReadOnly_Submission.md
+/CURSOR_START_WINDOWS.md

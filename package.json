@@ -1,0 +1,37 @@
+{
+  "name": "tallymcp-pro",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "description": "Production-grade MCP server for TallyPrime",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "dev:mcp": "pnpm --filter @tallymcp/mcp-server dev",
+    "hello-tally": "tsx scripts/hello-tally.ts",
+    "hello-tally:fixture": "tsx scripts/hello-tally.ts --fixture",
+    "diagnose-tally": "tsx scripts/diagnose-tally.ts",
+    "scan-tally": "tsx scripts/scan-tally.ts"
+  },
+  "dependencies": {
+    "@tallymcp/tally-connector": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/node": "^22.15.29",
+    "@vitest/coverage-v8": "3.2.4",
+    "eslint": "^9.28.0",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.1",
+    "undici": "^7.10.0",
+    "vitest": "^3.2.1"
+  }
+}

@@ -1,0 +1,487 @@
+---
+description: Product, architecture and safety rules for TallyMCP Pro
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# TallyMCP Pro Cursor Rules
+
+You are working on **TallyMCP Pro**, a production-grade MCP server for TallyPrime.
+
+## Product Purpose
+
+TallyMCP Pro connects TallyPrime with AI tools such as:
+
+- Claude Desktop
+- Claude Code
+- Cursor
+- ChatGPT-compatible MCP clients
+- LM Studio
+- Ollama
+- Other local/offline LLM tools
+
+The product is built for:
+
+- Chartered Accountants
+- Auditors
+- Accountants
+- Finance teams
+- SME businesses
+- ERP consultants
+
+The product must help users:
+
+- Connect to local Tally and server/LAN Tally
+- Read Tally data
+- Generate professional Excel reports
+- Generate accounting and audit working papers
+- Create safe voucher templates
+- Validate data before posting
+- Post to Tally only after explicit approval
+- Run reconciliation, audit, data-quality and finalization workflows
+
+---
+
+## Architecture Rules
+
+Always follow layered architecture:
+
+```text
+Layer 1: Tally Connector
+Layer 2: Normalized Accounting Data Layer
+Layer 3: Report / Template / Audit Engines
+Layer 4: MCP Server
+Layer 5: Optional REST API / Desktop Helper / Installer
+```
+
+Do not tightly couple MCP tools directly to raw Tally XML.
+
+Do not put business logic inside MCP tool handlers.
+
+MCP tool handlers should call service-layer functions.
+
+Tally XML parsing should be isolated inside the Tally XML package.
+
+Excel generation should be isolated inside the Excel engine package.
+
+Validation logic should be isolated inside the validation engine.
+
+Write/posting logic should be isolated inside the write engine.
+
+Audit logic should be isolated inside the audit engine.
+
+Shared TypeScript interfaces should live in `shared-types`.
+
+---
+
+## Repository Discipline
+
+Preferred structure:
+
+```text
+tallymcp-pro/
+  apps/
+    mcp-server/
+    rest-api/
+    cli/
+    desktop-helper/
+  packages/
+    tally-connector/
+    tally-xml/
+    report-engine/
+    excel-engine/
+    template-engine/
+    validation-engine/
+    write-engine/
+    audit-engine/
+    reconciliation-engine/
+    compliance-engine/
+    security-engine/
+    config-store/
+    shared-types/
+  templates/
+    read-reports/
+    write-templates/
+    audit-reports/
+    financial-statements/
+  knowledge/
+    schedule-iii/
+    income-tax/
+    gst/
+    caro/
+    tax-audit/
+    itgc/
+  tests/
+    unit/
+    integration/
+    fixtures/
+    e2e/
+  docs/
+```
+
+Do not create a flat, unstructured project.
+
+Do not create one large file for all logic.
+
+Do not mix CLI, MCP, XML, Excel and business logic in the same module.
+
+---
+
+## Tally Integration Rules
+
+Primary Tally connection method is **XML over HTTP**.
+
+ODBC is optional and should not be used in Phase 1 unless explicitly approved.
+
+Do not assume Tally data is always on C drive or D drive.
+
+Do not directly read Tally data files unless explicitly approved.
+
+Support:
+
+- Local Tally
+- LAN/server Tally
+- Configurable host
+- Configurable port
+- Multiple companies
+- Multiple financial years
+
+All Tally responses must be parsed into normalized TypeScript objects before being used by reports, Excel exports or audits.
+
+---
+
+## Tally Connection UX Rules
+
+Error messages must be understandable to CA users.
+
+Bad error message:
+
+```text
+ECONNREFUSED 127.0.0.1:9000
+```
+
+Good error message:
+
+```text
+Tally is not reachable on 127.0.0.1:9000. Please open TallyPrime, check that the required company is loaded, and confirm the port in configuration.
+```
+
+Connection checks should identify:
+
+- Is Tally running?
+- Is the configured host reachable?
+- Is the configured port reachable?
+- Is Tally responding with XML?
+- Is a company loaded?
+- Which companies are available?
+- Is the selected company accessible?
+
+---
+
+## MCP Rules
+
+Use clear, narrow MCP tools.
+
+Do not create too many overlapping MCP tools.
+
+Prefer these tool categories:
+
+- Connection tools
+- Read tools
+- Export tools
+- Write/template tools
+- Validation tools
+- Audit/review tools
+- Utility tools
+
+User-facing commands such as:
+
+```text
+/config
+/read
+/write
+/audit
+/reconcile
+/data-quality
+/books-score
+/export
+/help
+```
+
+should be implemented as guided prompts/workflows over MCP tools.
+
+Do not expose dangerous write tools without validation and approval workflow.
+
+MCP tool input schemas must be strict and validated.
+
+MCP tool output must be structured and predictable.
+
+---
+
+## Read Operation Rules
+
+Read operations must be safe and should not modify Tally data.
+
+Read reports must support Excel and JSON output wherever practical.
+
+Every report should include:
+
+- Company name
+- Report name
+- Period
+- Generated timestamp
+- Source connection
+- Extraction status
+- Validation notes where applicable
+
+Phase 1 read reports should focus on:
+
+```text
+Company list
+Company info
+Ledger masters
+Groups
+Voucher types
+Day Book
+Trial Balance
+Profit & Loss
+Balance Sheet
+Sales Register
+Purchase Register
+Excel export
+JSON export
+```
+
+---
+
+## Excel Output Rules
+
+Excel output should be professional and CA-friendly.
+
+Every Excel workbook should use:
+
+- Cover or summary sheet where useful
+- Clear sheet names
+- Freeze panes
+- Filters
+- Proper column widths
+- Date formatting
+- Number formatting
+- Negative number formatting
+- Total rows
+- Notes sheet
+- Extraction log sheet
+- Error sheet if applicable
+
+Do not generate raw ugly Excel unless it is a technical debug export.
+
+---
+
+## Write Operation Rules
+
+Write operations are high risk.
+
+Never post anything to Tally without explicit user approval.
+
+Every write flow must follow this sequence:
+
+```text
+Generate template
+Validate uploaded template
+Show validation errors
+Generate preview
+Ask for explicit approval
+Post to Tally
+Return posting status
+Log operation
+```
+
+Mandatory write safety:
+
+- Dry-run mode
+- Approval-required mode
+- Idempotency key
+- Transaction hash
+- Duplicate prevention
+- Posting log
+- Error workbook
+- Backup warning before bulk posting
+
+Never silently retry a write operation if there is risk of duplicate posting.
+
+Never hide partial posting failures.
+
+Never mark a write operation as successful unless Tally response confirms success.
+
+---
+
+## Audit and Compliance Rules
+
+The system may generate:
+
+- Audit findings
+- Risk indicators
+- Exception reports
+- Suggested audit procedures
+- Evidence requirements
+- Working papers
+
+The system must not give a final statutory audit opinion.
+
+The system must not claim that financial statements are fully compliant without professional review.
+
+Use wording such as:
+
+- Potential issue
+- Risk indicator
+- Suggested audit procedure
+- Requires professional judgement
+- Recommended evidence
+- Management confirmation required
+
+---
+
+## Reconciliation Rules
+
+Reconciliation engines should be built as separate modules.
+
+Do not hardcode only GST reconciliation.
+
+Future reconciliation support should include:
+
+- GSTR-2B vs Purchase Register
+- GSTR-1 vs Sales Register
+- GSTR-3B vs Books
+- TDS return vs Books
+- TCS return vs Books
+- Bank Statement vs Bank Book
+- Debtors confirmation vs Ledger
+- Creditors confirmation vs Ledger
+- Form 26AS/AIS vs Books
+- Fixed Asset Register vs Books
+
+Every reconciliation result should contain:
+
+- Matched records
+- Unmatched records
+- Probable matches
+- Amount mismatch
+- Date mismatch
+- GSTIN/PAN mismatch
+- Duplicate records
+- Risk category
+- Suggested action
+
+---
+
+## Security Rules
+
+Default mode should be read-only.
+
+Write mode must be explicitly enabled.
+
+Do not upload client Tally data to cloud services by default.
+
+Do not store sensitive client data in plain logs.
+
+Do not log full voucher data unless explicitly required for audit trail and protected appropriately.
+
+Config files should not store secrets in plain text.
+
+MCP tools should have clear permission boundaries.
+
+Never bypass user approval for write/posting actions.
+
+Never expose local file paths or sensitive client details unnecessarily in user-facing messages.
+
+---
+
+## Coding Rules
+
+Use TypeScript.
+
+Use strict typing.
+
+Use Zod or similar schema validation for external inputs.
+
+Use explicit error classes.
+
+Use service-layer architecture.
+
+Write tests for important logic.
+
+Avoid large unstructured files.
+
+Prefer small focused modules.
+
+Do not mix UI, MCP, Tally XML and business logic in the same file.
+
+Every package should have clear public exports.
+
+---
+
+## Testing Rules
+
+Every important feature should include tests.
+
+At minimum test:
+
+- XML request generation
+- XML response parsing
+- Tally connection errors
+- Report normalization
+- Excel generation
+- Template validation
+- Duplicate prevention
+- Dry-run posting
+- MCP tool input validation
+- Error messages
+
+---
+
+## Phase Discipline
+
+Do not build everything at once.
+
+Phase 1 focus:
+
+```text
+/config
+/read
+/export
+```
+
+Phase 1 reports:
+
+```text
+Company list
+Company info
+Ledger masters
+Groups
+Voucher types
+Day Book
+Trial Balance
+Profit & Loss
+Balance Sheet
+Sales Register
+Purchase Register
+Excel export
+JSON export
+```
+
+Do not implement full `/write` or `/audit` until read/export flow is stable.
+
+---
+
+## User Experience Rules
+
+Target users are CAs and accountants, not developers.
+
+Error messages must be understandable.
+
+Avoid unnecessary technical jargon in user-facing messages.
+
+Always provide the next action when something fails.
+
+When a user action is required, clearly state what the user needs to do next.

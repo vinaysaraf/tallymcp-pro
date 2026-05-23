@@ -1,0 +1,21 @@
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <STATUS>1</STATUS>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <CMPINFO>
+        <COMPANYNAME>10000 - Acme Trading</COMPANYNAME>
+      </CMPINFO>
+    </DESC>
+    <DATA>
+      <COLLECTION NAME="List of Companies">
+        <COMPANY NAME="10000 - Acme Trading">
+          <NAME>10000 - Acme Trading</NAME>
+          <STARTINGFROM>20240401</STARTINGFROM>
+        </COMPANY>
+      </COLLECTION>
+    </DATA>
+  </BODY>
+</ENVELOPE>

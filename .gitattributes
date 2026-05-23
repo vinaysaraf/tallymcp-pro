@@ -1,0 +1,19 @@
+# Normalize line endings to LF in the repository; checkout native on Windows.
+* text=auto eol=lf
+
+# Explicit text types
+*.ts   text
+*.js   text
+*.json text
+*.md   text
+*.mdc  text
+*.xml  text
+*.yaml text
+*.yml  text
+
+# Binary assets (no diff, no EOL conversion)
+*.xlsx binary
+*.xls  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary

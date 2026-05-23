@@ -1,0 +1,307 @@
+---
+description: TypeScript engineering quality rules for TallyMCP Pro
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+alwaysApply: true
+---
+
+# TypeScript Quality Rules
+
+Use TypeScript strict mode.
+
+Prefer explicit types for exported functions.
+
+Avoid `any` unless absolutely necessary.
+
+Use `unknown` instead of `any` for untrusted external inputs.
+
+Use Zod or similar schemas for runtime validation of external inputs.
+
+Use discriminated unions for result types where useful.
+
+Prefer this service result pattern:
+
+```ts
+type ServiceResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: AppError };
+```
+
+---
+
+## Error Handling Rules
+
+Create clear domain errors:
+
+```ts
+TallyConnectionError
+TallyXmlParseError
+TallyCompanyNotLoadedError
+TallyCompanyNotFoundError
+TallyReportExtractionError
+ReportGenerationError
+ExcelExportError
+TemplateValidationError
+PostingApprovalRequiredError
+DuplicatePostingError
+TallyPostingError
+ConfigValidationError
+McpToolValidationError
+```
+
+Do not throw raw strings.
+
+Do not expose low-level stack traces in user-facing responses.
+
+Every user-facing error should include:
+
+- What failed
+- Probable reason
+- Suggested next action
+
+Example:
+
+```ts
+{
+  code: "TALLY_CONNECTION_FAILED",
+  message: "Tally is not reachable on 127.0.0.1:9000.",
+  nextAction: "Please open TallyPrime and verify the configured port."
+}
+```
+
+---
+
+## Module Design Rules
+
+Keep functions small and testable.
+
+Do not put raw XML strings everywhere. Create XML builder functions.
+
+Do not parse XML in business logic files. Use the XML parser package.
+
+Do not write files directly from business services unless using an output/file service.
+
+Do not mix CLI prompts, MCP tool handlers and business logic.
+
+Use dependency injection or clear service constructors where practical.
+
+Every package should have clear public exports.
+
+Avoid circular dependencies between packages.
+
+---
+
+## Suggested Package Responsibility
+
+### shared-types
+
+Contains shared interfaces and types only.
+
+Examples:
+
+```ts
+TallyConnection
+TallyCompany
+TallyLedger
+TallyGroup
+TallyVoucher
+TallyVoucherLine
+TallyInventoryLine
+TallyTaxLine
+TallyStockItem
+TallyReportRequest
+TallyReportResult
+ExcelExportResult
+WriteTemplate
+ValidationResult
+PostingResult
+AuditFinding
+ReconciliationFinding
+BooksScore
+```
+
+### tally-connector
+
+Responsible for:
+
+- Connection config
+- Tally health check
+- HTTP call to Tally
+- Connection error handling
+
+### tally-xml
+
+Responsible for:
+
+- XML request builders
+- XML response parsers
+- XML normalization helpers
+
+### report-engine
+
+Responsible for:
+
+- Report definitions
+- Report request orchestration
+- Normalized report result generation
+
+### excel-engine
+
+Responsible for:
+
+- Workbook generation
+- Sheet formatting
+- Report export
+- Error workbook export
+
+### validation-engine
+
+Responsible for:
+
+- Template validation
+- Business rule validation
+- Posting pre-checks
+
+### write-engine
+
+Responsible for:
+
+- Posting workflow
+- Dry-run
+- Preview XML
+- Idempotency
+- Posting logs
+
+### audit-engine
+
+Responsible for:
+
+- Audit checks
+- Exception detection
+- Risk scoring
+- Working paper generation logic
+
+---
+
+## Naming Rules
+
+Use clear domain names.
+
+Good:
+
+```ts
+readTrialBalanceReport
+buildLedgerCollectionXml
+parseTallyVoucherResponse
+generateSalesRegisterWorkbook
+validateSalesVoucherTemplate
+```
+
+Bad:
+
+```ts
+doStuff
+processData
+handleXml
+makeReport
+tempFn
+```
+
+---
+
+## Validation Rules
+
+Every external input must be validated.
+
+Validate:
+
+- MCP tool inputs
+- CLI inputs
+- Config files
+- Uploaded Excel template rows
+- Tally XML responses before normalization
+- Report request parameters
+- Write/posting requests
+
+Use separate schemas for:
+
+- Raw input
+- Normalized domain object
+- Output DTO
+
+---
+
+## Async Rules
+
+Use async/await.
+
+Always handle rejected promises.
+
+Avoid unbounded concurrency for large Tally data extraction.
+
+For large data operations, use batching or streaming where practical.
+
+Never block the event loop with very large synchronous file operations.
+
+---
+
+## XML Rules
+
+Do not manually concatenate XML in unsafe ways.
+
+Use builder functions with escaping.
+
+Keep XML builders testable.
+
+Every XML builder should have unit tests.
+
+Every XML parser should have tests against realistic Tally XML fixtures.
+
+---
+
+## File Output Rules
+
+All generated files should return structured metadata:
+
+```ts
+interface GeneratedFileResult {
+  path: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  generatedAt: string;
+}
+```
+
+Do not hardcode output paths everywhere.
+
+Use a central output service/config.
+
+---
+
+## Testing Rules
+
+Use tests for important business logic.
+
+Minimum test areas:
+
+- Config loading
+- Tally connection URL building
+- XML request generation
+- XML response parsing
+- Error mapping
+- Report normalization
+- Excel workbook generation
+- Template validation
+- Idempotency hashing
+- Duplicate prevention
+- MCP tool input validation
+
+Prefer deterministic tests.
+
+Do not require live Tally for unit tests.
+
+Use mock XML fixtures for most tests.
+
+Live Tally tests should be marked as integration/e2e tests.
