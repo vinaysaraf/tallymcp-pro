@@ -2,6 +2,15 @@ export { getBalanceSheet } from "./balance-sheet.js";
 export { getCompanyInfo } from "./company-info.js";
 export { getDayBook, type GetDayBookOptions } from "./day-book.js";
 export { getDayBookStream } from "./day-book-stream.js";
+export {
+  getGroupClosingBalances,
+  getLedgerClosingBalance,
+  LedgerClosingBalanceSchema,
+  type GetGroupClosingBalanceOptions,
+  type GetLedgerClosingBalanceOptions,
+  type GroupClosingBalance,
+  type LedgerClosingBalance,
+} from "./ledger-balance.js";
 export { getProfitAndLoss } from "./profit-and-loss.js";
 export { getSalesRegister } from "./sales-register.js";
 export { getTrialBalance } from "./trial-balance.js";

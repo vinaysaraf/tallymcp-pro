@@ -7,14 +7,21 @@ export {
   getCompanyInfo,
   getDayBook,
   getDayBookStream,
+  getGroupClosingBalances,
+  getLedgerClosingBalance,
   getProfitAndLoss,
   getSalesRegister,
   getTrialBalance,
+  LedgerClosingBalanceSchema,
   listCompanies,
   listGroups,
   listLedgers,
   listVoucherTypes,
   type GetDayBookOptions,
+  type GetGroupClosingBalanceOptions,
+  type GetLedgerClosingBalanceOptions,
+  type GroupClosingBalance,
+  type LedgerClosingBalance,
 } from "./connectors/index.js";
 export { runReport, type RunReportOptions } from "./run-report.js";
 export { toVoucher } from "./voucher-normalize.js";

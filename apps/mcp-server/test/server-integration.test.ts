@@ -38,11 +38,11 @@ async function bootServerPair() {
 }
 
 describe("MCP server integration (in-process)", () => {
-  it("exposes exactly 15 tools — and zero post/write/alter names (C-R1, C-R2)", async () => {
+  it("exposes 17 tools — and zero post/write/alter names (C-R1, C-R2)", async () => {
     const { client } = await bootServerPair();
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name);
-    expect(names).toHaveLength(15);
+    expect(names).toHaveLength(17);
     for (const banned of ["post", "write", "alter", "import", "create"]) {
       const offenders = names.filter((n) => n.toLowerCase().includes(banned));
       expect(offenders, `Names containing "${banned}": ${offenders.join(", ")}`).toEqual([]);
@@ -63,6 +63,8 @@ describe("MCP server integration (in-process)", () => {
         "tally_export_report_json",
         "tally_export_vouchers",
         "tally_get_company_info",
+        "tally_get_group_closing_balances",
+        "tally_get_ledger_closing_balance",
         "tally_list_companies",
         "tally_list_reports",
         "tally_read_report",
@@ -85,6 +87,7 @@ describe("MCP server integration (in-process)", () => {
     const { client } = await bootServerPair();
     const resources = (await client.listResources()).resources.map((r) => r.uri).sort();
     expect(resources).toContain("tally://docs/connection-guide");
+    expect(resources).toContain("tally://docs/edition-notes");
     expect(resources).toContain("tally://audit/last");
   });
 
@@ -97,7 +100,10 @@ describe("MCP server integration (in-process)", () => {
     expect(list[0].reportId).toBe("ListOfCompanies");
   });
 
-  it("tally_test_connection returns a structured diagnostic", async () => {
+  // 60 s — diagnose hits a real local Tally if present, which can be slow when
+  // the instance is mid-computation on another request. The assertion only
+  // requires a structured shape.
+  it("tally_test_connection returns a structured diagnostic", { timeout: 60_000 }, async () => {
     const { client } = await bootServerPair();
     const result = await client.callTool({
       name: "tally_test_connection",

@@ -3,7 +3,10 @@ import { z } from "zod";
 import { diagnoseTally } from "@tallymcp/tally-connector";
 import {
   getCompanyInfo,
+  getGroupClosingBalances,
+  getLedgerClosingBalance,
   listCompanies,
+  resolvePeriod,
   runReport,
 } from "@tallymcp/report-engine";
 import { exportMasters, exportReport, exportVouchers } from "@tallymcp/output-store";
@@ -244,7 +247,72 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 11. tally_run_audit_lite — wired in S4.3
+  // 11a. tally_get_ledger_closing_balance — single-ledger ClosingBalance
+  server.tool(
+    "tally_get_ledger_closing_balance",
+    "Get the closing balance for a single named ledger over a period. Works on TallyPrime 4.x; on TallyPrime Silver against large datasets this may time out — see resource tally://docs/edition-notes.",
+    {
+      ledger: z.string().min(1).describe("Exact ledger name as in Tally."),
+      company: z.string().optional(),
+      ...PERIOD_OPTIONAL,
+    },
+    async ({ ledger, company, fromDate, toDate }) => {
+      try {
+        const target = company ?? ctx.config.tally.defaultCompany;
+        if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        const period = resolvePeriod(undefined, {
+          fromDate,
+          toDate,
+          defaultFinancialYear: ctx.config.tally.defaultFinancialYear,
+        });
+        const balance = await getLedgerClosingBalance(ctx.tallyClient, {
+          company: target,
+          ledger,
+          fromDate: period.from,
+          toDate: period.to,
+        });
+        return jsonResult({ ...balance, period });
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  // 11b. tally_get_group_closing_balances — sum of closing balances under a group
+  server.tool(
+    "tally_get_group_closing_balances",
+    "Sum closing balances across every ledger whose parent group matches groupName (e.g., 'Sales Accounts' for the sales figure). Returns per-ledger breakdown + total. Same edition caveats as tally_get_ledger_closing_balance.",
+    {
+      groupName: z
+        .string()
+        .min(1)
+        .describe("Exact Tally group name, e.g. 'Sales Accounts', 'Purchase Accounts', 'Direct Incomes'."),
+      company: z.string().optional(),
+      ...PERIOD_OPTIONAL,
+    },
+    async ({ groupName, company, fromDate, toDate }) => {
+      try {
+        const target = company ?? ctx.config.tally.defaultCompany;
+        if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        const period = resolvePeriod(undefined, {
+          fromDate,
+          toDate,
+          defaultFinancialYear: ctx.config.tally.defaultFinancialYear,
+        });
+        const result = await getGroupClosingBalances(ctx.tallyClient, {
+          company: target,
+          groupName,
+          fromDate: period.from,
+          toDate: period.to,
+        });
+        return jsonResult({ ...result, period });
+      } catch (err) {
+        return errorResult(err);
+      }
+    },
+  );
+
+  // 12. tally_run_audit_lite — wired in S4.3
   server.tool(
     "tally_run_audit_lite",
     "Run the 18 rule-based audit-lite checks against the company books and return findings + books score.",
@@ -470,6 +538,45 @@ function registerResources(server: McpServer, ctx: McpContext): void {
           mimeType: "application/json",
           text: JSON.stringify(companies, null, 2),
         },
+      ],
+    };
+  });
+
+  server.resource("edition-notes", "tally://docs/edition-notes", async () => {
+    const text = [
+      "# TallyPrime edition notes",
+      "",
+      "What works at full speed depends on the Tally edition.",
+      "",
+      "## TallyPrime 4.x (Gold / single-user Prime)",
+      "",
+      "Everything in this MCP server works:",
+      "- All 10 read reports including Trial Balance, P&L, Balance Sheet",
+      "- Day Book and Sales Register (voucher-level)",
+      "- `tally_get_ledger_closing_balance`, `tally_get_group_closing_balances`",
+      "- `tally_run_audit_lite` (18 checks) and the 3 dashboards",
+      "",
+      "## TallyPrime Silver (and older editions)",
+      "",
+      "Fast (always works):",
+      "- `tally_test_connection`, `tally_list_companies`, `tally_get_company_info`",
+      "- `tally_read_report` for `ListOfCompanies`, `CompanyInfo`, `LedgerMasters`, `GroupMasters`, `VoucherTypes`",
+      "- `tally_export_masters`",
+      "",
+      "Slow / may time out on large datasets (Silver evaluates `$ClosingBalance`",
+      "before filters and lacks the balance cache 4.x has):",
+      "- Day Book / Sales Register (voucher collection)",
+      "- Trial Balance / P&L / Balance Sheet (legacy report form)",
+      "- `tally_get_ledger_closing_balance`, `tally_get_group_closing_balances`",
+      "- `tally_run_audit_lite`, dashboard exports",
+      "",
+      "For the 'sales figure' question on Silver against a large book, use the",
+      "TallyPrime UI directly (Display → Account Books → Sales Register) or",
+      "upgrade to TallyPrime 4.x where the same MCP tools work in seconds.",
+    ].join("\n");
+    return {
+      contents: [
+        { uri: "tally://docs/edition-notes", mimeType: "text/markdown", text },
       ],
     };
   });
