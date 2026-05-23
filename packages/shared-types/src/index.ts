@@ -170,3 +170,14 @@ export const FindingSchema = z.object({
   suggestedFix: z.string().min(1),
 });
 export type Finding = z.infer<typeof FindingSchema>;
+
+// ---------- Generated files ----------
+
+export const GeneratedFileSchema = z.object({
+  path: z.string().min(1),
+  fileName: z.string().min(1),
+  mimeType: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  generatedAt: z.string().min(1),
+});
+export type GeneratedFile = z.infer<typeof GeneratedFileSchema>;

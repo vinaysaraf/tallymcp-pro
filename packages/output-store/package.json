@@ -1,5 +1,5 @@
 {
-  "name": "@tallymcp/excel-engine",
+  "name": "@tallymcp/output-store",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -18,8 +18,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tallymcp/shared-types": "workspace:^",
-    "exceljs": "^4.4.0",
-    "zod": "^3.25.56"
+    "@tallymcp/excel-engine": "workspace:*",
+    "@tallymcp/report-engine": "workspace:*",
+    "@tallymcp/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "exceljs": "^4.4.0"
   }
 }
