@@ -1,6 +1,7 @@
 export { escapeForTally, escapeXmlAttr, escapeXmlText } from "./escape.js";
 export {
   balanceSheetEnvelope,
+  buildCollectionEnvelope,
   buildExportEnvelope,
   companyInfoEnvelope,
   dayBookEnvelope,
@@ -12,11 +13,16 @@ export {
   salesRegisterEnvelope,
   trialBalanceEnvelope,
 } from "./export-envelope.js";
-export type { ExportEnvelopeOptions, TallyDate } from "./export-envelope.js";
+export type {
+  CollectionEnvelopeOptions,
+  ExportEnvelopeOptions,
+  TallyDate,
+} from "./export-envelope.js";
 export { parseTallyAmount } from "./amount.js";
 export {
   extractLineErrors,
   findAll,
+  findAllObjects,
   parseTallyBoolean,
   parseTallyResponse,
   walk,

@@ -5,7 +5,17 @@ import { RequestSerializer } from "./serializer.js";
 export interface TallyHttpClientOptions {
   host: string;
   port: number;
+  /**
+   * Max time (ms) to wait for the response body to finish. Default 60 s.
+   * Voucher collections on busy companies are routinely tens of MB.
+   */
   timeoutMs?: number;
+  /**
+   * Max time (ms) to wait for Tally to begin sending headers. Default 30 s.
+   * Tally Silver building a Voucher collection over a full FY frequently
+   * needs >10 s before the first byte arrives, so we are generous here.
+   */
+  headersTimeoutMs?: number;
   /** Serialize requests so Tally never sees parallel POSTs. Default true. */
   serialize?: boolean;
   dispatcher?: Dispatcher;
@@ -33,7 +43,13 @@ export class TallyHttpClient {
   }
 
   private async postInternal(xmlBody: string): Promise<string> {
-    const { host, port, timeoutMs = 60_000, dispatcher } = this.opts;
+    const {
+      host,
+      port,
+      timeoutMs = 60_000,
+      headersTimeoutMs = 30_000,
+      dispatcher,
+    } = this.opts;
     const url = `http://${host}:${port}/`;
 
     const { statusCode, body } = await request(url, {
@@ -41,7 +57,7 @@ export class TallyHttpClient {
       body: xmlBody,
       headers: { "Content-Type": "text/xml; charset=utf-8" },
       bodyTimeout: timeoutMs,
-      headersTimeout: 10_000,
+      headersTimeout: headersTimeoutMs,
       dispatcher,
     });
 

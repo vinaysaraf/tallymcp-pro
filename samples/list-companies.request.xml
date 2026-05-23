@@ -1,8 +1,8 @@
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
-    <TYPE>Data</TYPE>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
     <ID>List of Companies</ID>
   </HEADER>
   <BODY>
@@ -11,6 +11,14 @@
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <ENCODINGTYPE>UTF8</ENCODINGTYPE>
       </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="List of Companies" ISMODIFY="No">
+            <TYPE>Company</TYPE>
+            <FETCH>Name,StartingFrom,BooksFrom,FormalName,GSTRegistrationNumber,BaseCurrencySymbol</FETCH>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>

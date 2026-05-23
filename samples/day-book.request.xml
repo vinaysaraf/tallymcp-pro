@@ -1,8 +1,8 @@
 <ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
-    <TYPE>Data</TYPE>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
     <ID>Day Book</ID>
   </HEADER>
   <BODY>
@@ -11,10 +11,17 @@
         <SVCURRENTCOMPANY>10000 - Acme Trading</SVCURRENTCOMPANY>
         <SVFROMDATE>20250401</SVFROMDATE>
         <SVTODATE>20260331</SVTODATE>
-        <DSPSHOWNARRATIONS>Yes</DSPSHOWNARRATIONS>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <ENCODINGTYPE>UTF8</ENCODINGTYPE>
       </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="Day Book" ISMODIFY="No">
+            <TYPE>Voucher</TYPE>
+            <FETCH>Date,VoucherTypeName,VoucherNumber,Narration,PartyLedgerName,Reference,AllLedgerEntries.LedgerName,AllLedgerEntries.Amount,AllLedgerEntries.IsDeemedPositive</FETCH>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
     </DESC>
   </BODY>
 </ENVELOPE>

@@ -1,5 +1,5 @@
 import { CompanySchema, type Company } from "@tallymcp/shared-types";
-import { findAll, listCompaniesEnvelope, parseTallyResponse } from "@tallymcp/tally-xml";
+import { findAll, findAllObjects, listCompaniesEnvelope, parseTallyResponse } from "@tallymcp/tally-xml";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
 
@@ -19,7 +19,7 @@ export async function listCompanies(client: TallyClient): Promise<Company[]> {
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("ListOfCompanies", lineErrors);
 
-  const richNodes = findAll(raw, "COMPANY") as Array<Record<string, unknown>>;
+  const richNodes = findAllObjects(raw, "COMPANY");
   if (richNodes.length > 0) return richNodes.map(toCompany);
 
   // Older-Tally fallback: leaf <COMPANYNAME>…</COMPANYNAME> nodes.

@@ -69,7 +69,12 @@ async function main(): Promise<void> {
   const port = Number(args.port ?? process.env.TALLY_PORT ?? 9000);
   if (Number.isNaN(port)) throw new Error(`Invalid port: ${args.port}`);
 
-  const client = new TallyHttpClient({ host, port, timeoutMs: 60_000 });
+  const client = new TallyHttpClient({
+    host,
+    port,
+    timeoutMs: 120_000,
+    headersTimeoutMs: 60_000,
+  });
   const startedAt = Date.now();
 
   const result = await runReport(client, {

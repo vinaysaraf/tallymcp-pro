@@ -110,10 +110,11 @@ describe("per-report envelope helpers", () => {
     );
   });
 
-  it("dayBookEnvelope requests narrations and the period", () => {
+  it("dayBookEnvelope targets a Voucher collection for the period (Narration in FETCH)", () => {
     const xml = dayBookEnvelope(PERIOD);
     expect(xml).toContain("<ID>Day Book</ID>");
-    expect(xml).toContain("<DSPSHOWNARRATIONS>Yes</DSPSHOWNARRATIONS>");
+    expect(xml).toContain("<TYPE>Voucher</TYPE>");
+    expect(xml).toMatch(/Narration/);
     expect(xml).toContain("<SVFROMDATE>20250401</SVFROMDATE>");
     expect(xml).toContain("<SVTODATE>20260331</SVTODATE>");
   });

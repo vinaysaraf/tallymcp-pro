@@ -56,6 +56,23 @@ export function findAll(node: unknown, tagName: string): unknown[] {
   return found;
 }
 
+/**
+ * Like {@link findAll} but keeps only object-shaped matches.
+ *
+ * TallyPrime's CMPINFO header contains scrap entries like `<COMPANY>0</COMPANY>`
+ * (a string count) alongside the real `<COMPANY NAME="...">…</COMPANY>` objects
+ * in DATA. Connectors that parse structured records should use this helper.
+ */
+export function findAllObjects(
+  node: unknown,
+  tagName: string,
+): Array<Record<string, unknown>> {
+  return findAll(node, tagName).filter(
+    (v): v is Record<string, unknown> =>
+      v !== null && typeof v === "object" && !Array.isArray(v),
+  );
+}
+
 /** Extracts `<LINEERROR>` text from a parsed tree. */
 export function extractLineErrors(node: unknown): string[] {
   const errors: string[] = [];

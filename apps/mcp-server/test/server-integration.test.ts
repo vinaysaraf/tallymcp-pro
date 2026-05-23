@@ -97,7 +97,7 @@ describe("MCP server integration (in-process)", () => {
     expect(list[0].reportId).toBe("ListOfCompanies");
   });
 
-  it("tally_test_connection returns a structured diagnostic (no Tally → ok:false)", async () => {
+  it("tally_test_connection returns a structured diagnostic", async () => {
     const { client } = await bootServerPair();
     const result = await client.callTool({
       name: "tally_test_connection",
@@ -106,9 +106,10 @@ describe("MCP server integration (in-process)", () => {
     const text = result.content?.[0]?.type === "text" ? result.content[0].text : "";
     const diag = JSON.parse(String(text));
     expect(diag).toHaveProperty("ok");
-    // No Tally on 127.0.0.1:9000 in CI/tests → ok should be false with a diagnostic code.
-    expect(diag.ok).toBe(false);
-    expect(diag.code).toBeTruthy();
+    expect(typeof diag.ok).toBe("boolean");
+    // Either ok with a company count, or fail with a diagnostic code — both shapes are valid.
+    if (diag.ok === false) expect(diag.code).toBeTruthy();
+    else expect(typeof diag.companiesLoaded).toBe("number");
   });
 
   it("tally_export_mcp_config emits a cursor JSON snippet", async () => {

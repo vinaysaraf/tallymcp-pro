@@ -5,7 +5,7 @@ import {
 } from "@tallymcp/shared-types";
 import {
   balanceSheetEnvelope,
-  findAll,
+  findAllObjects,
   parseTallyAmount,
   parseTallyResponse,
 } from "@tallymcp/tally-xml";
@@ -26,7 +26,7 @@ export async function getBalanceSheet(
   const xml = await client.post(balanceSheetEnvelope(options));
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("BalanceSheet", lineErrors);
-  const rows = findAll(raw, "BSROW") as Array<Record<string, unknown>>;
+  const rows = findAllObjects(raw, "BSROW");
   return rows.map(toBsRow);
 }
 

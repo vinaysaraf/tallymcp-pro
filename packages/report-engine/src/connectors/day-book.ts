@@ -1,5 +1,5 @@
 import type { TallyDate, Voucher } from "@tallymcp/shared-types";
-import { dayBookEnvelope, findAll, parseTallyResponse } from "@tallymcp/tally-xml";
+import { dayBookEnvelope, findAllObjects, parseTallyResponse } from "@tallymcp/tally-xml";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
 import { toVoucher } from "../voucher-normalize.js";
@@ -35,7 +35,7 @@ export async function getDayBook(
     );
     const { raw, lineErrors } = parseTallyResponse(xml);
     if (lineErrors.length) throw new TallyReportError("DayBook", lineErrors);
-    const nodes = findAll(raw, "VOUCHER") as Array<Record<string, unknown>>;
+    const nodes = findAllObjects(raw, "VOUCHER");
     for (const node of nodes) vouchers.push(toVoucher(node));
   }
   return vouchers;

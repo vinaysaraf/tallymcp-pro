@@ -1,6 +1,6 @@
 import { PnlRowSchema, type PnlRow, type TallyDate } from "@tallymcp/shared-types";
 import {
-  findAll,
+  findAllObjects,
   parseTallyAmount,
   parseTallyResponse,
   profitAndLossEnvelope,
@@ -22,7 +22,7 @@ export async function getProfitAndLoss(
   const xml = await client.post(profitAndLossEnvelope(options));
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("ProfitAndLoss", lineErrors);
-  const rows = findAll(raw, "PLROW") as Array<Record<string, unknown>>;
+  const rows = findAllObjects(raw, "PLROW");
   return rows.map(toPlRow);
 }
 

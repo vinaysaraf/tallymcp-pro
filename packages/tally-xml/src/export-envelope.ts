@@ -1,10 +1,21 @@
 import { escapeXmlText } from "./escape.js";
 
 /**
- * Builds Tally `Export Data` request envelopes (Appendix A format).
+ * Builds Tally XML request envelopes (Appendix A format).
  *
  * Submission scope is read-only: this module produces EXPORT envelopes only.
  * There is deliberately no IMPORT/alter envelope builder.
+ *
+ * Two flavours are exposed:
+ *
+ *  - {@link buildExportEnvelope} — `TALLYREQUEST=Export Data, TYPE=Data` form.
+ *    Targets named Tally reports (Trial Balance, Profit & Loss, Balance Sheet…).
+ *    This is what TallyPrime 4.x accepts. Older editions (TallyPrime Silver
+ *    2.x / 3.x) tend to answer these with `STATUS=0` and an empty `<DATA/>`.
+ *
+ *  - {@link buildCollectionEnvelope} — `TALLYREQUEST=Export, TYPE=Collection`
+ *    with an inline TDL `<COLLECTION>` definition. Works across editions
+ *    (including TallyPrime Silver) and is what masters and vouchers use.
  */
 
 /** A Tally date in `YYYYMMDD` form (Tally XML uses no separators). */
@@ -19,7 +30,7 @@ export interface ExportEnvelopeOptions {
   fromDate?: TallyDate;
   /** Period end, `YYYYMMDD`. */
   toDate?: TallyDate;
-  /** Report-specific static variables (e.g. `DSPSHOWNARRATIONS`), emitted before the format vars. */
+  /** Report-specific static variables (e.g. `DSPSHOWNARRATIONS`). */
   staticVariables?: Record<string, string>;
 }
 
@@ -32,8 +43,13 @@ interface PeriodOptions {
 
 const STATIC_VAR_INDENT = "        ";
 
-/** Builds an `Export Data` envelope. Every envelope requests UTF-8 XML output. */
-export function buildExportEnvelope(options: ExportEnvelopeOptions): string {
+function renderStaticVars(options: {
+  company?: string;
+  fromDate?: TallyDate;
+  toDate?: TallyDate;
+  staticVariables?: Record<string, string>;
+  withExportFormat: boolean;
+}): string {
   const vars: string[] = [];
   const add = (tag: string, value: string): void => {
     vars.push(`${STATIC_VAR_INDENT}<${tag}>${escapeXmlText(value)}</${tag}>`);
@@ -45,8 +61,22 @@ export function buildExportEnvelope(options: ExportEnvelopeOptions): string {
   for (const [tag, value] of Object.entries(options.staticVariables ?? {})) {
     add(tag, value);
   }
-  add("SVEXPORTFORMAT", "$$SysName:XML");
-  add("ENCODINGTYPE", "UTF8");
+  if (options.withExportFormat) {
+    add("SVEXPORTFORMAT", "$$SysName:XML");
+    add("ENCODINGTYPE", "UTF8");
+  }
+  return vars.join("\n");
+}
+
+/** Builds an `Export Data` envelope (TYPE=Data — TallyPrime 4.x report form). */
+export function buildExportEnvelope(options: ExportEnvelopeOptions): string {
+  const vars = renderStaticVars({
+    company: options.company,
+    fromDate: options.fromDate,
+    toDate: options.toDate,
+    staticVariables: options.staticVariables,
+    withExportFormat: true,
+  });
 
   return `<ENVELOPE>
   <HEADER>
@@ -58,44 +88,172 @@ export function buildExportEnvelope(options: ExportEnvelopeOptions): string {
   <BODY>
     <DESC>
       <STATICVARIABLES>
-${vars.join("\n")}
+${vars}
       </STATICVARIABLES>
     </DESC>
   </BODY>
 </ENVELOPE>`;
 }
 
-/** List of Companies — the only report needing no loaded company. */
-export const listCompaniesEnvelope = (): string =>
-  buildExportEnvelope({ reportId: "List of Companies" });
+export interface CollectionEnvelopeOptions {
+  /** Used both as `<ID>` and the `<COLLECTION NAME="...">` attribute. */
+  name: string;
+  /** Tally object type: `Company`, `Ledger`, `Group`, `VoucherType`, `StockItem`, `Voucher`. */
+  type: string;
+  /** Optional `FETCH` list (Tally's projection clause). */
+  fetch?: ReadonlyArray<string>;
+  /** Period-scoped collections (vouchers) require these in static variables. */
+  company?: string;
+  fromDate?: TallyDate;
+  toDate?: TallyDate;
+  /** Extra static variables to inject before the export-format pair. */
+  staticVariables?: Record<string, string>;
+}
 
-/** Company Information for the given company. */
+/** Builds an `Export` envelope (TYPE=Collection + inline TDL). */
+export function buildCollectionEnvelope(options: CollectionEnvelopeOptions): string {
+  const vars = renderStaticVars({
+    company: options.company,
+    fromDate: options.fromDate,
+    toDate: options.toDate,
+    staticVariables: options.staticVariables,
+    withExportFormat: true,
+  });
+
+  const fetchLine =
+    options.fetch && options.fetch.length > 0
+      ? `\n            <FETCH>${escapeXmlText(options.fetch.join(","))}</FETCH>`
+      : "";
+
+  return `<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Collection</TYPE>
+    <ID>${escapeXmlText(options.name)}</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+${vars}
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <COLLECTION NAME="${escapeXmlText(options.name)}" ISMODIFY="No">
+            <TYPE>${escapeXmlText(options.type)}</TYPE>${fetchLine}
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+}
+
+// ─── Per-report envelope helpers ─────────────────────────────────────────────
+//
+// Masters and vouchers use the cross-edition-safe Collection+TDL form. Period
+// reports (Trial Balance, Profit & Loss, Balance Sheet) stay on the legacy
+// Report form for now; on TallyPrime Silver these return STATUS=0 and need a
+// dedicated TDL Ledger-balance projection to surface data — tracked as a
+// v0.5.1 follow-up.
+
+const COMPANY_FETCH = [
+  "Name",
+  "StartingFrom",
+  "BooksFrom",
+  "FormalName",
+  "GSTRegistrationNumber",
+  "BaseCurrencySymbol",
+] as const;
+
+const LEDGER_FETCH = [
+  "Name",
+  "Parent",
+  "OpeningBalance",
+  "IsRevenue",
+  "IsDeemedPositive",
+  "PartyGSTIN",
+  "GSTRegistrationNumber",
+  "IncomeTaxNumber",
+] as const;
+
+const GROUP_FETCH = [
+  "Name",
+  "Parent",
+  "IsRevenue",
+  "AffectsGrossProfit",
+] as const;
+
+const VOUCHER_TYPE_FETCH = ["Name", "Parent", "NumberingMethod"] as const;
+
+const VOUCHER_FETCH = [
+  "Date",
+  "VoucherTypeName",
+  "VoucherNumber",
+  "Narration",
+  "PartyLedgerName",
+  "Reference",
+  "AllLedgerEntries.LedgerName",
+  "AllLedgerEntries.Amount",
+  "AllLedgerEntries.IsDeemedPositive",
+] as const;
+
+/** List of Companies — Collection + TDL form (cross-edition). */
+export const listCompaniesEnvelope = (): string =>
+  buildCollectionEnvelope({
+    name: "List of Companies",
+    type: "Company",
+    fetch: COMPANY_FETCH,
+  });
+
+/** Company Info — single-company Collection. */
 export const companyInfoEnvelope = (o: { company: string }): string =>
-  buildExportEnvelope({ reportId: "Company Info", company: o.company });
+  buildCollectionEnvelope({
+    name: "Company Info",
+    type: "Company",
+    fetch: COMPANY_FETCH,
+    company: o.company,
+  });
 
 /** List of Ledgers (ledger masters). */
 export const listLedgersEnvelope = (o: { company: string }): string =>
-  buildExportEnvelope({ reportId: "List of Ledgers", company: o.company });
+  buildCollectionEnvelope({
+    name: "List of Ledgers",
+    type: "Ledger",
+    fetch: LEDGER_FETCH,
+    company: o.company,
+  });
 
 /** List of Groups (group masters). */
 export const listGroupsEnvelope = (o: { company: string }): string =>
-  buildExportEnvelope({ reportId: "List of Groups", company: o.company });
+  buildCollectionEnvelope({
+    name: "List of Groups",
+    type: "Group",
+    fetch: GROUP_FETCH,
+    company: o.company,
+  });
 
 /** List of Voucher Types. */
 export const listVoucherTypesEnvelope = (o: { company: string }): string =>
-  buildExportEnvelope({ reportId: "List of Voucher Types", company: o.company });
+  buildCollectionEnvelope({
+    name: "List of Voucher Types",
+    type: "VoucherType",
+    fetch: VOUCHER_TYPE_FETCH,
+    company: o.company,
+  });
 
-/** Day Book for a date range, with narrations included. */
+/** Day Book — Voucher collection scoped to the period. */
 export const dayBookEnvelope = (o: PeriodOptions): string =>
-  buildExportEnvelope({
-    reportId: "Day Book",
+  buildCollectionEnvelope({
+    name: "Day Book",
+    type: "Voucher",
+    fetch: VOUCHER_FETCH,
     company: o.company,
     fromDate: o.fromDate,
     toDate: o.toDate,
-    staticVariables: { DSPSHOWNARRATIONS: "Yes" },
   });
 
-/** Trial Balance for a date range, with the grand total row. */
+/** Trial Balance — legacy Report form (needs TDL projection on Silver — v0.5.1). */
 export const trialBalanceEnvelope = (o: PeriodOptions): string =>
   buildExportEnvelope({
     reportId: "Trial Balance",
@@ -105,7 +263,7 @@ export const trialBalanceEnvelope = (o: PeriodOptions): string =>
     staticVariables: { DSPSHOWGRANDTOTAL: "Yes" },
   });
 
-/** Profit & Loss A/c (raw Tally structure) for a date range. */
+/** Profit & Loss A/c — legacy Report form (Silver: v0.5.1). */
 export const profitAndLossEnvelope = (o: PeriodOptions): string =>
   buildExportEnvelope({
     reportId: "Profit & Loss A/c",
@@ -114,7 +272,7 @@ export const profitAndLossEnvelope = (o: PeriodOptions): string =>
     toDate: o.toDate,
   });
 
-/** Balance Sheet (raw Tally structure) for a date range. */
+/** Balance Sheet — legacy Report form (Silver: v0.5.1). */
 export const balanceSheetEnvelope = (o: PeriodOptions): string =>
   buildExportEnvelope({
     reportId: "Balance Sheet",
@@ -123,10 +281,16 @@ export const balanceSheetEnvelope = (o: PeriodOptions): string =>
     toDate: o.toDate,
   });
 
-/** Sales Register for a date range. */
+/**
+ * Sales Register — fetched as the full Voucher collection for the period.
+ * The connector filters to `VoucherTypeName="Sales"` client-side because
+ * cross-edition TDL FILTER syntax is brittle.
+ */
 export const salesRegisterEnvelope = (o: PeriodOptions): string =>
-  buildExportEnvelope({
-    reportId: "Sales Register",
+  buildCollectionEnvelope({
+    name: "Sales Register",
+    type: "Voucher",
+    fetch: VOUCHER_FETCH,
     company: o.company,
     fromDate: o.fromDate,
     toDate: o.toDate,

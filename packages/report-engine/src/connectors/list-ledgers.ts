@@ -1,6 +1,6 @@
 import { LedgerSchema, type Ledger } from "@tallymcp/shared-types";
 import {
-  findAll,
+  findAllObjects,
   listLedgersEnvelope,
   parseTallyAmount,
   parseTallyBoolean,
@@ -17,7 +17,7 @@ export async function listLedgers(
   const xml = await client.post(listLedgersEnvelope({ company: options.company }));
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("LedgerMasters", lineErrors);
-  const nodes = findAll(raw, "LEDGER") as Array<Record<string, unknown>>;
+  const nodes = findAllObjects(raw, "LEDGER");
   return nodes.map(toLedger);
 }
 

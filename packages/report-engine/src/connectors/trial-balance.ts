@@ -4,7 +4,7 @@ import {
   type TrialBalanceRow,
 } from "@tallymcp/shared-types";
 import {
-  findAll,
+  findAllObjects,
   parseTallyAmount,
   parseTallyResponse,
   trialBalanceEnvelope,
@@ -26,7 +26,7 @@ export async function getTrialBalance(
   const xml = await client.post(trialBalanceEnvelope(options));
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("TrialBalance", lineErrors);
-  const rows = findAll(raw, "TBROW") as Array<Record<string, unknown>>;
+  const rows = findAllObjects(raw, "TBROW");
   return rows.map(toTbRow);
 }
 

@@ -1,6 +1,6 @@
 import { GroupSchema, type Group } from "@tallymcp/shared-types";
 import {
-  findAll,
+  findAllObjects,
   listGroupsEnvelope,
   parseTallyBoolean,
   parseTallyResponse,
@@ -16,7 +16,7 @@ export async function listGroups(
   const xml = await client.post(listGroupsEnvelope({ company: options.company }));
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("GroupMasters", lineErrors);
-  const nodes = findAll(raw, "GROUP") as Array<Record<string, unknown>>;
+  const nodes = findAllObjects(raw, "GROUP");
   return nodes.map(toGroup);
 }
 

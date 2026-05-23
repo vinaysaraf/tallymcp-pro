@@ -1,5 +1,5 @@
 import { VoucherTypeSchema, type VoucherType } from "@tallymcp/shared-types";
-import { findAll, listVoucherTypesEnvelope, parseTallyResponse } from "@tallymcp/tally-xml";
+import { findAllObjects, listVoucherTypesEnvelope, parseTallyResponse } from "@tallymcp/tally-xml";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
 
@@ -18,7 +18,7 @@ export async function listVoucherTypes(
   const xml = await client.post(listVoucherTypesEnvelope({ company: options.company }));
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("VoucherTypes", lineErrors);
-  const nodes = findAll(raw, "VOUCHERTYPE") as Array<Record<string, unknown>>;
+  const nodes = findAllObjects(raw, "VOUCHERTYPE");
   return nodes.map(toVoucherType);
 }
 

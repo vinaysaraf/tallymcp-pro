@@ -1,5 +1,5 @@
 import { CompanySchema, type Company } from "@tallymcp/shared-types";
-import { companyInfoEnvelope, findAll, parseTallyResponse } from "@tallymcp/tally-xml";
+import { companyInfoEnvelope, findAllObjects, parseTallyResponse } from "@tallymcp/tally-xml";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
 
@@ -11,7 +11,7 @@ export async function getCompanyInfo(
   const xml = await client.post(companyInfoEnvelope({ company: options.company }));
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("CompanyInfo", lineErrors);
-  const nodes = findAll(raw, "COMPANY") as Array<Record<string, unknown>>;
+  const nodes = findAllObjects(raw, "COMPANY");
   const node = nodes[0];
   if (!node) {
     throw new TallyReportError("CompanyInfo", ["No COMPANY element in response"]);
