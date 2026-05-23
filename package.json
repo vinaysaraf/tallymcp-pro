@@ -17,9 +17,12 @@
     "hello-tally": "tsx scripts/hello-tally.ts",
     "hello-tally:fixture": "tsx scripts/hello-tally.ts --fixture",
     "diagnose-tally": "tsx scripts/diagnose-tally.ts",
-    "scan-tally": "tsx scripts/scan-tally.ts"
+    "scan-tally": "tsx scripts/scan-tally.ts",
+    "read-report": "tsx scripts/read-report.ts"
   },
   "dependencies": {
+    "@tallymcp/report-engine": "workspace:*",
+    "@tallymcp/shared-types": "workspace:*",
     "@tallymcp/tally-connector": "workspace:*"
   },
   "devDependencies": {

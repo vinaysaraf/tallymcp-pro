@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@tallymcp/report-engine':
+        specifier: workspace:*
+        version: link:packages/report-engine
+      '@tallymcp/shared-types':
+        specifier: workspace:*
+        version: link:packages/shared-types
       '@tallymcp/tally-connector':
         specifier: workspace:*
         version: link:packages/tally-connector
@@ -47,11 +53,35 @@ importers:
 
   packages/compliance-engine: {}
 
-  packages/config-store: {}
+  packages/config-store:
+    dependencies:
+      '@tallymcp/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      zod:
+        specifier: ^3.25.56
+        version: 3.25.76
 
   packages/excel-engine: {}
 
-  packages/report-engine: {}
+  packages/report-engine:
+    dependencies:
+      '@tallymcp/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      '@tallymcp/tally-connector':
+        specifier: workspace:*
+        version: link:../tally-connector
+      '@tallymcp/tally-xml':
+        specifier: workspace:*
+        version: link:../tally-xml
+      zod:
+        specifier: ^3.25.56
+        version: 3.25.76
+    devDependencies:
+      undici:
+        specifier: ^7.13.0
+        version: 7.25.0
 
   packages/security-engine: {}
 

@@ -13,8 +13,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests",
-    "lint": "eslint src",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "lint": "eslint src test",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tallymcp/shared-types": "workspace:*",
+    "zod": "^3.25.56"
   }
 }
