@@ -23,22 +23,22 @@ particular Tally instance, fall back to UTF-8 and re-run:
 pnpm v070-tb-proof --charset utf-8
 ```
 
-**Result (fill in after running):**
+**Result (run 2026-05-24):**
 
 | Metric | Target | Actual | Pass? |
 |---|---|---|---|
-| TB latency | < 5,000 ms | _____ ms | ⬜ |
-| Rows returned | ≥ 1 | _____ | ⬜ |
-| Tally responsive after | < 2,000 ms follow-up | _____ ms | ⬜ |
-| Tally restart needed | No | ⬜ Yes ⬜ No | ⬜ |
-| Charset that worked | utf-16 (default) | _____ | — |
-| Date run | — | _____ (YYYY-MM-DD HH:MM) | — |
-| Tally edition | — | _____ | — |
-| Operator notes | — | _____ | — |
+| TB latency | < 5,000 ms | **330 ms** | ✅ (~15× under budget) |
+| Rows returned | ≥ 1 | **3,689** | ✅ (full ledger set projected) |
+| Tally responsive after | < 2,000 ms follow-up | **4 ms** | ✅ |
+| Tally restart needed | No | **No** | ✅ |
+| Charset that worked | utf-16 (default) | utf-16 | — |
+| Date run | — | 2026-05-24 | — |
+| Tally edition | — | TallyPrime Silver | — |
+| Operator notes | — | Sample sign convention (`dr`/`cr` columns) is inverted relative to typical TB display because the TDL formula uses `-$$Number:$DebitTotals`. Calibration of display semantics deferred to v0.7.1 when downstream consumers (B5/B6 closing-balance tools) land. Performance proof unaffected. | — |
 
-**Decision after run:**
-
-- ✅ All three pass → proceed to v0.7.1 (rewire B2–B7 + dispatcher).
-- ❌ Any failure → **abort v0.7**. Open an issue describing the symptom,
-  the wall-clock, the row count, and the body of any error message.
-  Re-design before any further v0.7 work.
+**Decision: ✅ PROCEED to v0.7.1.** The TDL engine + UTF-16 transport pipeline
+returns the full 3,689-row Trial Balance against `OM JAI JAGDISH` in 330 ms —
+15× under the 5,000 ms kill-switch budget — and leaves the Tally instance
+fully responsive (follow-up master query in 4 ms). The architectural bet is
+empirically validated. v0.7.1 (rewire B2–B7 connectors + dispatcher through
+`tdl-engine`) is unblocked.
