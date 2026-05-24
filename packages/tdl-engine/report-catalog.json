@@ -20,6 +20,82 @@
           { "identifier": "F06", "name": "closing", "datatype": "number" }
         ]
       }
+    },
+    {
+      "name": "profit-loss",
+      "template": "profit-loss.xml",
+      "input": [
+        { "name": "fromDate", "datatype": "date", "required": true },
+        { "name": "toDate", "datatype": "date", "required": true },
+        { "name": "targetCompany", "datatype": "string", "required": false }
+      ],
+      "output": {
+        "datatype": "array",
+        "fields": [
+          { "identifier": "F01", "name": "group", "datatype": "string" },
+          { "identifier": "F02", "name": "parent", "datatype": "string" },
+          { "identifier": "F03", "name": "closing", "datatype": "number" }
+        ]
+      }
+    },
+    {
+      "name": "balance-sheet",
+      "template": "balance-sheet.xml",
+      "input": [
+        { "name": "fromDate", "datatype": "date", "required": true },
+        { "name": "toDate", "datatype": "date", "required": true },
+        { "name": "targetCompany", "datatype": "string", "required": false }
+      ],
+      "output": {
+        "datatype": "array",
+        "fields": [
+          { "identifier": "F01", "name": "group", "datatype": "string" },
+          { "identifier": "F02", "name": "parent", "datatype": "string" },
+          { "identifier": "F03", "name": "closing", "datatype": "number" }
+        ]
+      }
+    },
+    {
+      "name": "day-book",
+      "template": "day-book.xml",
+      "input": [
+        { "name": "fromDate", "datatype": "date", "required": true },
+        { "name": "toDate", "datatype": "date", "required": true },
+        { "name": "targetCompany", "datatype": "string", "required": false }
+      ],
+      "output": {
+        "datatype": "array",
+        "fields": [
+          { "identifier": "F01", "name": "date", "datatype": "string" },
+          { "identifier": "F02", "name": "voucherType", "datatype": "string" },
+          { "identifier": "F03", "name": "voucherNumber", "datatype": "string" },
+          { "identifier": "F04", "name": "party", "datatype": "string" },
+          { "identifier": "F05", "name": "reference", "datatype": "string" },
+          { "identifier": "F06", "name": "narration", "datatype": "string" },
+          { "identifier": "F07", "name": "amount", "datatype": "number" }
+        ]
+      }
+    },
+    {
+      "name": "sales-register",
+      "template": "sales-register.xml",
+      "input": [
+        { "name": "fromDate", "datatype": "date", "required": true },
+        { "name": "toDate", "datatype": "date", "required": true },
+        { "name": "targetCompany", "datatype": "string", "required": false }
+      ],
+      "output": {
+        "datatype": "array",
+        "fields": [
+          { "identifier": "F01", "name": "date", "datatype": "string" },
+          { "identifier": "F02", "name": "voucherType", "datatype": "string" },
+          { "identifier": "F03", "name": "voucherNumber", "datatype": "string" },
+          { "identifier": "F04", "name": "party", "datatype": "string" },
+          { "identifier": "F05", "name": "reference", "datatype": "string" },
+          { "identifier": "F06", "name": "narration", "datatype": "string" },
+          { "identifier": "F07", "name": "amount", "datatype": "number" }
+        ]
+      }
     }
   ]
 }

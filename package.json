@@ -19,7 +19,8 @@
     "diagnose-tally": "tsx scripts/diagnose-tally.ts",
     "scan-tally": "tsx scripts/scan-tally.ts",
     "read-report": "tsx scripts/read-report.ts",
-    "v070-tb-proof": "tsx scripts/v070-tb-proof.ts"
+    "v070-tb-proof": "tsx scripts/v070-tb-proof.ts",
+    "verify-all-reports": "tsx scripts/verify-all-reports.ts"
   },
   "dependencies": {
     "@tallymcp/report-engine": "workspace:*",
