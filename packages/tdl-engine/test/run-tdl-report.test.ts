@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runTdlReport } from "../src/run-tdl-report.js";
-import { TdlEngineError, TdlExceptionError } from "../src/errors.js";
+import { TdlExceptionError } from "../src/errors.js";
 import type { CatalogReport } from "../src/catalog.js";
 
 const FAKE_REPORT: CatalogReport = {
