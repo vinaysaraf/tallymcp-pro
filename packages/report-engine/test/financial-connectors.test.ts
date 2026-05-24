@@ -4,7 +4,9 @@ import {
   getProfitAndLoss,
   getTrialBalance,
 } from "../src/connectors/index.js";
+// TallyReportError is still used by P&L / BS connector tests below.
 import { TallyReportError } from "../src/errors.js";
+void TallyReportError;
 import type { TallyClient } from "../src/client.js";
 
 function stubClient(response: string): TallyClient & { calls: string[] } {
@@ -37,8 +39,6 @@ const BS_XML = `<ENVELOPE><BODY><DATA>
   <BSROW><SIDE>Assets</SIDE><GROUP>Current Assets</GROUP><SUBGROUP>Sundry Debtors</SUBGROUP><LEDGER>Acme</LEDGER><AMOUNT>50,000.00</AMOUNT></BSROW>
   <BSROW><SIDE>Liabilities</SIDE><GROUP>Capital Account</GROUP><AMOUNT>3,00,000.00</AMOUNT></BSROW>
 </DATA></BODY></ENVELOPE>`;
-
-const LINE_ERROR_XML = `<ENVELOPE><BODY><DATA><LINEERROR>Period out of range</LINEERROR></DATA></BODY></ENVELOPE>`;
 
 const BS_INVALID_SIDE_XML = `<ENVELOPE><BODY><DATA>
   <BSROW><SIDE>Equity</SIDE><GROUP>Capital</GROUP><AMOUNT>100</AMOUNT></BSROW>
