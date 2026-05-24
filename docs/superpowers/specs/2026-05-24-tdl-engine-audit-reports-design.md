@@ -1,6 +1,6 @@
 # TallyMCP v0.7 — TDL Engine + Audit-Grade Reports
 
-**Status:** v1.3 — Approved for implementation (doc consistency + Silver audit-lite refinement, 2026-05-24)
+**Status:** v1.4 — Approved for implementation (6 reviewer non-blockers + 1 self-found §5 correction, 2026-05-24)
 **Date:** 2026-05-24
 **Author:** Vinay + Claude
 **Supersedes:** v0.6 voucher-collection strategy (kept as Silver file-import fallback only)
@@ -153,7 +153,8 @@ projection does not.
 │  packages/tdl-engine                       ←── NEW                │
 │    templates/<report>.xml      — inline TDL definitions           │
 │    report-catalog.json         — params + output schema           │
-│    schedule3-mapping.json      — Tally group → Sched III head     │
+│    schedule3-mapping.json      — STUB in v0.7 (Sched III ships    │
+│                                  v0.8 — see §13)                  │
 │    src/renderer.ts             — nunjucks template render         │
 │    src/parser.ts               — F01..Fn → typed row              │
 │    src/run-tdl-report.ts       — orchestrator                     │
@@ -163,8 +164,8 @@ projection does not.
 │    New file per family: src/templates/<family>.ts                 │
 ├──────────────────────────────────────────────────────────────────┤
 │  packages/tally-connector                                         │
-│    UTF-16 LE transport by default. Config knob to fall back       │
-│    to UTF-8. Existing fixture tests stay green.                   │
+│    UTF-16 LE transport by default. Config knob + per-call         │
+│    override (§8). Existing fixture tests stay green.              │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -204,7 +205,7 @@ columns become which typed fields), and which template file to use.
 |---|---|---|---|
 | 1 | `list-master.xml` | parameterized (Group, Ledger, VoucherType, Unit, Godown, StockGroup, StockItem, CostCategory, CostCentre, AttendanceType, Company, Currency, GSTIN, GSTClassification) | A1, A4, A6, A9 (and the bulk of A) |
 | 2 | `chart-of-accounts.xml` | Group | A3 |
-| 3 | `ledgers-rich.xml` | Ledger (extended FETCH: Parent, OB, GSTIN, PAN, State, Address) | A2 |
+| 3 | `ledgers-rich.xml` | **Inline TDL** REPORT+COLLECTION over Ledger projecting Parent/OB/GSTIN/PAN/State/Address as F01..F07 (not a raw Collection+FETCH — same Silver-safety pattern as `trial-balance.xml`) | A2 |
 | 4 | `stock-items.xml` | StockItem with HSN, base unit, OB | A5 |
 | 5 | `trial-balance.xml` | Ledger with `$OpeningBalance`, `$DebitTotals`, `$CreditTotals`, `$ClosingBalance` | B1, B2, B5, B6, B7 (parameterized by `$Parent` filter), D1 (Sales group), D8 (statutory dues groups), I3 (top customers via Debtors group), I1 (monthly via 12 calls) |
 | 6 | `profit-loss.xml` | Group, BS=N, with stock adjustments | B3, I6 |
@@ -376,13 +377,14 @@ to the new TDL backend:
 | `BalanceSheet` | `balance-sheet.xml` | `company`, `to` |
 | `SalesRegister` | **unchanged** — file-import path (voucher-list) | – |
 
-### `tally_list_ledgers` deprecation (decision)
+### `tally_list_ledgers_rich` — new tool, no deprecation needed
 
-`tally_list_ledgers` (v0.6 — basic 6 fields) and `tally_list_ledgers_rich`
-(v0.7 — extended 9 fields including GSTIN/PAN/State/Address) **coexist**.
-Old tool stays alive; description gets an annotation pointing to the rich
-variant. We do not break LLM prompts that already call the old name.
-Removal scheduled for v1.0 with a 6-month deprecation notice in CHANGELOG.
+There is no standalone `tally_list_ledgers` tool in v0.6; ledger lists are
+already served by `tally_read_report({ reportId: "LedgerMasters" })`.
+v0.7's `tally_list_ledgers_rich` is therefore a **pure addition** with
+extended fields (GSTIN, PAN, State, Address) — it does not shadow or
+deprecate any existing tool. The dispatcher route (`LedgerMasters`) keeps
+working unchanged, re-backed by `ledgers-rich.xml`.
 
 ---
 
@@ -398,8 +400,16 @@ type TallyTier =
   | "unknown"; // probe failed / forced
 ```
 
-The probe still uses two safe queries (master list + legacy TB Report
-returning STATUS=0 fast). Tier-derived guards:
+The probe still uses two safe queries (master list + legacy TB Report —
+Silver returns `STATUS=0` empty body in <50 ms, Gold returns real rows
+fast). This is sufficient for v0.7 because the discriminator is the
+legacy report's behavior, not its content.
+
+**Post-v0.7 enhancement** (not in v0.7 scope): once the inline TDL TB
+template ships, the probe can switch to "inline-TB returns ≥1 row in <5 s →
+gold-or-better, no rows in <5 s → silver." This will more accurately reflect
+what v0.7+ actually delivers, but the current probe stays valid throughout
+v0.7 so the tier model and the probe ship in the same release. Tier-derived guards:
 
 | Capability | gold | silver | unknown |
 |---|---|---|---|
@@ -414,10 +424,29 @@ returning STATUS=0 fast). Tier-derived guards:
 ### Changes to `apps/mcp-server/src/capability.ts`
 
 - `TallyCapabilities.tier: "gold" | "silver" | "unknown"` (new field; supersedes the binary `voucherQueriesViable`).
-- `TallyCapabilities.vouchersCached: boolean` (new field; true when `audit-result.json` or imported voucher cache exists in the output folder).
+- `TallyCapabilities.vouchersCached: boolean` (new field; see voucher cache contract below).
 - `gateOnVouchers(ctx, options)` becomes `gateForOperation(ctx, operation)` where `operation` is `"voucher-list" | "voucher-audit" | "voucher-dashboard" | "balance"`. Routing per the table above.
 - **B5 / B6 ungated unconditionally** in v0.7 (TDL backend is fast on Silver).
 - `tally_run_audit_lite` no longer reads `voucherQueriesViable`; it reads `vouchersCached` and reports a CA-friendly "import vouchers first" error when false.
+
+### Voucher cache contract — `vouchersCached` semantics
+
+Single source of truth so audit-lite and dashboards never disagree on "is
+cache present":
+
+| Concern | Decision |
+|---|---|
+| **Cache root** | `<config.output.folder>/voucher-cache/` |
+| **One file per import** | `<company-slug>/<fromDate>-<toDate>.json` (e.g., `OM_JAI_JAGDISH/20220401-20230331.json`). `company-slug` is `safeFileName(company)` from `output-store/paths.ts`. |
+| **File schema** | `{ company, fromDate, toDate, importedAt, source: "tally-ui-xml" \| "json", vouchers: Voucher[] }` (Zod-validated via `VoucherSchema[]`). |
+| **Merge semantics** | **Latest import wins, scoped by company + (fromDate, toDate) tuple.** A new import for the same exact range overwrites the prior file. A new import for an overlapping but different range creates a new file (callers pick the file whose range covers their query). No silent merging across ranges. |
+| **TTL** | None. Vouchers are immutable historical data; the user explicitly refreshes by running `tally_import_vouchers_from_file` again. Cache age is reported in audit / dashboard outputs so the LLM can warn the user. |
+| **`vouchersCached` resolution** | True when `<voucher-cache>/<company-slug>/` contains ≥1 file whose `[fromDate, toDate]` range fully contains the audit / dashboard query period. |
+| **Cleanup** | Manual. v1.0 may add a `tally_clear_voucher_cache` tool; not in v0.7 scope. |
+
+`tally_import_vouchers_from_file` is updated in v0.7.4 to write into this
+cache layout (today it just parses + returns inline). The output folder for
+generated reports stays separate from the voucher cache.
 
 **Audit-lite source policy — explicit.** Today `runAuditLiteForCompany`
 calls `getDayBookStream` on every edition; that is the same collection
@@ -568,14 +597,25 @@ this doc when the transport switch ships:
 | v0.6 baseline (read-only) | 19 |
 | New in v0.7 (above) | 20 |
 | Deprecated / removed in v0.7 | 0 |
-| `tally_list_ledgers` → `_rich` (coexist, both counted) | +0 |
 | **Final tool count after v0.7** | **39** |
 
-The 19-tool v0.6 baseline = the current `apps/mcp-server` registry after the
-S3/S4 submission work landed (15 submission tools + 4 added between v0.5.1
-and v0.6: `tally_get_ledger_closing_balance`, `tally_get_group_closing_balances`,
-`tally_get_capabilities`, `tally_import_vouchers_from_file`). The submission
-plan v1.2 counted 15 because it predates those additions.
+The 19-tool v0.6 baseline is verified by
+`grep -c 'server.tool(' apps/mcp-server/src/server.ts = 19`. The list:
+`tally_test_connection`, `tally_list_companies`, `tally_get_company_info`,
+`tally_set_default_company`, `tally_list_reports`, `tally_read_report`,
+`tally_export_report_excel`, `tally_export_report_json`,
+`tally_export_masters`, `tally_export_vouchers`,
+`tally_get_ledger_closing_balance`, `tally_get_group_closing_balances`,
+`tally_run_audit_lite`, `tally_export_dashboard`,
+`tally_get_capabilities`, `tally_import_vouchers_from_file`,
+`tally_config_get`, `tally_config_update`, `tally_export_mcp_config`.
+
+That is 15 submission tools (S3/S4) + 4 added between v0.5.1 and v0.6
+(`tally_get_ledger_closing_balance`, `tally_get_group_closing_balances`,
+`tally_get_capabilities`, `tally_import_vouchers_from_file`). The
+submission plan v1.2 counted 15 because it predates the v0.5.1/v0.6
+additions. There is no standalone `tally_list_ledgers` — ledger lists
+route through `tally_read_report({ reportId: "LedgerMasters" })`.
 
 The existing `tally_read_report` dispatcher keeps its 10 reportIds — its
 TrialBalance / ProfitAndLoss / BalanceSheet / LedgerMasters / GroupMasters /
@@ -640,7 +680,10 @@ is reversible by reverting one commit. **The kill-switch is v0.7.0 step 3.**
 14. **Update `tally://docs/edition-notes`** resource text.
 15. **Update `docs/tally-xml-notes.md`** for the UTF-16 transport switch.
 16. **Update `docs/live-tally-checklist.md`** with the 7 success-metric
-    runs (§2). Run end-to-end against live Silver. Commit results.
+    runs (§2). Run end-to-end against live Silver. **Paste wall-clock and
+    row counts for each metric into the checklist file** so the empirical
+    evidence behind v0.7's claims lives in-repo (not only in commit
+    messages). Commit results.
 17. **CHANGELOG entry** documenting the engine swap, the new TDL pattern,
     and the UTF-16 transport.
 
@@ -866,6 +909,7 @@ T6 comparison / T7 working paper.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4 | 2026-05-24 | Reviewer non-blockers + self-found §5 fix: §5 removed bogus `tally_list_ledgers` deprecation paragraph (the tool never existed — ledgers route via `tally_read_report({ reportId: "LedgerMasters" })`); §9 baseline arithmetic table simplified (no bogus coexist row) and 19-tool list spelled out + grep verification noted; §6 added concrete **voucher cache contract** (path, schema, merge semantics, TTL, `vouchersCached` resolution rule) so audit-lite and dashboards can never disagree on "is cache present"; §4 row 3 `ledgers-rich.xml` marked explicitly as **inline TDL** (not raw Collection+FETCH) for Silver safety; §6 added post-v0.7 probe enhancement note (switch to inline-TB-based probe after the template ships); §3 architecture diagram + §4 catalog mark `schedule3-mapping.json` as **stub in v0.7** (real mapping ships v0.8 with Schedule III suite); §10 v0.7.4 step 16 requires **pasting wall-clock + row counts into `live-tally-checklist.md`** so empirical evidence behind v0.7's claims lives in-repo |
 | 1.3 | 2026-05-24 | Doc consistency + Silver audit-lite refinement: §9 subsection title corrected to "20 tools" (was "13"); §9 audit-lite wording aligned with §6 policy (not hard-gated on Silver — runs when cache present, fails fast otherwise); §10 effort summary fixed (I3 no longer double-counted; H1 added to v0.7.3; v0.7.4 = 0 reports as expected); §13 backlog row aligned to §10 effort (13 working days / 3–4 weeks); §6 capability.ts implementation note (tier enum, vouchersCached field, gateForOperation routing); §8 per-call `charset?` argument on `TallyHttpClient.post()` to allow transitional UTF-16/UTF-8 coexistence; §9 19-tool baseline explanation (= 15 submission + 4 v0.5.1/v0.6 additions); §12 list-master.xml added to per-consumer fixture rule |
 | 1.2 | 2026-05-24 | Removed all references to external reference project; spec frames the TDL pattern and UTF-16 transport as documented Tally behavior + our empirical research |
 | 1.1 | 2026-05-24 | Review feedback applied: §0 submission-plan relationship, §2 success metrics, §4 nunjucks/angular substitution order + edge-case test, §5 tally_read_report mapping table + tally_list_ledgers deprecation, §6 explicit audit-lite voucher source policy per edition, §7 T2 draft disclaimer, §8 transport acceptance matrix + tally-xml-notes.md update plan, §9 tool count baseline table, §10 phased v0.7.0–v0.7.4 (~13 days), §11 F01..Fn drift + TB regression blast radius + nunjucks ordering risks, §12 per-consumer fixtures + golden fixtures + C-R1 grep + charset matrix |
