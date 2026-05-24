@@ -146,6 +146,9 @@ importers:
       '@tallymcp/tally-xml':
         specifier: workspace:*
         version: link:../tally-xml
+      '@tallymcp/tdl-engine':
+        specifier: workspace:*
+        version: link:../tdl-engine
       zod:
         specifier: ^3.25.56
         version: 3.25.76

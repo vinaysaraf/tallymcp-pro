@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **v0.7.0 — TDL engine kill-switch:**
+  - New `@tallymcp/tdl-engine` package: nunjucks renderer + angular-bracket parameter substitution + F01..Fn row parser + `runTdlReport` orchestrator. Templates are data (`packages/tdl-engine/templates/*.xml` + `report-catalog.json`). 32 Vitest tests.
+  - `TallyHttpClient` switched to **UTF-16 LE transport** by default, with per-call `charset?: "utf-16" | "utf-8"` override so legacy UTF-8 envelopes keep working during the migration.
+  - `trial-balance.xml` shipped as the first inline-TDL template: `REPORT + FORM + PART + LINE + FIELDs + COLLECTION` over `<TYPE>Ledger</TYPE>` projecting Name / Parent / Opening / Debit / Credit / Closing as F01..F06.
+  - `getTrialBalance` connector rewired to delegate through `tdl-engine` while preserving its `TrialBalanceRow[]` return contract. Existing legacy connectors (P&L, BS, masters, day-book, sales, ledger-balance) explicitly request `charset: "utf-8"` until they migrate to TDL in v0.7.1+.
+  - C-R1 enforcement: CI test (`packages/tdl-engine/test/c-r1-grep.test.ts`) refuses any template containing Import / Alter / Create / Delete / `MASTER ID` directives.
+  - Live proof script: `pnpm v070-tb-proof`. Results captured in `docs/live-tally-checklist.md`.
+  - 256 tests passing across all 10 packages.
+
 - **S3 + S4** — `@tallymcp/mcp-server`: stdio MCP server exposing 15 tools (connection, companies, 10 reports, masters/vouchers/dashboard/audit-lite exports, config), 6 prompts (`config`/`read`/`export`/`audit`/`dashboard`/`help`), and 3 resources (`tally://companies`, `tally://docs/connection-guide`, `tally://audit/last`). Network guard restricts egress to the configured Tally host:port (C-R3). Snippet generator emits MCP client config for Claude Desktop, Cursor, LM Studio, and Ollama. 14 Vitest tests including in-process client/server integration.
 - **S4 analytics-engine** — `@tallymcp/analytics-engine`: 18 audit-lite check functions (ledger hygiene, GST/PAN format, voucher narrations, duplicate numbers, round-figure / large-journal / backdated, cash negative, suspense balance), `runAuditLite` orchestrator, explainable `computeBooksScore` (0–100), `toAuditWorkbook` Excel renderer, and 3 dashboard builders (ManagementSnapshot, SalesTrend, ExceptionsOverview); 8 Vitest tests including full-sweep and clean-fixture sanity.
 - `@tallymcp/shared-types`: `BooksScore`, `BooksScoreComponent`, `AuditLiteSummary`, `AuditLiteResult` schemas
