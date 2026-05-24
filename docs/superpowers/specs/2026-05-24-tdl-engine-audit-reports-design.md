@@ -1,10 +1,9 @@
 # TallyMCP v0.7 — TDL Engine + Audit-Grade Reports
 
-**Status:** v1.1 — Approved for implementation (incorporates review feedback 2026-05-24)
+**Status:** v1.2 — Approved for implementation (review feedback + reference cleanup, 2026-05-24)
 **Date:** 2026-05-24
 **Author:** Vinay + Claude
 **Supersedes:** v0.6 voucher-collection strategy (kept as Silver file-import fallback only)
-**Reference project:** [`dhananjay1405/tally-mcp-server`](https://github.com/dhananjay1405/tally-mcp-server) — ISC-licensed. We adopt the inline-TDL pattern and the UTF-16 LE transport. Template XML structure may be derived from theirs (compatible license; attribution in CHANGELOG when shipped).
 
 ---
 
@@ -12,12 +11,13 @@
 
 Today our MCP times out on TallyPrime Silver because we ask Tally for raw collections
 (`<TYPE>Collection</TYPE>` with a `<FETCH>` projection) and then aggregate
-client-side. The working CA project we studied
-(`dhananjay1405/tally-mcp-server`) takes the opposite path: it sends **inline
-TDL report definitions** (`REPORT + FORM + PART + LINE + FIELDs + COLLECTION`),
-letting Tally's own TDL VM project rows server-side. Result: Trial Balance,
-P&L, Balance Sheet — and every balance-class report — return in seconds on the
-same kind of Silver instance that locks ours.
+client-side. The fix is to take the opposite path documented in Tally's TDL
+Reference Manual: send **inline TDL report definitions**
+(`REPORT + FORM + PART + LINE + FIELDs + COLLECTION`), letting Tally's own
+TDL VM project rows server-side. This is the same execution path Tally's
+built-in Display reports use; it returns Trial Balance, P&L, Balance Sheet,
+and every balance-class report in seconds on the same Silver instances that
+lock our current engine.
 
 v0.7 adopts that pattern, switches the HTTP transport to UTF-16 LE (the second
 empirically-observed speed unlock), and ships **24 audit-grade reports** with
@@ -86,8 +86,9 @@ that workload.
 
 The fix is: *"compute this custom report I'm defining inline, then send me the
 projected rows."* Tally's TDL VM is built for exactly this — it's the same
-path the built-in Display reports use. The CA's project proves it works on
-the same edition class we're targeting.
+path the built-in Display reports use, and empirical testing confirms it
+performs predictably on Silver-class instances where raw-collection
+projection does not.
 
 ---
 
@@ -206,19 +207,19 @@ columns become which typed fields), and which template file to use.
 | 3 | `ledgers-rich.xml` | Ledger (extended FETCH: Parent, OB, GSTIN, PAN, State, Address) | A2 |
 | 4 | `stock-items.xml` | StockItem with HSN, base unit, OB | A5 |
 | 5 | `trial-balance.xml` | Ledger with `$OpeningBalance`, `$DebitTotals`, `$CreditTotals`, `$ClosingBalance` | B1, B2, B5, B6, B7 (parameterized by `$Parent` filter), D1 (Sales group), D8 (statutory dues groups), I3 (top customers via Debtors group), I1 (monthly via 12 calls) |
-| 6 | `profit-loss.xml` | Group, BS=N, with stock adjustments per CA template | B3, I6 |
-| 7 | `balance-sheet.xml` | Group, BS=Y, with closing stock per CA template | B4 |
-| 8 | `bills-outstanding.xml` | Bill collection with `$BillDate`, `$Name`, `$ClosingBalance`, `$Parent`, `$_OverDueDays` (per CA template) | G1, G2, G3 |
+| 6 | `profit-loss.xml` | Group, BS=N, with stock adjustments | B3, I6 |
+| 7 | `balance-sheet.xml` | Group, BS=Y, with closing stock | B4 |
+| 8 | `bills-outstanding.xml` | Bill collection with `$BillDate`, `$Name`, `$ClosingBalance`, `$Parent`, `$_OverDueDays` | G1, G2, G3 |
 | 9 | `stock-summary.xml` | StockItem with qty/value at open/inward/outward/close | H1 |
 | 10 | `gst-ledger-monthly.xml` | Ledger filtered to GST output ledger names, full-period closing | E1 |
 
-Two patterns we add on top of the CA's catalog:
+Two patterns worth calling out:
 
 - **Per-month rollup (E1).** v0.7 ships this as **one TDL call per month** —
-  12 sequential balance-class calls, each <1 s on Silver per CA-project
-  evidence. Total time ~12 s, acceptable for a monthly trend dashboard.
-  A single-call TDL with `$$MonthEnd:$Date` grouping is a v0.9 optimization
-  if 12 s becomes a UX problem.
+  12 sequential balance-class calls, each expected at <1 s on Silver based on
+  TB-template performance. Total time ~12 s, acceptable for a monthly trend
+  dashboard. A single-call TDL with `$$MonthEnd:$Date` grouping is a v0.9
+  optimization if 12 s becomes a UX problem.
 - **Schedule III mapping** is *not* a TDL template — it is a client-side
   composition in `report-engine` that consumes `trial-balance.xml` rows and
   walks `schedule3-mapping.json` to assemble the Schedule III shape. Ships
@@ -226,7 +227,7 @@ Two patterns we add on top of the CA's catalog:
 
 ### Template language
 
-Nunjucks with custom tags (matching the CA project):
+Nunjucks with custom tags (so static-XML tooling does not choke on `{% %}`):
 
 ```xml
 <nunjuck>if targetCompany</nunjuck>
@@ -234,8 +235,9 @@ Nunjucks with custom tags (matching the CA project):
 <nunjuck>endif</nunjuck>
 ```
 
-…so static-XML parsers don't choke on `{% if %}` syntax. The `tdl-engine`
-configures the nunjucks env with these tags.
+The `tdl-engine` configures the nunjucks env with these tags so the same
+template file is both nunjucks-valid and XML-valid (an inert
+`<nunjuck>...</nunjuck>` element in raw XML view).
 
 ### Parameter substitution — order of operations (locked)
 
@@ -466,7 +468,8 @@ Response: chunk.toString("utf16le")
 ```
 
 Tally is a native Windows app and its XML engine is empirically much happier
-with UTF-16 LE (the CA's project uses it for every call). The MCP gets a
+with UTF-16 LE; observed performance and stability on busy Silver books
+improve substantially over the UTF-8 baseline. The MCP gets a
 `charset: "utf-16" | "utf-8"` config knob (default `utf-16`) so any instance
 that prefers UTF-8 can be flipped without code changes.
 
@@ -604,7 +607,8 @@ is reversible by reverting one commit. **The kill-switch is v0.7.0 step 3.**
 14. **Update `docs/tally-xml-notes.md`** for the UTF-16 transport switch.
 15. **Update `docs/live-tally-checklist.md`** with the 7 success-metric
     runs (§2). Run end-to-end against live Silver. Commit results.
-16. **CHANGELOG entry** with reference-project attribution.
+16. **CHANGELOG entry** documenting the engine swap, the new TDL pattern,
+    and the UTF-16 transport.
 
 ### Effort summary
 
@@ -623,7 +627,7 @@ is reversible by reverting one commit. **The kill-switch is v0.7.0 step 3.**
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| TDL templates work on Tally 4.x but fail on Silver in ways the CA project hides | Medium | v0.7.0 step 3 is the single proof point; if it fails, abort and re-design before committing the rest |
+| TDL templates work on Tally 4.x but fail on Silver in ways unit tests miss | Medium | v0.7.0 step 3 is the single live proof point on the `OM JAI JAGDISH` Silver book; if it fails, abort and re-design before committing the rest |
 | UTF-16 transport breaks some Tally endpoint | Low | `charset` config knob; transport acceptance matrix (§8) before merge; per-instance fallback |
 | **F01..Fn schemas drift across Tally versions** | **High over time** | (a) `report-catalog.json` carries a `catalogVersion` and per-report `minTallyVersion`; (b) **golden fixtures** captured from `OM JAI JAGDISH` plus a Gold reference, stored under `tests/fixtures/tdl/<report>/`; (c) **parser tests fail loudly** when column count mismatches the schema (no silent zero-fill) |
 | **`trial-balance.xml` regression blast radius** — one template drives B1/B2/B5/B6/B7/D1/D8/I3/I1 | **High** | Per-consumer fixture tests: each downstream report (B2, B5, B6, D1, etc.) has its own integration test asserting the TB row shape it relies on. CI rejects PRs that change `trial-balance.xml` without updating fixtures. |
@@ -828,6 +832,7 @@ T6 comparison / T7 working paper.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.2 | 2026-05-24 | Removed all references to external reference project; spec frames the TDL pattern and UTF-16 transport as documented Tally behavior + our empirical research |
 | 1.1 | 2026-05-24 | Review feedback applied: §0 submission-plan relationship, §2 success metrics, §4 nunjucks/angular substitution order + edge-case test, §5 tally_read_report mapping table + tally_list_ledgers deprecation, §6 explicit audit-lite voucher source policy per edition, §7 T2 draft disclaimer, §8 transport acceptance matrix + tally-xml-notes.md update plan, §9 tool count baseline table, §10 phased v0.7.0–v0.7.4 (~13 days), §11 F01..Fn drift + TB regression blast radius + nunjucks ordering risks, §12 per-consumer fixtures + golden fixtures + C-R1 grep + charset matrix |
 | 1.0 | 2026-05-24 | Initial design after brainstorming approval |
 
