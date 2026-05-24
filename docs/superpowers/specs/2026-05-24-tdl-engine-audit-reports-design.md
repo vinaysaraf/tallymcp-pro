@@ -1,9 +1,10 @@
 # TallyMCP v0.7 — TDL Engine + Audit-Grade Reports
 
-**Status:** Approved for implementation
+**Status:** v1.1 — Approved for implementation (incorporates review feedback 2026-05-24)
 **Date:** 2026-05-24
 **Author:** Vinay + Claude
 **Supersedes:** v0.6 voucher-collection strategy (kept as Silver file-import fallback only)
+**Reference project:** [`dhananjay1405/tally-mcp-server`](https://github.com/dhananjay1405/tally-mcp-server) — ISC-licensed. We adopt the inline-TDL pattern and the UTF-16 LE transport. Template XML structure may be derived from theirs (compatible license; attribution in CHANGELOG when shipped).
 
 ---
 
@@ -31,6 +32,31 @@ gated to v0.8 after a single probe.
 
 The voucher file-import path from v0.6 (`tally_import_vouchers_from_file`)
 stays as the durable Silver fallback for voucher-list use cases.
+
+---
+
+## 0. Relationship to submission plan v1.2
+
+v0.7 is an **engine rewrite, not greenfield**. The AI submission MVP (S0–S4
+in `TallyMCP_Implementation_Plan_ReadOnly_Submission.md` v1.2) shipped 15
+MCP tools, 18 audit-lite checks, 3 dashboards, and the in-process integration
+test harness — all on the original collection-envelope engine. That work is
+durable; v0.7 only changes **how** Tally is queried.
+
+| Layer | Submission v0.5/v0.6 | v0.7 | What changes |
+|---|---|---|---|
+| MCP tool surface | 19 tools | 39 tools (20 new) | Surface grows; v0.6 tools keep names |
+| `tally_read_report` dispatcher | Collection+TDL | inline-TDL reports | Backend swap, contract preserved |
+| `analytics-engine` | 18 checks, runs on `DataQualityContext.vouchers` | Same code | Only the *source* of `vouchers` changes (file-import on Silver, file-import or Gold-only Day Book stream on Gold) |
+| `excel-engine` | T1 (flat register) | T1 + T2 + T3 + T5 | New template families added; T1 reused |
+| `tally-connector` | UTF-8 + 15 s/10 s timeouts (v0.6 default) | UTF-16 LE + same timeouts | Transport switch |
+| `output-store` | Unchanged | Unchanged | – |
+
+**Sequencing.** Lock the submission demo (v1.2 plan, current state) first.
+v0.7 implementation **starts with the TB proof point** (§10 step v0.7.0) on
+the live `OM JAI JAGDISH` Silver book — the single empirical question that
+de-risks the entire 73-report catalog. Only after TB returns in <5 s on
+Silver do we commit to the rest of v0.7.
 
 ---
 
@@ -70,7 +96,7 @@ the same edition class we're targeting.
 ### Goals
 
 1. **Sales figure (and every other balance-class question) returns in <5 s on
-   Silver** against a busy book.
+   Silver** against the `OM JAI JAGDISH` book (3,689 ledgers).
 2. **24 audit-grade reports** shipped in v0.7, each with an Excel template.
 3. **MCP tool surface stays stable from the LLM's perspective** — every v0.6
    tool keeps its name and input/output contract; only the engine under it
@@ -78,8 +104,21 @@ the same edition class we're targeting.
 4. **New report family is data, not code** — adding a TDL report is editing
    `pull/<name>.xml` + `report-catalog.json`, not writing TypeScript.
 5. **Read-only constraint (C-R1) holds** — no IMPORT/alter envelopes, ever.
+   Enforced by a CI grep test (§12).
 6. **Cross-edition behavior is honest** — capability probe reports what each
    instance can actually serve; tools gate accordingly.
+
+### Success metrics (measurable, on the live Silver book)
+
+| Metric | Target | Measured how |
+|---|---|---|
+| Trial Balance latency | < 5 s | Wall-clock on `tally_trial_balance` against `OM JAI JAGDISH` FY 22-23 |
+| Group closing balance latency (Sales Accounts) | < 5 s | Wall-clock on `tally_get_group_closing_balances` |
+| Receivables ageing latency | < 10 s | Wall-clock on `tally_receivables_ageing` |
+| Monthly sales (12 calls) | < 15 s end-to-end | `tally_monthly_sales` |
+| Reports returning OR failing with CA-friendly message | 24 / 24 | No Tally restart required across the suite |
+| Tally instance stability | No lockup | Successive runs of the full suite without restart |
+| v0.6 tool backward compat | 19 / 19 tools work | `tally_read_report` for all 10 reportIds still resolves |
 
 ### Non-goals
 
@@ -150,7 +189,7 @@ post → parse" pipeline.
 
 ---
 
-## 4. TDL templates (8 files cover all 24 v0.7 reports)
+## 4. TDL templates (10 files cover all 24 v0.7 reports)
 
 Each template is a `pull/<name>.xml` file containing one `<ENVELOPE>` with an
 inline `<TDL><TDLMESSAGE><REPORT>...<COLLECTION>...</COLLECTION></TDLMESSAGE></TDL>`
@@ -198,16 +237,25 @@ Nunjucks with custom tags (matching the CA project):
 …so static-XML parsers don't choke on `{% if %}` syntax. The `tdl-engine`
 configures the nunjucks env with these tags.
 
-### Parameter substitution
+### Parameter substitution — order of operations (locked)
 
-Two layers of substitution:
+Two substitution layers, applied **in this exact order**:
 
-1. **Angular-bracket simple substitution** for dates and numbers:
-   `<SVFROMDATE>{fromDate}</SVFROMDATE>` — handled by
-   `substituteTDLParameters()` (per CA project).
-2. **Nunjucks tags** for conditionals: `<nunjuck>if targetCompany</nunjuck>`.
+1. **Nunjucks render** first — handles conditionals (`<nunjuck>if</nunjuck>`)
+   and HTML-escaped variable interpolation (`{{targetCompany | escape}}`).
+2. **Angular-bracket simple substitution** second — handles typed parameter
+   replacement (`{fromDate}` → `1-Apr-2022`, `{amount}` → `10000`) via
+   `substituteTDLParameters()`. Strings are HTML-escaped at this stage;
+   dates are formatted `d-MMM-yyyy` (Tally's display format); booleans are
+   `Yes`/`No`; numbers are stringified.
 
-Both run in `tdl-engine.renderer.ts` before the request goes out.
+**Why this order:** nunjucks sees the raw template with literal `{fromDate}`
+strings; it doesn't interpret them. Then angular-bracket substitution
+operates on the nunjucks output without nunjucks-tag interference.
+
+**Edge-case test required (§12):** a company name containing `{{`, `}}`, or
+`<nunjuck>` must pass through unmangled. Without this test, a malicious or
+exotic company name could break either layer.
 
 ### Response parsing
 
@@ -308,6 +356,32 @@ batches).
 **Total: 24 reports → 20 new MCP tools** (the other 4 reuse existing tool names —
 A1 and A4 already exist; B5 and B6 exist with gates removed).
 
+### `tally_read_report` → TDL template mapping (backward-compat)
+
+The existing dispatcher tool keeps its 10 reportId surface; each route swaps
+to the new TDL backend:
+
+| `tally_read_report` reportId | Template (v0.7) | Params |
+|---|---|---|
+| `ListOfCompanies` | `list-master.xml` (collection=`company`) | — |
+| `CompanyInfo` | `list-master.xml` (collection=`company`, filter by name) | `company` |
+| `LedgerMasters` | `ledgers-rich.xml` | `company` |
+| `GroupMasters` | `chart-of-accounts.xml` | `company` |
+| `VoucherTypes` | `list-master.xml` (collection=`vouchertype`) | `company` |
+| `DayBook` | **unchanged** — still rejected on Silver, file-import on Gold | `company`, `from`, `to` |
+| `TrialBalance` | `trial-balance.xml` | `company`, `from`, `to` |
+| `ProfitAndLoss` | `profit-loss.xml` | `company`, `from`, `to` |
+| `BalanceSheet` | `balance-sheet.xml` | `company`, `to` |
+| `SalesRegister` | **unchanged** — file-import path (voucher-list) | – |
+
+### `tally_list_ledgers` deprecation (decision)
+
+`tally_list_ledgers` (v0.6 — basic 6 fields) and `tally_list_ledgers_rich`
+(v0.7 — extended 9 fields including GSTIN/PAN/State/Address) **coexist**.
+Old tool stays alive; description gets an annotation pointing to the rich
+variant. We do not break LLM prompts that already call the old name.
+Removal scheduled for v1.0 with a 6-month deprecation notice in CHANGELOG.
+
 ---
 
 ## 6. Capability probe — relaxed Silver tier
@@ -330,8 +404,23 @@ returning STATUS=0 fast). Tier-derived guards:
 | Master tools (A-series) | ✅ | ✅ | ✅ (with diagnostic msg) |
 | Balance reports (B, D, E, G, H, I) | ✅ | ✅ | gated |
 | Voucher-list tools (`tally_export_vouchers`) | ✅ | gated → use file-import | gated |
-| Audit-lite, dashboards needing vouchers | ✅ | gated until v0.8 voucher-TDL probe | gated |
+| Audit-lite voucher source | **file-import preferred; Day Book stream allowed until v0.8 filter probe** | **file-import only** | gated |
+| Dashboards needing vouchers (SalesTrend, ExceptionsOverview) | ✅ | gated until file-import vouchers loaded for the period | gated |
 | File-import (v0.6 `tally_import_vouchers_from_file`) | ✅ | ✅ | ✅ |
+
+**Audit-lite source policy — explicit.** Today `runAuditLiteForCompany`
+calls `getDayBookStream` on every edition; that is the same collection
+family that hangs Silver. v0.7 changes the policy:
+
+- **Silver:** `tally_run_audit_lite` requires that vouchers be loaded via
+  `tally_import_vouchers_from_file` first; if no vouchers are cached, the
+  tool returns a CA-friendly message telling the user how to export.
+- **Gold:** `tally_run_audit_lite` continues to allow Day Book stream as a
+  convenience, but **also** accepts file-imported vouchers. After the v0.8
+  voucher-TDL probe, the Day Book stream call is replaced with the FILTER
+  approach across both editions.
+- Implementers must not "un-gate" Day Book stream on Silver after the TB
+  TDL fix lands — different code path, different risk profile.
 
 The gate message on Silver no longer says "voucher queries don't work" — it
 says "voucher *list* tools need file-import on this edition; balance reports
@@ -347,7 +436,7 @@ generated `.xlsx` file path. The Excel layout per report is one of:
 | Family | Layout | Used by |
 |---|---|---|
 | **T1** Flat register | Cover sheet + data sheet + extraction log; freeze panes; auto-filter; INR currency format on amount columns; conditional formatting for negatives | A1–A9, B1, B2, B5–B7, D1, D8, G3, H1, I3 |
-| **T2** Statement | Schedule III–style indented BS/PL with sub-totals, totals, and a Notes column; sign-off footer | B3, B4 |
+| **T2** Statement | Schedule III–style indented BS/PL with sub-totals, totals, and a Notes column; sign-off footer. **Cover sheet disclaimer: "Draft; layout is Schedule III–inspired but requires professional review for compliance use."** | B3, B4 |
 | **T3** Ageing matrix | Party rows × bucket columns (0-30/31-60/61-90/91-180/180+); row totals + column totals + grand total; conditional formatting on overdue buckets | G1, G2 |
 | **T4** Exception list | Code + severity + title + description + evidence + suggested fix + auditor's note column + sign-off; disclaimer footer | (used in v0.8 forensic reports) |
 | **T5** Trend dashboard | Period columns (12 months) + chart sheet (line/bar); KPI cards on summary sheet | E1, I1, I6 |
@@ -384,6 +473,33 @@ that prefers UTF-8 can be flipped without code changes.
 Existing `tally-xml` fixture-based parser tests stay valid — they assert on
 parsed tree shape, not byte encoding.
 
+### Transport acceptance matrix (required before locking UTF-16)
+
+Before merging the transport switch, run this matrix on both editions:
+
+| Request | UTF-8 | UTF-16 | Notes |
+|---|---|---|---|
+| List of Companies (master) | gold ✓ / silver ✓ | gold ✓ / silver ✓ | baseline |
+| Trial Balance (TDL inline) | tbd | tbd | the proof point |
+| Bills outstanding (collection) | tbd | tbd | bill-wise pull |
+| Stock summary (collection) | tbd | tbd | inventory pull |
+
+Each cell must be ≤5 s and return a parseable response with no `<EXCEPTION>`
+body. If any cell fails on UTF-16 and passes on UTF-8, the charset knob is
+the durable workaround; we do not block the rest of v0.7 on a per-cell fix.
+
+### Legacy doc cleanup
+
+`docs/tally-xml-notes.md` currently says "Tally defaults to ISO-8859-1;
+always request UTF-8 via `<SVEXPORTFORMAT>` and `<ENCODINGTYPE>`." Update
+this doc when the transport switch ships:
+
+- TDL envelopes (the v0.7 path): UTF-16 LE in transport; do not emit
+  `<ENCODINGTYPE>` since the wire encoding handles it.
+- Legacy export envelopes (still present for the `tally_export_*` family
+  until fully migrated): UTF-8 with `<ENCODINGTYPE>UTF8</ENCODINGTYPE>` as
+  today. Acceptable for transitional period.
+
 ---
 
 ## 9. Tool surface delta (v0.6 → v0.7)
@@ -417,39 +533,89 @@ parsed tree shape, not byte encoding.
 `tally_bills_outstanding`, `tally_stock_summary`,
 `tally_monthly_sales`, `tally_top_customers`, `tally_management_snapshot`.
 
-(20 new tool names. The existing `tally_read_report` dispatcher keeps its 10
-reportIds — its TrialBalance/ProfitAndLoss/BalanceSheet/LedgerMasters/
-GroupMasters/VoucherTypes routes are re-backed by the new TDL templates, so
-LLMs that use the dispatcher continue to work without changes. Final tool
-count after v0.7: **39 tools, all read-only.**)
+### Tool count arithmetic
+
+| Category | Count |
+|---|---|
+| v0.6 baseline (read-only) | 19 |
+| New in v0.7 (above) | 20 |
+| Deprecated / removed in v0.7 | 0 |
+| `tally_list_ledgers` → `_rich` (coexist, both counted) | +0 |
+| **Final tool count after v0.7** | **39** |
+
+The existing `tally_read_report` dispatcher keeps its 10 reportIds — its
+TrialBalance / ProfitAndLoss / BalanceSheet / LedgerMasters / GroupMasters /
+VoucherTypes routes are re-backed by the new TDL templates per §5, so LLMs
+that use the dispatcher continue to work without changes. All 39 tools are
+read-only.
 
 ---
 
-## 10. Migration plan — 8 steps, reversible at each step
+## 10. Migration plan — phased v0.7.0 → v0.7.4 (~3–4 weeks)
 
-1. **Create `packages/tdl-engine`** with the 10 templates, `report-catalog.json`,
-   nunjucks renderer, row parser, `runTdlReport()` orchestrator. All pure
-   functions; unit-tested against fixtures from the CA project structure
-   (real Tally responses).
-2. **Transport switch** in `tally-connector` — UTF-16 default, charset config.
-   Existing 62 `tally-xml` + 19 `tally-connector` tests stay green.
-3. **Rewire `tally_trial_balance` first** (B1) — single connector, easiest
-   schema. Acceptance: returns in <5 s against `OM JAI JAGDISH` on live
-   Silver. This is the single proof point that the whole approach works.
-4. **Rewire balance-class connectors** — B2, B3, B4, B5, B6, B7 — one commit
-   each. Run the existing fixture tests + a live smoke test per connector.
-5. **Add the new master tools** (A2, A3, A5, A6, A9) — pure additions.
-6. **Add the new balance reports** (D1, D8, E1, G1, G2, G3, H1, I1, I3, I6) —
-   each a thin adapter over a TDL template.
-7. **Add the Excel template families** (T2, T3, T5) — incremental additions
-   to `excel-engine`.
-8. **Update capability probe** for the new tier model; remove gates on B5/B6;
-   keep gates on voucher-list tools. Update `tally://docs/edition-notes`
-   resource text to match.
+Each phase is a separately shippable patch release; each step inside a phase
+is reversible by reverting one commit. **The kill-switch is v0.7.0 step 3.**
 
-Re-test against live Silver end-to-end. Update CHANGELOG.
+### v0.7.0 — Proof point (~3 working days)
 
-**Estimated effort: 2 weeks focused (~10 working days).**
+1. **Create `packages/tdl-engine`** skeleton + nunjucks renderer + row parser
+   + `runTdlReport()` orchestrator. Pure functions, fixture-tested. No
+   templates yet.
+2. **Transport switch** in `tally-connector` — UTF-16 LE default, `charset`
+   config knob. Existing 62 `tally-xml` + 19 `tally-connector` tests stay
+   green.
+3. **Ship `trial-balance.xml` only** and rewire `tally_trial_balance`
+   through it.
+   - **Acceptance:** Returns ≥1 row in <5 s against `OM JAI JAGDISH` (FY
+     22-23) on live Silver. Tally instance stays responsive after.
+   - **If this fails:** ABORT v0.7. Re-design before any further work.
+     Do not ship v0.7.1+ until this passes.
+4. Run the transport acceptance matrix (§8) on Silver and Gold.
+
+### v0.7.1 — Balance class (~3 working days)
+
+5. **Rewire balance-class connectors** — B2, B3, B4, B5, B6, B7 — one
+   commit per connector. Live smoke test per commit. Each must keep Tally
+   responsive.
+6. **Re-back `tally_read_report` dispatcher** for TrialBalance / ProfitAndLoss
+   / BalanceSheet / LedgerMasters / GroupMasters / VoucherTypes routes per
+   §5 mapping table.
+
+### v0.7.2 — Masters + ageing (~2 working days)
+
+7. **Add new master tools** — A2 (rename), A3, A5, A6, A9 — pure additions,
+   no risk to existing surface.
+8. **Add ageing reports** — G1, G2, G3 using `bills-outstanding.xml`. Excel
+   T3 (ageing matrix) family added to `excel-engine`.
+
+### v0.7.3 — MIS + tax/GST starters + Excel families (~3 working days)
+
+9. **Add MIS reports** — I1 (monthly-sales, 12 sequential calls), I3
+   (top-customers), I6 (management-snapshot).
+10. **Add tax/GST starters** — D1, D8, E1.
+11. **Add Excel T2 (statement, with draft disclaimer)** and **T5 (trend
+    dashboard)** template families.
+
+### v0.7.4 — Capability probe + docs + live checklist (~2 working days)
+
+12. **Update capability probe** for the new tier model; remove gates on
+    B5/B6; keep gates on voucher-list tools per §6 audit-lite policy.
+13. **Update `tally://docs/edition-notes`** resource text.
+14. **Update `docs/tally-xml-notes.md`** for the UTF-16 transport switch.
+15. **Update `docs/live-tally-checklist.md`** with the 7 success-metric
+    runs (§2). Run end-to-end against live Silver. Commit results.
+16. **CHANGELOG entry** with reference-project attribution.
+
+### Effort summary
+
+| Phase | Days | Reports landed | Cumulative |
+|---|---|---|---|
+| v0.7.0 | 3 | 1 (TB) | 1 |
+| v0.7.1 | 3 | +7 (B2–B7 + dispatcher) | 8 |
+| v0.7.2 | 2 | +8 (A + G) | 16 |
+| v0.7.3 | 3 | +6 (D, E, I + Excel) | 22 |
+| v0.7.4 | 2 | +2 (probe + I3) | 24 |
+| **Total** | **13 days** (~3–4 calendar weeks at 4 productive days/week) | **24** | — |
 
 ---
 
@@ -457,12 +623,15 @@ Re-test against live Silver end-to-end. Update CHANGELOG.
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| TDL templates work on Tally 4.x but fail on Silver in ways the CA project hides | Medium | Step 3 in §10 is the single proof point; if it fails, abort and re-design before committing the rest |
-| UTF-16 transport breaks some Tally endpoint | Low | `charset` config knob, fall back to UTF-8 per-instance |
-| Schedule III mapping JSON drifts from real Tally group names | High over time | Mapping is config (not code); ship with sane defaults, document edit path, surface "unmapped groups" in Schedule III output |
-| Filtered Voucher TDL (v0.8) turns out to be slow on Silver | Medium-high | Probe before committing v0.8; fall back to file-import + client-side filter for F-series anomaly checks |
-| Excel template families balloon in complexity | Medium | T1 covers the majority; T2/T3/T5 are well-defined; T4/T6/T7 deferred to v0.8 when actually needed |
-| Two TallyPrime instances on the same network return different STATIC schemas | Low | Capability probe is per-instance; report-catalog defines the projection so server-side differences only matter if a field name changes (rare) |
+| TDL templates work on Tally 4.x but fail on Silver in ways the CA project hides | Medium | v0.7.0 step 3 is the single proof point; if it fails, abort and re-design before committing the rest |
+| UTF-16 transport breaks some Tally endpoint | Low | `charset` config knob; transport acceptance matrix (§8) before merge; per-instance fallback |
+| **F01..Fn schemas drift across Tally versions** | **High over time** | (a) `report-catalog.json` carries a `catalogVersion` and per-report `minTallyVersion`; (b) **golden fixtures** captured from `OM JAI JAGDISH` plus a Gold reference, stored under `tests/fixtures/tdl/<report>/`; (c) **parser tests fail loudly** when column count mismatches the schema (no silent zero-fill) |
+| **`trial-balance.xml` regression blast radius** — one template drives B1/B2/B5/B6/B7/D1/D8/I3/I1 | **High** | Per-consumer fixture tests: each downstream report (B2, B5, B6, D1, etc.) has its own integration test asserting the TB row shape it relies on. CI rejects PRs that change `trial-balance.xml` without updating fixtures. |
+| Schedule III mapping JSON drifts from real Tally group names | High over time | Mapping is config; ship sane defaults; surface "unmapped groups" in Schedule III output. (Ships in v0.8, not v0.7.) |
+| Filtered Voucher TDL (v0.8) is slow on Silver | Medium-high | Empirical probe before committing v0.8; fall back to file-import + client-side filter |
+| Excel template families balloon in complexity | Medium | T1 covers the majority; T2/T3/T5 are well-defined; T4/T6/T7 deferred to v0.8 |
+| Two Tally instances return different `STATIC` schemas | Low | Capability probe per-instance; report-catalog defines projection; field-name drift surfaces as fixture mismatch |
+| **Nunjucks + angular substitution mis-ordering** | Low-medium | §4 locks the order (nunjucks first, angular second); one explicit edge-case test for a company name containing `{{`, `}}`, and `<nunjuck>` (§12) |
 
 ---
 
@@ -470,11 +639,15 @@ Re-test against live Silver end-to-end. Update CHANGELOG.
 
 | Layer | Tests | When |
 |---|---|---|
-| Unit (nunjucks renderer) | Snapshot per template with fixture params; fuzz with `&`/`<`/`"` in company name | Per template added |
-| Unit (row parser) | Each `datatype` (string/number/boolean/date/quantity/array) with fixture XML | Per parser change |
-| Integration (tdl-engine + report-engine adapter) | Mock the `TallyClient.post`, return canned response XML, assert typed rows | Per connector rewired |
-| Excel template smoke | Render each template, re-load the .xlsx, assert sheet names + row counts | Per template family |
-| Live Silver | Step 3 of migration; then once per ship | Manual checklist in `docs/live-tally-checklist.md` |
+| Unit (nunjucks renderer) | Snapshot per template with fixture params; fuzz with `&`/`<`/`"` in company name; **edge-case test for company name containing `{{`, `}}`, `<nunjuck>`** | Per template added |
+| Unit (row parser) | Each `datatype` (string/number/boolean/date/quantity/array) with fixture XML; **fail-loud when column count mismatches schema** | Per parser change |
+| Integration (tdl-engine + report-engine adapter) | Mock `TallyClient.post`, canned XML response, assert typed rows | Per connector rewired |
+| **Per-consumer fixtures for shared templates** | `trial-balance.xml` has separate fixture tests for B2 (group filter), B5 (single ledger), B6 (group rollup), D1 (Sales group), D8 (statutory dues groups), I3 (top customers) — CI rejects PRs that change the template without updating all consumer fixtures | Per shared-template change |
+| **Golden fixtures from live Tally** | Captured from `OM JAI JAGDISH` (Silver) and a Gold reference book; stored under `tests/fixtures/tdl/<report>/silver.xml` and `gold.xml` | Captured during v0.7.0; refreshed when minTallyVersion bumps |
+| Excel template smoke | Render each template, re-load .xlsx, assert sheet names + row counts + INR format on amount columns | Per template family |
+| **C-R1 enforcement** | CI grep test: `tdl-engine/templates/**/*.xml` must not contain `TALLYREQUEST>Import`, `ACTION="Alter"`, `ACTION="Create"`, or `TAGNAME="MASTER ID"`. Fail the build if any match. | Every CI run |
+| **Charset matrix** | UTF-8 vs UTF-16 on List of Companies, TB, bills-outstanding, stock-summary; both Silver and Gold | Once during v0.7.0; re-run if `charset` config default changes |
+| Live Silver | v0.7.0 step 3 proof point; then once per phase ship | Manual checklist in `docs/live-tally-checklist.md` |
 | MCP integration | In-process Client+Server pair; capability probe skipped (test flag) | Per tool added |
 
 **Coverage target:** ≥80% per `docs/definition-of-done.md` on every package
@@ -646,6 +819,17 @@ T6 comparison / T7 working paper.
 | J5 | e-invoice-applicability | T1 | v0.9 |
 
 **Totals:** 73 reports across 10 areas. v0.7 = 24; v0.8 = 30; v0.9 = 12; v1.0 = 7.
+
+---
+
+---
+
+## 16. Revision history
+
+| Version | Date | Change |
+|---|---|---|
+| 1.1 | 2026-05-24 | Review feedback applied: §0 submission-plan relationship, §2 success metrics, §4 nunjucks/angular substitution order + edge-case test, §5 tally_read_report mapping table + tally_list_ledgers deprecation, §6 explicit audit-lite voucher source policy per edition, §7 T2 draft disclaimer, §8 transport acceptance matrix + tally-xml-notes.md update plan, §9 tool count baseline table, §10 phased v0.7.0–v0.7.4 (~13 days), §11 F01..Fn drift + TB regression blast radius + nunjucks ordering risks, §12 per-consumer fixtures + golden fixtures + C-R1 grep + charset matrix |
+| 1.0 | 2026-05-24 | Initial design after brainstorming approval |
 
 ---
 
