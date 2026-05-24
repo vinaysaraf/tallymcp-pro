@@ -15,7 +15,7 @@ export async function getSalesRegister(
   client: TallyClient,
   options: { company: string; fromDate: TallyDate; toDate: TallyDate },
 ): Promise<Voucher[]> {
-  const xml = await client.post(salesRegisterEnvelope(options));
+  const xml = await client.post(salesRegisterEnvelope(options), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("SalesRegister", lineErrors);
   const nodes = findAllObjects(raw, "VOUCHER");

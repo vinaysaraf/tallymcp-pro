@@ -24,6 +24,7 @@ export async function* getDayBookStream(
         fromDate: window.fromDate,
         toDate: window.toDate,
       }),
+      { charset: "utf-8" },
     );
     const { raw, lineErrors } = parseTallyResponse(xml);
     if (lineErrors.length) throw new TallyReportError("DayBook", lineErrors);

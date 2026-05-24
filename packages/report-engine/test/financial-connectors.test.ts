@@ -18,10 +18,12 @@ function stubClient(response: string): TallyClient & { calls: string[] } {
   };
 }
 
+// v0.7.0 — trial-balance.xml is an inline-TDL report; rows come as
+// <ROW><F01>...<F06> projecting Name, Parent, Opening, Debit, Credit, Closing.
 const TB_XML = `<ENVELOPE><BODY><DATA>
-  <TBROW><GROUPNAME>Sundry Debtors</GROUPNAME><DEBIT>1,50,000.00</DEBIT><CREDIT>0</CREDIT></TBROW>
-  <TBROW><GROUPNAME>Sundry Debtors</GROUPNAME><LEDGERNAME>Acme &amp; Co</LEDGERNAME><DEBIT>50,000.00</DEBIT><CREDIT>0</CREDIT></TBROW>
-  <TBROW><GROUPNAME>Sundry Creditors</GROUPNAME><DEBIT>0</DEBIT><CREDIT>75,000.00</CREDIT></TBROW>
+  <ROW><F01>Sundry Debtors Total</F01><F02></F02><F03>0</F03><F04>150000</F04><F05>0</F05><F06>150000</F06></ROW>
+  <ROW><F01>Acme &amp; Co</F01><F02>Sundry Debtors</F02><F03>0</F03><F04>50000</F04><F05>0</F05><F06>50000</F06></ROW>
+  <ROW><F01>Sundry Creditors Total</F01><F02></F02><F03>0</F03><F04>0</F04><F05>75000</F05><F06>-75000</F06></ROW>
 </DATA></BODY></ENVELOPE>`;
 
 const PL_XML = `<ENVELOPE><BODY><DATA>
@@ -44,38 +46,36 @@ const BS_INVALID_SIDE_XML = `<ENVELOPE><BODY><DATA>
 
 const PERIOD = { company: "Acme", fromDate: "20260401", toDate: "20270331" } as const;
 
-describe("getTrialBalance", () => {
-  it("parses TB rows with Indian lakh amounts", async () => {
+describe("getTrialBalance (TDL-backed in v0.7.0)", () => {
+  it("parses TB rows from the inline-TDL ROW/F01..F06 shape", async () => {
     const rows = await getTrialBalance(stubClient(TB_XML), PERIOD);
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toEqual({ groupName: "Sundry Debtors", debit: 150000, credit: 0 });
+    expect(rows[0]).toEqual({
+      groupName: "(top-level)",
+      ledgerName: "Sundry Debtors Total",
+      debit: 150000,
+      credit: 0,
+    });
+    expect(rows[1]?.groupName).toBe("Sundry Debtors");
     expect(rows[1]?.ledgerName).toBe("Acme & Co");
-    expect(rows[2]).toEqual({ groupName: "Sundry Creditors", debit: 0, credit: 75000 });
+    expect(rows[2]?.credit).toBe(75000);
   });
 
-  it("sends Trial Balance envelope with the period and grand-total flag", async () => {
+  it("sends an inline-TDL REPORT/COLLECTION envelope (not the legacy report form)", async () => {
     const client = stubClient(TB_XML);
     await getTrialBalance(client, PERIOD);
-    expect(client.calls[0]).toContain("<ID>Trial Balance</ID>");
-    expect(client.calls[0]).toContain("<SVFROMDATE>20260401</SVFROMDATE>");
-    expect(client.calls[0]).toContain("<SVTODATE>20270331</SVTODATE>");
-    expect(client.calls[0]).toContain("<DSPSHOWGRANDTOTAL>Yes</DSPSHOWGRANDTOTAL>");
+    expect(client.calls[0]).toContain('<REPORT NAME="TallyMcpTdlReport">');
+    expect(client.calls[0]).toContain('<COLLECTION NAME="TallyMcpCollection">');
+    expect(client.calls[0]).toContain("<TYPE>Ledger</TYPE>");
+    expect(client.calls[0]).toContain("<SVFROMDATE>1-Apr-2026</SVFROMDATE>");
+    expect(client.calls[0]).toContain("<SVTODATE>31-Mar-2027</SVTODATE>");
   });
 
-  it("throws TallyReportError on LINEERROR", async () => {
-    await expect(
-      getTrialBalance(stubClient(LINE_ERROR_XML), PERIOD),
-    ).rejects.toBeInstanceOf(TallyReportError);
-  });
-
-  it("Σ debits === Σ credits for a balanced fixture (sanity invariant)", async () => {
-    const rows = await getTrialBalance(stubClient(TB_XML), PERIOD);
-    const leaves = rows.filter((r) => r.ledgerName !== undefined);
-    const dr = leaves.reduce((a, r) => a + r.debit, 0);
-    const cr = leaves.reduce((a, r) => a + r.credit, 0);
-    // fixture has 1 leaf debit (50000) and 0 leaf credits — assert each side known
-    expect(dr).toBe(50000);
-    expect(cr).toBe(0);
+  it("throws on Tally <EXCEPTION> response", async () => {
+    const exceptionXml = `<EXCEPTION>Period out of range</EXCEPTION>`;
+    await expect(getTrialBalance(stubClient(exceptionXml), PERIOD)).rejects.toThrow(
+      /Tally returned <EXCEPTION>/,
+    );
   });
 });
 

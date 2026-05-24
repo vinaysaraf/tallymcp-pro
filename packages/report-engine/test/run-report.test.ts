@@ -63,8 +63,9 @@ describe("runReport — dispatcher", () => {
       { company: { startingFrom: "20240401" }, asOf: new Date(2026, 4, 23) },
     );
     expect(res.meta.period).toEqual({ from: "20260401", to: "20270331" });
-    expect(client.calls[0]).toContain("<SVFROMDATE>20260401</SVFROMDATE>");
-    expect(client.calls[0]).toContain("<SVTODATE>20270331</SVTODATE>");
+    // TB went through TDL in v0.7.0 — dates are emitted in Tally display format (d-MMM-yyyy).
+    expect(client.calls[0]).toContain("<SVFROMDATE>1-Apr-2026</SVFROMDATE>");
+    expect(client.calls[0]).toContain("<SVTODATE>31-Mar-2027</SVTODATE>");
   });
 
   it("uses explicit fromDate/toDate when supplied", async () => {

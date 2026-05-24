@@ -21,6 +21,7 @@
     "@tallymcp/shared-types": "workspace:*",
     "@tallymcp/tally-connector": "workspace:*",
     "@tallymcp/tally-xml": "workspace:*",
+    "@tallymcp/tdl-engine": "workspace:*",
     "zod": "^3.25.56"
   },
   "devDependencies": {

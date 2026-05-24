@@ -15,7 +15,7 @@ import { TallyReportError } from "../errors.js";
  * so the loaded company surfaces consistently across Tally versions.
  */
 export async function listCompanies(client: TallyClient): Promise<Company[]> {
-  const xml = await client.post(listCompaniesEnvelope());
+  const xml = await client.post(listCompaniesEnvelope(), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("ListOfCompanies", lineErrors);
 

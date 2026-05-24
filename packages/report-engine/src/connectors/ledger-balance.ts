@@ -46,6 +46,7 @@ export async function getLedgerClosingBalance(
       fromDate: options.fromDate,
       toDate: options.toDate,
     }),
+    { charset: "utf-8" },
   );
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("LedgerClosingBalance", lineErrors);
@@ -104,6 +105,7 @@ export async function getGroupClosingBalances(
       fromDate: options.fromDate,
       toDate: options.toDate,
     }),
+    { charset: "utf-8" },
   );
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("GroupClosingBalance", lineErrors);

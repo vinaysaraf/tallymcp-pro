@@ -19,7 +19,7 @@ export async function getProfitAndLoss(
   client: TallyClient,
   options: { company: string; fromDate: TallyDate; toDate: TallyDate },
 ): Promise<PnlRow[]> {
-  const xml = await client.post(profitAndLossEnvelope(options));
+  const xml = await client.post(profitAndLossEnvelope(options), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("ProfitAndLoss", lineErrors);
   const rows = findAllObjects(raw, "PLROW");

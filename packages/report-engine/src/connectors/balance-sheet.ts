@@ -23,7 +23,7 @@ export async function getBalanceSheet(
   client: TallyClient,
   options: { company: string; fromDate: TallyDate; toDate: TallyDate },
 ): Promise<BalanceSheetRow[]> {
-  const xml = await client.post(balanceSheetEnvelope(options));
+  const xml = await client.post(balanceSheetEnvelope(options), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("BalanceSheet", lineErrors);
   const rows = findAllObjects(raw, "BSROW");

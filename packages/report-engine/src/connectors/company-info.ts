@@ -8,7 +8,7 @@ export async function getCompanyInfo(
   client: TallyClient,
   options: { company: string },
 ): Promise<Company> {
-  const xml = await client.post(companyInfoEnvelope({ company: options.company }));
+  const xml = await client.post(companyInfoEnvelope({ company: options.company }), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("CompanyInfo", lineErrors);
   const nodes = findAllObjects(raw, "COMPANY");
