@@ -109,7 +109,7 @@ describe("diagnoseTally", () => {
     agent
       .get("http://127.0.0.1:9000")
       .intercept({ path: "/", method: "POST" })
-      .reply(200, fixture);
+      .reply(200, Buffer.from(fixture, "utf16le"));
 
     const result = await diagnoseTally(mockClient(), { envelope: "<ENVELOPE/>" });
     expect(result.ok).toBe(true);
@@ -143,7 +143,7 @@ describe("diagnoseTally", () => {
     agent
       .get("http://127.0.0.1:9000")
       .intercept({ path: "/", method: "POST" })
-      .reply(200, "  ");
+      .reply(200, Buffer.from("  ", "utf16le"));
 
     const result = await diagnoseTally(mockClient(), { envelope: "<ENVELOPE/>" });
     expect(result).toMatchObject({ ok: false, code: "XML_INTERFACE_OFF" });
@@ -153,7 +153,10 @@ describe("diagnoseTally", () => {
     agent
       .get("http://127.0.0.1:9000")
       .intercept({ path: "/", method: "POST" })
-      .reply(200, "<ENVELOPE><LINEERROR>Invalid company</LINEERROR></ENVELOPE>");
+      .reply(
+        200,
+        Buffer.from("<ENVELOPE><LINEERROR>Invalid company</LINEERROR></ENVELOPE>", "utf16le"),
+      );
 
     const result = await diagnoseTally(mockClient(), { envelope: "<ENVELOPE/>" });
     expect(result).toMatchObject({
@@ -169,7 +172,10 @@ describe("diagnoseTally", () => {
       .intercept({ path: "/", method: "POST" })
       .reply(
         200,
-        `<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA></DATA></BODY></ENVELOPE>`,
+        Buffer.from(
+          `<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA></DATA></BODY></ENVELOPE>`,
+          "utf16le",
+        ),
       );
 
     const result = await diagnoseTally(mockClient(), { envelope: "<ENVELOPE/>" });
