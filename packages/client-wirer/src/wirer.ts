@@ -52,7 +52,7 @@ export class ClientWirer {
     const serversKey = CLIENT_REGISTRY[clientId].serversKey;
 
     // 1. Read existing (or treat as {} if absent).
-    const existing = await this.readJsonOrEmpty(configPath);
+    const existing = await this.readJsonOrEmpty(configPath, serversKey);
 
     // 2. Decide action vs current state.
     const existingServers = existing[serversKey] as Record<string, McpServerEntry> | undefined;
@@ -90,7 +90,7 @@ export class ClientWirer {
   async remove(clientId: ClientId): Promise<UnwireResult> {
     const configPath = resolveClientConfigPath(clientId, this.opts.env);
     const serversKey = CLIENT_REGISTRY[clientId].serversKey;
-    const existing = await this.readJsonOrEmpty(configPath);
+    const existing = await this.readJsonOrEmpty(configPath, serversKey);
     const currentServers = existing[serversKey] as Record<string, McpServerEntry> | undefined;
     if (!currentServers?.[KEY]) {
       return { clientId, configPath, action: "noop" };
@@ -101,7 +101,10 @@ export class ClientWirer {
     return { clientId, configPath, action: "removed" };
   }
 
-  private async readJsonOrEmpty(path: string): Promise<Record<string, unknown>> {
+  private async readJsonOrEmpty(
+    path: string,
+    serversKey?: string,
+  ): Promise<Record<string, unknown>> {
     let raw: string;
     try {
       raw = await readFile(path, "utf8");
@@ -109,8 +112,9 @@ export class ClientWirer {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
       throw err;
     }
+    let parsed: unknown;
     try {
-      return JSON.parse(raw) as Record<string, unknown>;
+      parsed = JSON.parse(raw);
     } catch (err) {
       throw new Error(
         `Cannot parse ${path} as JSON. Refusing to overwrite. Original error: ${
@@ -118,6 +122,33 @@ export class ClientWirer {
         }`,
       );
     }
+    // Guard: top-level must be a plain object.
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      const actualType = parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed;
+      throw new Error(
+        `Cannot use ${path}: expected JSON object at top level, got ${actualType}. Refusing to overwrite.`,
+      );
+    }
+    const record = parsed as Record<string, unknown>;
+    // Guard: if serversKey is present in the file, it must be a plain object.
+    if (serversKey !== undefined && record[serversKey] !== undefined) {
+      const val = record[serversKey];
+      if (
+        typeof val !== "object" ||
+        val === null ||
+        Array.isArray(val)
+      ) {
+        const actualType = val === null ? "null" : Array.isArray(val) ? "array" : typeof val;
+        throw new Error(
+          `Cannot use ${path}: ${serversKey} expected a plain object, got ${actualType}. Refusing to overwrite.`,
+        );
+      }
+    }
+    return record;
   }
 }
 
