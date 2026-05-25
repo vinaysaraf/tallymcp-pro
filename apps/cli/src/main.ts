@@ -5,7 +5,16 @@ import { runWireCommand } from "./commands/wire.js";
 import { runUnwireCommand } from "./commands/unwire.js";
 import { runTallyFixCommand } from "./commands/tally-fix.js";
 import { runTallyRestoreCommand } from "./commands/tally-restore.js";
-import type { ClientId } from "@tallymcp/client-wirer";
+import { CLIENT_REGISTRY, type ClientId } from "@tallymcp/client-wirer";
+
+const VALID_CLIENTS = Object.keys(CLIENT_REGISTRY) as ClientId[];
+
+export function assertValidClient(arg: string): ClientId {
+  if ((VALID_CLIENTS as string[]).includes(arg)) return arg as ClientId;
+  throw new Error(
+    `Unknown AI client "${arg}". Valid options: ${VALID_CLIENTS.join(", ")}`,
+  );
+}
 
 export function createProgram(): Command {
   const program = new Command();
@@ -20,7 +29,7 @@ export function createProgram(): Command {
     .requiredOption("--install-dir <path>", "TallyMCP install directory")
     .action(async (clientArg: string, opts: { installDir: string }) => {
       const result = await runWireCommand({
-        clientId: clientArg as ClientId,
+        clientId: assertValidClient(clientArg),
         installDir: opts.installDir,
       });
       console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
@@ -31,7 +40,7 @@ export function createProgram(): Command {
     .command("unwire <client>")
     .description("Remove TallyMCP from the given AI client's config")
     .action(async (clientArg: string) => {
-      const result = await runUnwireCommand({ clientId: clientArg as ClientId });
+      const result = await runUnwireCommand({ clientId: assertValidClient(clientArg) });
       console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
     });
 
