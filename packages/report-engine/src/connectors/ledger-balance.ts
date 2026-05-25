@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { buildCollectionEnvelope, findAllObjects, parseTallyAmount, parseTallyResponse } from "@tallymcp/tally-xml";
+import { getReport, loadTemplate, runTdlReport } from "@tallymcp/tdl-engine";
 import type { TallyDate } from "@tallymcp/shared-types";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
@@ -7,15 +7,21 @@ import { TallyReportError } from "../errors.js";
 /**
  * Closing balance for a single named ledger over a period.
  *
- * Uses a name-filtered `Ledger` collection with `ClosingBalance` projection.
- * Designed for the "sales figure" question: pass the Sales ledger (or any
- * single ledger) and get the closing Dr/Cr in one round-trip.
+ * Backed by the inline-TDL `trial-balance` template, which projects
+ * Name/Parent/Opening/Debit/Credit/Closing for every ledger in one fast
+ * server-side computation. We then filter client-side by exact (case-
+ * insensitive) name match.
  *
- * Works fast on TallyPrime 4.x. On TallyPrime Silver against busy datasets
- * (thousands of ledgers, lakhs of vouchers) Tally evaluates `$ClosingBalance`
- * before the filter, so the request can take minutes or time out. The MCP
- * server defaults its `headersTimeoutMs` to 60 s and `timeoutMs` to 120 s;
- * for Silver we recommend bumping these further or upgrading to TallyPrime 4.x.
+ * Why not server-side filter? On Silver, `<FILTER>` on `$Name` against the
+ * full Ledger collection forces Tally to evaluate the filter expression for
+ * every ledger before applying — slower than just receiving all rows. The
+ * TDL-projected payload is small (~6 columns × N ledgers) and parses in
+ * milliseconds.
+ *
+ * Earlier implementations used a raw `Collection`+`FETCH` envelope with a
+ * `$ClosingBalance` projection. On Silver/busy datasets that path wedges
+ * the gateway because Tally evaluates `$ClosingBalance` before any filter
+ * is applied. Switching to the TDL template removes the wedge.
  */
 export const LedgerClosingBalanceSchema = z.object({
   ledger: z.string().min(1),
@@ -33,49 +39,62 @@ export interface GetLedgerClosingBalanceOptions {
   toDate: TallyDate;
 }
 
+interface TdlTbRow {
+  ledger: string;
+  parent: string;
+  opening: number;
+  debit: number;
+  credit: number;
+  closing: number;
+}
+
+async function fetchTdlTrialBalance(
+  client: TallyClient,
+  options: { company: string; fromDate: TallyDate; toDate: TallyDate },
+): Promise<TdlTbRow[]> {
+  const report = getReport("trial-balance");
+  const template = loadTemplate(report);
+  return runTdlReport<TdlTbRow>(client, report, template, {
+    fromDate: tallyDateToJs(options.fromDate),
+    toDate: tallyDateToJs(options.toDate),
+    targetCompany: options.company,
+  });
+}
+
+function tallyDateToJs(tallyDate: TallyDate): Date {
+  const y = Number(tallyDate.slice(0, 4));
+  const m = Number(tallyDate.slice(4, 6)) - 1;
+  const d = Number(tallyDate.slice(6, 8));
+  return new Date(y, m, d);
+}
+
 export async function getLedgerClosingBalance(
   client: TallyClient,
   options: GetLedgerClosingBalanceOptions,
 ): Promise<LedgerClosingBalance> {
-  const xml = await client.post(
-    buildCollectionEnvelope({
-      name: "One Ledger Closing",
-      type: "Ledger",
-      fetch: ["Name", "Parent", "ClosingBalance"],
-      company: options.company,
-      fromDate: options.fromDate,
-      toDate: options.toDate,
-    }),
-  );
-  const { raw, lineErrors } = parseTallyResponse(xml);
-  if (lineErrors.length) throw new TallyReportError("LedgerClosingBalance", lineErrors);
-
-  const nodes = findAllObjects(raw, "LEDGER");
-  // Client-side name match (cross-edition; FILTER on $Name is brittle on Silver).
+  const rows = await fetchTdlTrialBalance(client, options);
   const norm = (s: string): string => s.trim().toLowerCase();
-  const match = nodes.find(
-    (n) => norm(String(n["@_NAME"] ?? n.NAME ?? "")) === norm(options.ledger),
-  );
+  const match = rows.find((r) => norm(r.ledger) === norm(options.ledger));
   if (!match) {
     throw new TallyReportError("LedgerClosingBalance", [
-      `Ledger "${options.ledger}" not found in the response (${nodes.length} ledgers scanned).`,
+      `Ledger "${options.ledger}" not found in the trial balance (${rows.length} ledgers scanned).`,
     ]);
   }
-
+  // Parent="" at root → schema requires non-empty. Use a sentinel.
+  const parent = match.parent.trim() === "" ? "(top-level)" : match.parent;
   return LedgerClosingBalanceSchema.parse({
-    ledger: String(match["@_NAME"] ?? match.NAME ?? options.ledger),
-    parent: String(match.PARENT ?? ""),
-    closing: parseTallyAmount(String(match.CLOSINGBALANCE ?? "0")),
+    ledger: match.ledger,
+    parent,
+    closing: match.closing,
   });
 }
 
 /**
  * Sums closing balances across every ledger whose `Parent` (group) matches
- * `groupName`. Useful for the "sales figure" question: group="Sales Accounts".
+ * `groupName`. Useful for the "sales figure" question: groupName="Sales Accounts".
  *
- * Caveat (Silver): if Tally fails to honor a $Parent filter and returns the
- * full ledger set, the closing-balance projection over thousands of ledgers
- * times out. On TallyPrime 4.x this is well within seconds for typical books.
+ * Same TDL trial-balance backing as `getLedgerClosingBalance` — one fast call,
+ * client-side group filter.
  */
 export interface GetGroupClosingBalanceOptions {
   company: string;
@@ -95,29 +114,16 @@ export async function getGroupClosingBalances(
   client: TallyClient,
   options: GetGroupClosingBalanceOptions,
 ): Promise<GroupClosingBalance> {
-  const xml = await client.post(
-    buildCollectionEnvelope({
-      name: "Group Ledgers Closing",
-      type: "Ledger",
-      fetch: ["Name", "Parent", "ClosingBalance"],
-      company: options.company,
-      fromDate: options.fromDate,
-      toDate: options.toDate,
-    }),
-  );
-  const { raw, lineErrors } = parseTallyResponse(xml);
-  if (lineErrors.length) throw new TallyReportError("GroupClosingBalance", lineErrors);
-
-  const nodes = findAllObjects(raw, "LEDGER");
+  const rows = await fetchTdlTrialBalance(client, options);
   const norm = (s: string): string => s.trim().toLowerCase();
   const target = norm(options.groupName);
-  const matched = nodes.filter((n) => norm(String(n.PARENT ?? "")) === target);
+  const matched = rows.filter((r) => norm(r.parent) === target);
 
-  const ledgers = matched.map((n) =>
+  const ledgers = matched.map((r) =>
     LedgerClosingBalanceSchema.parse({
-      ledger: String(n["@_NAME"] ?? n.NAME ?? ""),
-      parent: String(n.PARENT ?? ""),
-      closing: parseTallyAmount(String(n.CLOSINGBALANCE ?? "0")),
+      ledger: r.ledger,
+      parent: r.parent.trim() === "" ? "(top-level)" : r.parent,
+      closing: r.closing,
     }),
   );
   const totalClosing = ledgers.reduce((a, l) => a + l.closing, 0);

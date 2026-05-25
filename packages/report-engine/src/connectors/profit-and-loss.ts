@@ -1,36 +1,46 @@
 import { PnlRowSchema, type PnlRow, type TallyDate } from "@tallymcp/shared-types";
-import {
-  findAllObjects,
-  parseTallyAmount,
-  parseTallyResponse,
-  profitAndLossEnvelope,
-} from "@tallymcp/tally-xml";
+import { getReport, loadTemplate, runTdlReport } from "@tallymcp/tdl-engine";
 import type { TallyClient } from "../client.js";
-import { TallyReportError } from "../errors.js";
+
+interface TdlPlRow {
+  group: string;
+  parent: string;
+  closing: number;
+}
 
 /**
- * Reads the raw `Profit & Loss A/c` report for the period.
+ * Reads the Profit & Loss A/c (revenue groups + their closing balances) for
+ * the period via the inline-TDL engine.
  *
- * Expects rows under `<PLROW>` with `HEAD`, optional `SUBHEAD`/`LEDGER`, `AMOUNT`.
- * Real Tally P&L XML may need a TDL/post-processing layer to land in this shape —
- * calibrated during live testing.
+ * Each row is a revenue group (those with `$IsRevenue = Yes`). Negative
+ * `closing` means net credit-side balance (income); positive means net
+ * debit-side balance (expense).
  */
 export async function getProfitAndLoss(
   client: TallyClient,
   options: { company: string; fromDate: TallyDate; toDate: TallyDate },
 ): Promise<PnlRow[]> {
-  const xml = await client.post(profitAndLossEnvelope(options));
-  const { raw, lineErrors } = parseTallyResponse(xml);
-  if (lineErrors.length) throw new TallyReportError("ProfitAndLoss", lineErrors);
-  const rows = findAllObjects(raw, "PLROW");
+  const report = getReport("profit-loss");
+  const template = loadTemplate(report);
+  const rows = await runTdlReport<TdlPlRow>(client, report, template, {
+    fromDate: toDate(options.fromDate),
+    toDate: toDate(options.toDate),
+    targetCompany: options.company,
+  });
   return rows.map(toPlRow);
 }
 
-function toPlRow(node: Record<string, unknown>): PnlRow {
+function toPlRow(row: TdlPlRow): PnlRow {
   return PnlRowSchema.parse({
-    head: String(node.HEAD ?? ""),
-    subHead: node.SUBHEAD ? String(node.SUBHEAD) : undefined,
-    ledger: node.LEDGER ? String(node.LEDGER) : undefined,
-    amount: parseTallyAmount(String(node.AMOUNT ?? "0")),
+    head: row.group,
+    subHead: row.parent.trim() === "" ? undefined : row.parent,
+    amount: row.closing,
   });
+}
+
+function toDate(tallyDate: TallyDate): Date {
+  const y = Number(tallyDate.slice(0, 4));
+  const m = Number(tallyDate.slice(4, 6)) - 1;
+  const d = Number(tallyDate.slice(6, 8));
+  return new Date(y, m, d);
 }

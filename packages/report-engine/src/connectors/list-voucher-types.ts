@@ -15,7 +15,7 @@ export async function listVoucherTypes(
   client: TallyClient,
   options: { company: string },
 ): Promise<VoucherType[]> {
-  const xml = await client.post(listVoucherTypesEnvelope({ company: options.company }));
+  const xml = await client.post(listVoucherTypesEnvelope({ company: options.company }), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("VoucherTypes", lineErrors);
   const nodes = findAllObjects(raw, "VOUCHERTYPE");

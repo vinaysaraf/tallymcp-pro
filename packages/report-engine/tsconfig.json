@@ -8,6 +8,7 @@
   "references": [
     { "path": "../shared-types" },
     { "path": "../tally-xml" },
-    { "path": "../tally-connector" }
+    { "path": "../tally-connector" },
+    { "path": "../tdl-engine" }
   ]
 }

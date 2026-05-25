@@ -30,12 +30,12 @@ describe("TallyHttpClient", () => {
     });
   }
 
-  it("returns response body on HTTP 200", async () => {
+  it("returns response body on HTTP 200 (default UTF-16 LE wire)", async () => {
     const fixture = readFileSync(join(samplesDir, "list-companies.response.xml"), "utf8");
     agent
       .get("http://127.0.0.1:9000")
       .intercept({ path: "/", method: "POST" })
-      .reply(200, fixture);
+      .reply(200, Buffer.from(fixture, "utf16le"));
 
     const text = await client().post("<ENVELOPE/>");
     expect(text).toContain("<COMPANY");
@@ -65,11 +65,11 @@ describe("TallyHttpClient", () => {
       .reply(200, () => {
         active += 1;
         maxActive = Math.max(maxActive, active);
-        return new Promise<string>((resolve) => {
+        return new Promise<Buffer>((resolve) => {
           setTimeout(() => {
             order.push(active);
             active -= 1;
-            resolve("ok");
+            resolve(Buffer.from("ok", "utf16le"));
           }, 30);
         });
       })
@@ -85,6 +85,41 @@ describe("TallyHttpClient", () => {
     await Promise.all([serialized.post("a"), serialized.post("b")]);
     expect(maxActive).toBe(1);
     expect(order.length).toBe(2);
+  });
+
+  describe("charset handling", () => {
+    it("posts UTF-16 LE by default and decodes the response as UTF-16 LE", async () => {
+      const body = "<ENVELOPE><BODY><X>ok</X></BODY></ENVELOPE>";
+      agent
+        .get("http://127.0.0.1:9000")
+        .intercept({ path: "/", method: "POST" })
+        .reply(200, Buffer.from(body, "utf16le"));
+
+      const text = await client().post("<ENVELOPE/>");
+      expect(text).toContain("<X>ok</X>");
+    });
+
+    it("posts UTF-8 and decodes UTF-8 when charset='utf-8' is passed per call", async () => {
+      const body = "<ENVELOPE><BODY><X>ok</X></BODY></ENVELOPE>";
+      agent
+        .get("http://127.0.0.1:9000")
+        .intercept({ path: "/", method: "POST" })
+        .reply(200, body);
+
+      const text = await client().post("<ENVELOPE/>", { charset: "utf-8" });
+      expect(text).toContain("<X>ok</X>");
+    });
+
+    it("honors a constructor-level default charset", async () => {
+      agent
+        .get("http://127.0.0.1:9000")
+        .intercept({ path: "/", method: "POST" })
+        .reply(200, "<X>ok</X>");
+
+      const c = client({ charset: "utf-8" });
+      const text = await c.post("<ENVELOPE/>");
+      expect(text).toContain("<X>ok</X>");
+    });
   });
 });
 

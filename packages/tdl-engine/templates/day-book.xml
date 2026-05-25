@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Export</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>TallyMcpTdlReport</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVFROMDATE>{fromDate}</SVFROMDATE>
+        <SVTODATE>{toDate}</SVTODATE>
+        <nunjuck>if targetCompany</nunjuck>
+        <SVCURRENTCOMPANY>{{targetCompany | escape}}</SVCURRENTCOMPANY>
+        <nunjuck>endif</nunjuck>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="TallyMcpTdlReport"><FORMS>TallyMcpForm</FORMS></REPORT>
+          <FORM NAME="TallyMcpForm"><PARTS>TallyMcpPart</PARTS><XMLTAG>DATA</XMLTAG></FORM>
+          <PART NAME="TallyMcpPart"><LINES>TallyMcpLine</LINES><REPEAT>TallyMcpLine : TallyMcpCollection</REPEAT><SCROLLED>Vertical</SCROLLED></PART>
+          <LINE NAME="TallyMcpLine"><FIELDS>Fld01,Fld02,Fld03,Fld04,Fld05,Fld06,Fld07</FIELDS><XMLTAG>ROW</XMLTAG></LINE>
+          <FIELD NAME="Fld01"><SET>if $$IsEmpty:$Date then "" else $$PyrlYYYYMMDDFormat:$Date:"-"</SET><XMLTAG>F01</XMLTAG></FIELD>
+          <FIELD NAME="Fld02"><SET>$VoucherTypeName</SET><XMLTAG>F02</XMLTAG></FIELD>
+          <FIELD NAME="Fld03"><SET>$VoucherNumber</SET><XMLTAG>F03</XMLTAG></FIELD>
+          <FIELD NAME="Fld04"><SET>$PartyLedgerName</SET><XMLTAG>F04</XMLTAG></FIELD>
+          <FIELD NAME="Fld05"><SET>$Reference</SET><XMLTAG>F05</XMLTAG></FIELD>
+          <FIELD NAME="Fld06"><SET>$Narration</SET><XMLTAG>F06</XMLTAG></FIELD>
+          <FIELD NAME="Fld07"><SET>if $$IsEmpty:$Amount then 0 else $$StringFindAndReplace:$$Number:$$String:$Amount:"(-)":"-"</SET><XMLTAG>F07</XMLTAG></FIELD>
+          <COLLECTION NAME="TallyMcpCollection">
+            <TYPE>Voucher</TYPE>
+            <BELONGSTO>Yes</BELONGSTO>
+          </COLLECTION>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>

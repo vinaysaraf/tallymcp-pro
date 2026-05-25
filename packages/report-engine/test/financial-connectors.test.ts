@@ -4,7 +4,6 @@ import {
   getProfitAndLoss,
   getTrialBalance,
 } from "../src/connectors/index.js";
-import { TallyReportError } from "../src/errors.js";
 import type { TallyClient } from "../src/client.js";
 
 function stubClient(response: string): TallyClient & { calls: string[] } {
@@ -18,105 +17,99 @@ function stubClient(response: string): TallyClient & { calls: string[] } {
   };
 }
 
+// All financial connectors now go through @tallymcp/tdl-engine — responses are
+// <DATA><ROW><F01>…<Fnn> projecting the TDL-defined columns.
+
 const TB_XML = `<ENVELOPE><BODY><DATA>
-  <TBROW><GROUPNAME>Sundry Debtors</GROUPNAME><DEBIT>1,50,000.00</DEBIT><CREDIT>0</CREDIT></TBROW>
-  <TBROW><GROUPNAME>Sundry Debtors</GROUPNAME><LEDGERNAME>Acme &amp; Co</LEDGERNAME><DEBIT>50,000.00</DEBIT><CREDIT>0</CREDIT></TBROW>
-  <TBROW><GROUPNAME>Sundry Creditors</GROUPNAME><DEBIT>0</DEBIT><CREDIT>75,000.00</CREDIT></TBROW>
+  <ROW><F01>Sundry Debtors Total</F01><F02></F02><F03>0</F03><F04>150000</F04><F05>0</F05><F06>150000</F06></ROW>
+  <ROW><F01>Acme &amp; Co</F01><F02>Sundry Debtors</F02><F03>0</F03><F04>50000</F04><F05>0</F05><F06>50000</F06></ROW>
+  <ROW><F01>Sundry Creditors Total</F01><F02></F02><F03>0</F03><F04>0</F04><F05>75000</F05><F06>-75000</F06></ROW>
 </DATA></BODY></ENVELOPE>`;
 
 const PL_XML = `<ENVELOPE><BODY><DATA>
-  <PLROW><HEAD>Sales Accounts</HEAD><AMOUNT>15,00,000.00</AMOUNT></PLROW>
-  <PLROW><HEAD>Direct Expenses</HEAD><SUBHEAD>Freight</SUBHEAD><LEDGER>Inward Freight</LEDGER><AMOUNT>25,000.00</AMOUNT></PLROW>
-  <PLROW><HEAD>Indirect Expenses</HEAD><AMOUNT>2,50,000.00</AMOUNT></PLROW>
+  <ROW><F01>Sales Accounts</F01><F02></F02><F03>-1500000</F03></ROW>
+  <ROW><F01>Direct Expenses</F01><F02></F02><F03>250000</F03></ROW>
+  <ROW><F01>Indirect Expenses</F01><F02></F02><F03>100000</F03></ROW>
 </DATA></BODY></ENVELOPE>`;
 
 const BS_XML = `<ENVELOPE><BODY><DATA>
-  <BSROW><SIDE>Assets</SIDE><GROUP>Current Assets</GROUP><AMOUNT>5,00,000.00</AMOUNT></BSROW>
-  <BSROW><SIDE>Assets</SIDE><GROUP>Current Assets</GROUP><SUBGROUP>Sundry Debtors</SUBGROUP><LEDGER>Acme</LEDGER><AMOUNT>50,000.00</AMOUNT></BSROW>
-  <BSROW><SIDE>Liabilities</SIDE><GROUP>Capital Account</GROUP><AMOUNT>3,00,000.00</AMOUNT></BSROW>
+  <ROW><F01>Current Assets</F01><F02></F02><F03>500000</F03></ROW>
+  <ROW><F01>Sundry Debtors</F01><F02>Current Assets</F02><F03>150000</F03></ROW>
+  <ROW><F01>Capital Account</F01><F02></F02><F03>-300000</F03></ROW>
 </DATA></BODY></ENVELOPE>`;
 
-const LINE_ERROR_XML = `<ENVELOPE><BODY><DATA><LINEERROR>Period out of range</LINEERROR></DATA></BODY></ENVELOPE>`;
-
-const BS_INVALID_SIDE_XML = `<ENVELOPE><BODY><DATA>
-  <BSROW><SIDE>Equity</SIDE><GROUP>Capital</GROUP><AMOUNT>100</AMOUNT></BSROW>
-</DATA></BODY></ENVELOPE>`;
+const EXCEPTION_XML = `<EXCEPTION>Period out of range</EXCEPTION>`;
 
 const PERIOD = { company: "Acme", fromDate: "20260401", toDate: "20270331" } as const;
 
-describe("getTrialBalance", () => {
-  it("parses TB rows with Indian lakh amounts", async () => {
+describe("getTrialBalance (TDL-backed)", () => {
+  it("parses TB rows from the inline-TDL ROW/F01..F06 shape", async () => {
     const rows = await getTrialBalance(stubClient(TB_XML), PERIOD);
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toEqual({ groupName: "Sundry Debtors", debit: 150000, credit: 0 });
+    expect(rows[0]).toEqual({
+      groupName: "(top-level)",
+      ledgerName: "Sundry Debtors Total",
+      debit: 150000,
+      credit: 0,
+    });
+    expect(rows[1]?.groupName).toBe("Sundry Debtors");
     expect(rows[1]?.ledgerName).toBe("Acme & Co");
-    expect(rows[2]).toEqual({ groupName: "Sundry Creditors", debit: 0, credit: 75000 });
+    expect(rows[2]?.credit).toBe(75000);
   });
 
-  it("sends Trial Balance envelope with the period and grand-total flag", async () => {
+  it("sends an inline-TDL REPORT/COLLECTION envelope with period", async () => {
     const client = stubClient(TB_XML);
     await getTrialBalance(client, PERIOD);
-    expect(client.calls[0]).toContain("<ID>Trial Balance</ID>");
-    expect(client.calls[0]).toContain("<SVFROMDATE>20260401</SVFROMDATE>");
-    expect(client.calls[0]).toContain("<SVTODATE>20270331</SVTODATE>");
-    expect(client.calls[0]).toContain("<DSPSHOWGRANDTOTAL>Yes</DSPSHOWGRANDTOTAL>");
+    expect(client.calls[0]).toContain('<REPORT NAME="TallyMcpTdlReport">');
+    expect(client.calls[0]).toContain('<COLLECTION NAME="TallyMcpCollection">');
+    expect(client.calls[0]).toContain("<TYPE>Ledger</TYPE>");
+    expect(client.calls[0]).toContain("<SVFROMDATE>1-Apr-2026</SVFROMDATE>");
   });
 
-  it("throws TallyReportError on LINEERROR", async () => {
-    await expect(
-      getTrialBalance(stubClient(LINE_ERROR_XML), PERIOD),
-    ).rejects.toBeInstanceOf(TallyReportError);
-  });
-
-  it("Σ debits === Σ credits for a balanced fixture (sanity invariant)", async () => {
-    const rows = await getTrialBalance(stubClient(TB_XML), PERIOD);
-    const leaves = rows.filter((r) => r.ledgerName !== undefined);
-    const dr = leaves.reduce((a, r) => a + r.debit, 0);
-    const cr = leaves.reduce((a, r) => a + r.credit, 0);
-    // fixture has 1 leaf debit (50000) and 0 leaf credits — assert each side known
-    expect(dr).toBe(50000);
-    expect(cr).toBe(0);
+  it("throws on Tally <EXCEPTION> response", async () => {
+    await expect(getTrialBalance(stubClient(EXCEPTION_XML), PERIOD)).rejects.toThrow(
+      /Tally returned <EXCEPTION>/,
+    );
   });
 });
 
-describe("getProfitAndLoss", () => {
-  it("parses head-only and leaf rows", async () => {
+describe("getProfitAndLoss (TDL-backed)", () => {
+  it("parses revenue groups with signed closing balances", async () => {
     const rows = await getProfitAndLoss(stubClient(PL_XML), PERIOD);
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toEqual({ head: "Sales Accounts", amount: 1500000 });
-    expect(rows[1]?.subHead).toBe("Freight");
-    expect(rows[1]?.ledger).toBe("Inward Freight");
-    expect(rows[1]?.amount).toBe(25000);
+    expect(rows[0]).toEqual({ head: "Sales Accounts", amount: -1500000 });
+    expect(rows[1]?.head).toBe("Direct Expenses");
+    expect(rows[1]?.amount).toBe(250000);
   });
 
-  it("sends Profit & Loss A/c envelope with escaped &", async () => {
+  it("sends a Group-collection TDL request filtered to IsRevenue", async () => {
     const client = stubClient(PL_XML);
     await getProfitAndLoss(client, PERIOD);
-    expect(client.calls[0]).toContain("<ID>Profit &amp; Loss A/c</ID>");
-    expect(client.calls[0]).toContain("<SVFROMDATE>20260401</SVFROMDATE>");
+    expect(client.calls[0]).toContain("<TYPE>Group</TYPE>");
+    expect(client.calls[0]).toContain("<FILTER>IsRevenueGrp</FILTER>");
+    expect(client.calls[0]).toContain("<SVFROMDATE>1-Apr-2026</SVFROMDATE>");
   });
 });
 
-describe("getBalanceSheet", () => {
-  it("parses Assets and Liabilities rows", async () => {
+describe("getBalanceSheet (TDL-backed)", () => {
+  it("parses non-revenue groups and classifies side from asset heuristics", async () => {
     const rows = await getBalanceSheet(stubClient(BS_XML), PERIOD);
     expect(rows).toHaveLength(3);
+    // "Current Assets" group itself appears in the asset set → side=Assets
+    expect(rows[0]?.group).toBe("Current Assets");
     expect(rows[0]?.side).toBe("Assets");
-    expect(rows[1]?.subGroup).toBe("Sundry Debtors");
-    expect(rows[1]?.ledger).toBe("Acme");
+    // "Sundry Debtors" under "Current Assets" → side=Assets via parent
+    expect(rows[1]?.side).toBe("Assets");
+    expect(rows[1]?.subGroup).toBe("Current Assets");
+    // "Capital Account" with no known asset parent → side=Liabilities
     expect(rows[2]?.side).toBe("Liabilities");
+    expect(rows[2]?.amount).toBe(-300000);
   });
 
-  it("rejects an invalid side (Zod enum guard)", async () => {
-    await expect(
-      getBalanceSheet(stubClient(BS_INVALID_SIDE_XML), PERIOD),
-    ).rejects.toThrow();
-  });
-
-  it("sends Balance Sheet envelope with the period", async () => {
+  it("sends a Group-collection TDL request filtered to NOT IsRevenue", async () => {
     const client = stubClient(BS_XML);
     await getBalanceSheet(client, PERIOD);
-    expect(client.calls[0]).toContain("<ID>Balance Sheet</ID>");
-    expect(client.calls[0]).toContain("<SVTODATE>20270331</SVTODATE>");
+    expect(client.calls[0]).toContain("<TYPE>Group</TYPE>");
+    expect(client.calls[0]).toContain("<FILTER>IsBSGrp</FILTER>");
   });
 });

@@ -13,7 +13,7 @@ export async function listGroups(
   client: TallyClient,
   options: { company: string },
 ): Promise<Group[]> {
-  const xml = await client.post(listGroupsEnvelope({ company: options.company }));
+  const xml = await client.post(listGroupsEnvelope({ company: options.company }), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("GroupMasters", lineErrors);
   const nodes = findAllObjects(raw, "GROUP");

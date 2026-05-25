@@ -1,5 +1,5 @@
 {
-  "name": "@tallymcp/report-engine",
+  "name": "@tallymcp/tdl-engine",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -19,12 +19,11 @@
   },
   "dependencies": {
     "@tallymcp/shared-types": "workspace:*",
-    "@tallymcp/tally-connector": "workspace:*",
-    "@tallymcp/tally-xml": "workspace:*",
-    "@tallymcp/tdl-engine": "workspace:*",
+    "fast-xml-parser": "^5.8.0",
+    "nunjucks": "^3.2.4",
     "zod": "^3.25.56"
   },
   "devDependencies": {
-    "undici": "^7.13.0"
+    "@types/nunjucks": "^3.2.6"
   }
 }

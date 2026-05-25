@@ -14,7 +14,7 @@ export async function listLedgers(
   client: TallyClient,
   options: { company: string },
 ): Promise<Ledger[]> {
-  const xml = await client.post(listLedgersEnvelope({ company: options.company }));
+  const xml = await client.post(listLedgersEnvelope({ company: options.company }), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("LedgerMasters", lineErrors);
   const nodes = findAllObjects(raw, "LEDGER");

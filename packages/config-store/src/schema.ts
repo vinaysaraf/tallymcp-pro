@@ -32,6 +32,19 @@ export const ConfigSchema = z
         connections: z.array(TallyConnectionSchema).default([DEFAULT_LOCAL_CONNECTION]),
         defaultCompany: z.string().optional(),
         defaultFinancialYear: FinancialYearSchema.optional(),
+        /**
+         * Allows voucher / closing-balance / audit-lite tools to run even when
+         * capability probe marks Tally as Silver-class. Default false: those
+         * tools fail fast with a clear message on slow editions (use the file-
+         * import path instead). Set true on TallyPrime 4.x Gold.
+         */
+        unsafeSlow: z.boolean().default(false),
+        /**
+         * Forces an edition assumption instead of running the capability probe
+         * at boot. "auto" runs the probe. "gold" assumes voucher viable.
+         * "silver" disables voucher tools without probing.
+         */
+        assumedEdition: z.enum(["auto", "silver", "gold"]).default("auto"),
       })
       .default({}),
     output: z
