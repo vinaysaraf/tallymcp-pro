@@ -1,0 +1,123 @@
+import { mkdir, readFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type { ClientId, McpServerEntry, WireResult, UnwireResult } from "./types.js";
+import { CLIENT_REGISTRY, resolveClientConfigPath } from "./clients.js";
+import { backupIfMissing } from "./backup.js";
+import { writeAtomic } from "./atomic-write.js";
+import { mergeMcpServers, removeMcpServer } from "./merge.js";
+
+export interface ClientWirerOptions {
+  /** Environment for path expansion. Pass `process.env` in production. */
+  env: Record<string, string | undefined>;
+  /** The MCP server entry we wire under the `tallymcp-pro` key. */
+  entry: McpServerEntry;
+}
+
+const KEY = "tallymcp-pro" as const;
+
+interface ConfigShape {
+  mcpServers?: Record<string, McpServerEntry>;
+  [other: string]: unknown;
+}
+
+/**
+ * Orchestrates wiring and unwiring TallyMCP into AI client configuration files.
+ *
+ * For each supported client (Claude Desktop, Cursor, Claude Code, LM Studio,
+ * Ollama bridge), `add()` performs:
+ *
+ * 1. Read the existing config file (or treat as empty if absent)
+ * 2. Decide action vs current state: added / updated / noop
+ * 3. Back up the file on first modification (idempotent — preserves .bak)
+ * 4. Merge our entry under `mcpServers["tallymcp-pro"]`
+ * 5. Atomically write via `<file>.tmp` + fsync + rename
+ * 6. Verify by reading back and confirming the entry is present
+ *
+ * `remove()` does the inverse: surgical removal of our key only, leaving
+ * sibling servers and top-level keys untouched.
+ *
+ * The config path and environment variables are resolved at runtime from
+ * `CLIENT_REGISTRY` and the supplied `env` map (usually `process.env`).
+ *
+ * @example
+ * const wirer = new ClientWirer({
+ *   env: process.env,
+ *   entry: { command: "node.exe", args: ["main.js"], env: {...} }
+ * });
+ * const result = await wirer.add("claude-desktop");
+ * // result.action: "added" | "updated" | "noop"
+ */
+export class ClientWirer {
+  constructor(private readonly opts: ClientWirerOptions) {}
+
+  async add(clientId: ClientId): Promise<WireResult> {
+    const configPath = resolveClientConfigPath(clientId, this.opts.env);
+
+    // 1. Read existing (or treat as {} if absent).
+    const existing = await this.readJsonOrEmpty(configPath);
+
+    // 2. Decide action vs current state.
+    const currentEntry = existing.mcpServers?.[KEY];
+    let action: WireResult["action"];
+    if (!currentEntry) action = "added";
+    else if (deepEqual(currentEntry, this.opts.entry)) action = "noop";
+    else action = "updated";
+
+    if (action === "noop") {
+      return { clientId, configPath, backupCreated: false, action };
+    }
+
+    // 3. Backup if first time.
+    const { created: backupCreated } = await backupIfMissing(configPath);
+
+    // 4. Merge.
+    const merged = mergeMcpServers(existing, this.opts.entry);
+
+    // 5. Atomic write — ensure parent dir exists.
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeAtomic(configPath, JSON.stringify(merged, null, 2) + "\n");
+
+    // 6. Verify by reading back.
+    const verify = await this.readJsonOrEmpty(configPath);
+    if (!deepEqual(verify.mcpServers?.[KEY], this.opts.entry)) {
+      throw new Error(`Verify failed after writing ${configPath}`);
+    }
+
+    return { clientId, configPath, backupCreated, action };
+  }
+
+  async remove(clientId: ClientId): Promise<UnwireResult> {
+    const configPath = resolveClientConfigPath(clientId, this.opts.env);
+    const existing = await this.readJsonOrEmpty(configPath);
+    if (!existing.mcpServers?.[KEY]) {
+      return { clientId, configPath, action: "noop" };
+    }
+    const stripped = removeMcpServer(existing);
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeAtomic(configPath, JSON.stringify(stripped, null, 2) + "\n");
+    return { clientId, configPath, action: "removed" };
+  }
+
+  private async readJsonOrEmpty(path: string): Promise<ConfigShape> {
+    let raw: string;
+    try {
+      raw = await readFile(path, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+      throw err;
+    }
+    try {
+      return JSON.parse(raw) as ConfigShape;
+    } catch (err) {
+      throw new Error(
+        `Cannot parse ${path} as JSON. Refusing to overwrite. Original error: ${
+          (err as Error).message
+        }`,
+      );
+    }
+  }
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
