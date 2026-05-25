@@ -10,3 +10,20 @@ coverage/
 /TallyMCP_Implementation_Plan_v2.1_Errata.md
 /TallyMCP_Implementation_Plan_ReadOnly_Submission.md
 /CURSOR_START_WINDOWS.md
+
+# Agentic workflow artifacts (specs + plans authored by Claude/superpowers
+# subagents during development) — internal-only, not for the public repo
+/docs/superpowers/
+
+# IDE / agent session state
+/.claude/
+/.cursor/
+/.vscode/
+/.idea/
+
+# Local debug / probe artifacts
+/tallyhttp.log
+/tdlfunc.log
+*.log
+/tally-state-*.png
+/tally-probe-*.xml
