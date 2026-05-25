@@ -1,0 +1,84 @@
+---
+description: How to review TallyMCP code changes when invoked from chat. Loaded into context whenever the user asks Cursor for a review of this repo.
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# TallyMCP Review Rule
+
+When the user asks you to **review** code in this repo (typical prompt: "review the changes on branch X" or "review files A/B/C"), follow this rule.
+
+## Output destination
+
+**Always write your review to `ai-review/Cursor_review.md`** in the repo root. Overwrite the previous review — one canonical review file at a time. Do not create dated copies.
+
+Start the file with the date, branch, and commit SHA you're reviewing. Use the verdict format defined at the bottom of this rule.
+
+## Project context (always-relevant background)
+
+TallyMCP is a **read-only MCP server for TallyPrime ERP**, plus a Windows installer that wires it into AI clients (Claude Desktop, Cursor, Claude Code, LM Studio, Ollama). It's a pnpm-workspaces monorepo, TypeScript strict, Vitest, Zod, MCP SDK. Targets Windows production (TallyPrime is Windows-only). The audience is non-technical Chartered Accountants.
+
+**Conventions you can assume:**
+
+- **Strict TDD** — every src change has a co-committed test. Write-the-failing-test-first discipline.
+- **Conventional commits** — `feat(scope): ...`, `fix(scope): ...`, `docs(scope): ...`, `chore(repo): ...`.
+- **No telemetry, no outbound calls** except the eventual `latest.json` update check.
+- **Narrow file allowlist** — the installer/Configurator touches exactly 7 paths (5 AI-client configs + own config + `tally.ini`). Never anything else.
+- **Atomic writes everywhere** (`.tmp` + fsync + rename). Backup-before-write (`.bak` siblings; `.tallymcp-bak` for `tally.ini`).
+- **CA-facing trust** — config-file edits must be surgical, idempotent, byte-identical to siblings, with `.bak` as the safety net.
+
+## Focus areas for any review
+
+Skip per-task spec compliance (those are already reviewed by subagents during execution). Focus on what mechanical reviewers miss:
+
+1. **Real-world Windows edge cases** — long paths (>260 chars), spaces, UNC paths, non-ASCII user names (`C:\Users\Naïve\…`), antivirus interfering with `.tmp` rename, locale-sensitive output parsing (`tasklist`, `netsh`).
+2. **TypeScript holes that strict mode still allows** — unchecked casts (`as Record<…>`), unsafe optional chaining, deepEqual via `JSON.stringify` (key-order sensitive), `Object.keys` on indexed-types, etc.
+3. **Test design** — do the tests actually catch what they claim, or could they pass with a broken implementation? Are CLI tests exercising the commander parse path, or only the underlying functions?
+4. **Cross-package coupling / circular imports** — within the monorepo. Re-export hygiene from `index.ts` files (no internal leaks).
+5. **Security in a CA-facing tool** — JSON parse producing unexpected shapes, error-swallowing patterns that mask real failures, command injection in shell arg construction (we use `spawn` not `exec`, so per-arg, but confirm).
+6. **API design** — would a fresh developer understand and use it correctly? Public API ergonomics, naming, default values.
+
+## Out-of-scope (do NOT flag these as gaps)
+
+The current spec (`docs/superpowers/specs/2026-05-25-tallymcp-installer-design.md`) explicitly defers these to Phase 2/3:
+
+- LM Studio version sniff (≥0.3)
+- `claude mcp add` CLI preference for Claude Code (we write JSON directly)
+- Registry-based Tally detection (we scan Program Files only)
+- JSON byte-identical preservation (we use `JSON.stringify(…, null, 2)`; `.bak` is the escape hatch)
+- Electron Configurator UI, NSIS installer, code signing, GitHub Actions release pipeline, landing page
+- Telemetry, analytics, multilingual UI, Mac/Linux Configurator
+
+If you see incomplete pieces of these in the code, that's a bug. If you see them simply absent, that's intentional.
+
+## Tone
+
+- Terse and specific. No flattery, no bullet-padding.
+- Always cite `file:line` when flagging an issue.
+- For each issue: location + failure mode (what real condition triggers it) + minimal fix suggestion.
+- Skip restating the obvious (e.g. "the test file imports vitest").
+
+## Verdict format (always end with one of these)
+
+- **✅ READY TO MERGE** — no blockers. Optionally list 1–5 nits for the Phase 2 backlog.
+- **🟡 MERGE WITH FOLLOW-UPS** — passes, but 1–3 items worth addressing before user-facing rollout.
+- **❌ BLOCKING ISSUES** — list them with severity (Critical / High / Medium), `file:line`, and recommended fix.
+
+## File template
+
+```markdown
+# Cursor review — <topic>
+
+**Date:** YYYY-MM-DD
+**Branch:** <branch-name>
+**Tip SHA:** <abc1234>
+**Scope:** <what was reviewed, 1 line>
+
+## Findings
+
+<terse findings, cite file:line>
+
+## Verdict
+
+✅ / 🟡 / ❌ — <one-line verdict>
+```

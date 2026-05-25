@@ -17,7 +17,8 @@ coverage/
 
 # IDE / agent session state
 /.claude/
-/.cursor/
+/.cursor/*
+!/.cursor/rules/
 /.vscode/
 /.idea/
 /.superpowers/
