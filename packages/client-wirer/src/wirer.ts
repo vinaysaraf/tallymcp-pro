@@ -4,7 +4,7 @@ import type { ClientId, McpServerEntry, WireResult, UnwireResult } from "./types
 import { CLIENT_REGISTRY, resolveClientConfigPath } from "./clients.js";
 import { backupIfMissing } from "./backup.js";
 import { writeAtomic } from "./atomic-write.js";
-import { mergeMcpServers, removeMcpServer } from "./merge.js";
+import { mergeUnderKey, removeUnderKey } from "./merge.js";
 
 export interface ClientWirerOptions {
   /** Environment for path expansion. Pass `process.env` in production. */
@@ -15,11 +15,6 @@ export interface ClientWirerOptions {
 
 const KEY = "tallymcp-pro" as const;
 
-interface ConfigShape {
-  mcpServers?: Record<string, McpServerEntry>;
-  [other: string]: unknown;
-}
-
 /**
  * Orchestrates wiring and unwiring TallyMCP into AI client configuration files.
  *
@@ -29,7 +24,7 @@ interface ConfigShape {
  * 1. Read the existing config file (or treat as empty if absent)
  * 2. Decide action vs current state: added / updated / noop
  * 3. Back up the file on first modification (idempotent — preserves .bak)
- * 4. Merge our entry under `mcpServers["tallymcp-pro"]`
+ * 4. Merge our entry under `{serversKey}["tallymcp-pro"]`
  * 5. Atomically write via `<file>.tmp` + fsync + rename
  * 6. Verify by reading back and confirming the entry is present
  *
@@ -38,6 +33,8 @@ interface ConfigShape {
  *
  * The config path and environment variables are resolved at runtime from
  * `CLIENT_REGISTRY` and the supplied `env` map (usually `process.env`).
+ * Each client specifies its own `serversKey` ("mcpServers" for most clients,
+ * "servers" for Ollama), so this class is fully key-agnostic.
  *
  * @example
  * const wirer = new ClientWirer({
@@ -52,12 +49,15 @@ export class ClientWirer {
 
   async add(clientId: ClientId): Promise<WireResult> {
     const configPath = resolveClientConfigPath(clientId, this.opts.env);
+    const serversKey = CLIENT_REGISTRY[clientId].serversKey;
 
     // 1. Read existing (or treat as {} if absent).
     const existing = await this.readJsonOrEmpty(configPath);
 
     // 2. Decide action vs current state.
-    const currentEntry = existing.mcpServers?.[KEY];
+    const existingServers = existing[serversKey] as Record<string, McpServerEntry> | undefined;
+    const currentEntry = existingServers?.[KEY];
+
     let action: WireResult["action"];
     if (!currentEntry) action = "added";
     else if (deepEqual(currentEntry, this.opts.entry)) action = "noop";
@@ -70,8 +70,8 @@ export class ClientWirer {
     // 3. Backup if first time.
     const { created: backupCreated } = await backupIfMissing(configPath);
 
-    // 4. Merge.
-    const merged = mergeMcpServers(existing, this.opts.entry);
+    // 4. Merge under the client-specific key.
+    const merged = mergeUnderKey(existing, serversKey, this.opts.entry);
 
     // 5. Atomic write — ensure parent dir exists.
     await mkdir(dirname(configPath), { recursive: true });
@@ -79,7 +79,8 @@ export class ClientWirer {
 
     // 6. Verify by reading back.
     const verify = await this.readJsonOrEmpty(configPath);
-    if (!deepEqual(verify.mcpServers?.[KEY], this.opts.entry)) {
+    const verifyServers = verify[serversKey] as Record<string, McpServerEntry> | undefined;
+    if (!deepEqual(verifyServers?.[KEY], this.opts.entry)) {
       throw new Error(`Verify failed after writing ${configPath}`);
     }
 
@@ -88,17 +89,19 @@ export class ClientWirer {
 
   async remove(clientId: ClientId): Promise<UnwireResult> {
     const configPath = resolveClientConfigPath(clientId, this.opts.env);
+    const serversKey = CLIENT_REGISTRY[clientId].serversKey;
     const existing = await this.readJsonOrEmpty(configPath);
-    if (!existing.mcpServers?.[KEY]) {
+    const currentServers = existing[serversKey] as Record<string, McpServerEntry> | undefined;
+    if (!currentServers?.[KEY]) {
       return { clientId, configPath, action: "noop" };
     }
-    const stripped = removeMcpServer(existing);
+    const stripped = removeUnderKey(existing, serversKey);
     await mkdir(dirname(configPath), { recursive: true });
     await writeAtomic(configPath, JSON.stringify(stripped, null, 2) + "\n");
     return { clientId, configPath, action: "removed" };
   }
 
-  private async readJsonOrEmpty(path: string): Promise<ConfigShape> {
+  private async readJsonOrEmpty(path: string): Promise<Record<string, unknown>> {
     let raw: string;
     try {
       raw = await readFile(path, "utf8");
@@ -107,7 +110,7 @@ export class ClientWirer {
       throw err;
     }
     try {
-      return JSON.parse(raw) as ConfigShape;
+      return JSON.parse(raw) as Record<string, unknown>;
     } catch (err) {
       throw new Error(
         `Cannot parse ${path} as JSON. Refusing to overwrite. Original error: ${

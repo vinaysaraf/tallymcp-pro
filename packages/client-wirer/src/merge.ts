@@ -1,40 +1,47 @@
 import type { McpServerEntry } from "./types.js";
 
-const KEY = "tallymcp-pro" as const;
+const ENTRY_KEY = "tallymcp-pro" as const;
 
-interface ConfigWithMcpServers {
-  mcpServers?: Record<string, McpServerEntry>;
-  [other: string]: unknown;
+interface ConfigWithServers {
+  [k: string]: unknown;
 }
 
 /**
- * Returns a NEW object with `mcpServers["tallymcp-pro"] = entry`. Existing
- * keys (other servers, top-level keys) are preserved by reference — we do
- * not deep-clone the rest of the config, which means we never accidentally
- * normalize formatting on data we don't own.
+ * Adds/updates `{[serversKey]: {tallymcp-pro: entry}}` on the existing config.
+ * Other keys preserved by reference.
  */
-export function mergeMcpServers(
-  existing: ConfigWithMcpServers,
+export function mergeUnderKey(
+  existing: ConfigWithServers,
+  serversKey: string,
   entry: McpServerEntry,
-): ConfigWithMcpServers {
+): ConfigWithServers {
+  const currentServers = (existing[serversKey] as Record<string, McpServerEntry> | undefined) ?? {};
   return {
     ...existing,
-    mcpServers: {
-      ...(existing.mcpServers ?? {}),
-      [KEY]: entry,
-    },
+    [serversKey]: { ...currentServers, [ENTRY_KEY]: entry },
   };
 }
 
 /**
- * Returns a NEW object with our key removed. Other servers and top-level
- * keys are untouched. If our key wasn't present, the returned object is
- * structurally equal to the input.
+ * Removes `[serversKey][tallymcp-pro]` if present. Returns the input unchanged
+ * (by reference) if the key wasn't there.
  */
-export function removeMcpServer(existing: ConfigWithMcpServers): ConfigWithMcpServers {
-  if (!existing.mcpServers || !(KEY in existing.mcpServers)) {
-    return existing;
-  }
-  const { [KEY]: _removed, ...rest } = existing.mcpServers;
-  return { ...existing, mcpServers: rest };
+export function removeUnderKey(
+  existing: ConfigWithServers,
+  serversKey: string,
+): ConfigWithServers {
+  const currentServers = existing[serversKey] as Record<string, McpServerEntry> | undefined;
+  if (!currentServers || !(ENTRY_KEY in currentServers)) return existing;
+  const { [ENTRY_KEY]: _removed, ...rest } = currentServers;
+  return { ...existing, [serversKey]: rest };
 }
+
+// Convenience wrappers for the common "mcpServers" case, kept for back-compat
+// with tests that exercise the pure functions directly.
+export const mergeMcpServers = (
+  existing: ConfigWithServers,
+  entry: McpServerEntry,
+): ConfigWithServers => mergeUnderKey(existing, "mcpServers", entry);
+
+export const removeMcpServer = (existing: ConfigWithServers): ConfigWithServers =>
+  removeUnderKey(existing, "mcpServers");
