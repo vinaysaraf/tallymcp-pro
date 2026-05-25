@@ -22,7 +22,7 @@ describe("tally-restore CLI", () => {
     await writeFile(`${iniPath}.tallymcp-bak`, "ORIGINAL");
     await writeFile(join(installDir, "tally.exe"), "");
 
-    const runner = new FakeExecRunner((cmd, args) => {
+    const runner = new FakeExecRunner((cmd, _args) => {
       if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks are running", stderr: "" };
       // firewall delete → success
       return { exitCode: 0, stdout: "Deleted 1 rule(s).", stderr: "" };
