@@ -20,6 +20,7 @@ coverage/
 /.cursor/
 /.vscode/
 /.idea/
+/.superpowers/
 
 # Local debug / probe artifacts
 /tallyhttp.log
