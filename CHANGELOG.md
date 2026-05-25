@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.0-phase1 — Installer foundation (2026-05-25)
+
+### Added
+- **`@tallymcp/client-wirer`** package — atomic JSON merge / backup / remove for the 5 supported AI clients (Claude Desktop, Cursor, Claude Code, LM Studio, Ollama).
+- **`@tallymcp/tally-autofix`** package — `tally.ini` parser/editor that preserves order and comments, Windows Firewall rule manager via `netsh`, Tally process detection.
+- **`@tallymcp/cli`** app exposing 4 commands:
+  - `tallymcp-cli wire <client>` — adds TallyMCP to the named AI client's config.
+  - `tallymcp-cli unwire <client>` — surgically removes our entry.
+  - `tallymcp-cli tally-fix` — turns on Tally's XML interface and adds the firewall rule.
+  - `tallymcp-cli tally-restore` — restores `tally.ini` from backup and removes the firewall rule.
+- `claude-code` added to `apps/mcp-server/src/client-config.ts` SupportedClient list so the runtime config-export tool stays in sync with the installer.
+
+### Notes
+- Phase 1 ships only the data-layer libraries and a terminal CLI. The Electron Configurator UI lands in Phase 2.
+- JSON config files written by `client-wirer` are formatted with `JSON.stringify(merged, null, 2)`; whitespace and key order may differ from the original. The `.bak` siblings preserve the pre-edit file byte-for-byte for restore.
+
 ## [Unreleased]
 
 ### Added
