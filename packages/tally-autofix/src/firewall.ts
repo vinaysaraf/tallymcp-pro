@@ -9,7 +9,7 @@ export const FIREWALL_RULE_NAME = "TallyMCP — Tally XML port 9000" as const;
 export async function firewallRuleExists(runner: ExecRunner): Promise<boolean> {
   const result = await runner.run("netsh", [
     "advfirewall", "firewall", "show", "rule",
-    `name=${FIREWALL_RULE_NAME}`,
+    `name="${FIREWALL_RULE_NAME}"`,
   ]);
   if (result.exitCode !== 0) return false;
   // Defensive: also check stdout for "No rules match" — some Windows builds
@@ -28,12 +28,12 @@ export async function addFirewallRule(
 ): Promise<void> {
   const result = await runner.run("netsh", [
     "advfirewall", "firewall", "add", "rule",
-    `name=${FIREWALL_RULE_NAME}`,
+    `name="${FIREWALL_RULE_NAME}"`,
     "dir=in",
     "action=allow",
     "protocol=TCP",
     "localport=9000",
-    `program=${opts.tallyExePath}`,
+    `program="${opts.tallyExePath}"`,
     "profile=private",
     "enable=yes",
   ]);
@@ -52,7 +52,7 @@ export async function addFirewallRule(
 export async function removeFirewallRule(runner: ExecRunner): Promise<void> {
   const result = await runner.run("netsh", [
     "advfirewall", "firewall", "delete", "rule",
-    `name=${FIREWALL_RULE_NAME}`,
+    `name="${FIREWALL_RULE_NAME}"`,
   ]);
   // Delete on a missing rule returns non-zero; that's a noop from our POV.
   if (result.exitCode !== 0 && !/no rules match/i.test(result.stdout + result.stderr)) {

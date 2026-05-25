@@ -36,15 +36,23 @@ describe("addFirewallRule", () => {
     expect(runner.calls[0]?.command).toBe("netsh");
     expect(runner.calls[0]?.args).toEqual([
       "advfirewall", "firewall", "add", "rule",
-      `name=${FIREWALL_RULE_NAME}`,
+      `name="${FIREWALL_RULE_NAME}"`,
       "dir=in",
       "action=allow",
       "protocol=TCP",
       "localport=9000",
-      "program=C:\\Program Files\\TallyPrime\\tally.exe",
+      `program="C:\\Program Files\\TallyPrime\\tally.exe"`,
       "profile=private",
       "enable=yes",
     ]);
+  });
+
+  it("produces quoted program= arg even when path contains spaces", async () => {
+    const runner = new FakeExecRunner(() => ({ exitCode: 0, stdout: "Ok.", stderr: "" }));
+    await addFirewallRule(runner, { tallyExePath: "C:\\Program Files\\TallyPrime (1)\\tally.exe" });
+    expect(runner.calls[0]?.args).toContain(
+      `program="C:\\Program Files\\TallyPrime (1)\\tally.exe"`,
+    );
   });
 
   it("throws when netsh reports Group Policy denial", async () => {
@@ -65,7 +73,7 @@ describe("removeFirewallRule", () => {
     await removeFirewallRule(runner);
     expect(runner.calls[0]?.args).toEqual([
       "advfirewall", "firewall", "delete", "rule",
-      `name=${FIREWALL_RULE_NAME}`,
+      `name="${FIREWALL_RULE_NAME}"`,
     ]);
   });
 });
