@@ -18,6 +18,23 @@ All notable changes to this project will be documented in this file.
 - Phase 1 ships only the data-layer libraries and a terminal CLI. The Electron Configurator UI lands in Phase 2.
 - JSON config files written by `client-wirer` are formatted with `JSON.stringify(merged, null, 2)`; whitespace and key order may differ from the original. The `.bak` siblings preserve the pre-edit file byte-for-byte for restore.
 
+### Preview-and-confirm UX for CLI commands (Phase 1 addendum)
+
+All 4 CLI commands now print an explicit preview of every file change they will make before modifying anything on disk.  The user must type `y` or `yes` to proceed; any other input (including empty) aborts with exit code 1.
+
+**`-y` / `--yes` flag** — skips the interactive prompt entirely. Intended for scripted environments and for the Phase 2 Configurator UI (which has its own visual consent surface and will pass `--yes` when invoking the CLI).
+
+Behavior summary per command:
+
+| Command | Preview shows | Reversible with |
+|---|---|---|
+| `wire <client>` | config file path + JSON entry that will be added + backup path | `unwire <client>` |
+| `unwire <client>` | config file path + key that will be removed | — |
+| `tally-fix` | `tally.ini` path + 2 lines that will be added + firewall rule details | `tally-restore` |
+| `tally-restore` | `tally.ini` + backup path that will be restored + firewall rule that will be deleted | — |
+
+The abort path throws an `AbortError` (exported from `apps/cli/src/confirm.ts`); `main.ts` catches it, logs `"Aborted."`, and exits with code 1.  Tests inject a `confirmFn` stub rather than reading from stdin.
+
 ## [Unreleased]
 
 ### Added
