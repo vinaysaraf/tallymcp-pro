@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { runWireCommand } from "./commands/wire.js";
 import { runUnwireCommand } from "./commands/unwire.js";
 import { runTallyFixCommand } from "./commands/tally-fix.js";
+import { runTallyRestoreCommand } from "./commands/tally-restore.js";
 import type { ClientId } from "@tallymcp/client-wirer";
 
 export function createProgram(): Command {
@@ -46,6 +47,19 @@ export function createProgram(): Command {
       console.log(`✓ tally.ini at ${result.install.iniPath}: ${result.xmlInterface}`);
       console.log(`✓ Firewall rule: ${result.firewallRule}`);
       console.log(`\nNow open TallyPrime and load a company.`);
+    });
+
+  program
+    .command("tally-restore")
+    .description("Restore tally.ini from backup and remove the firewall rule")
+    .option(
+      "--tally-dir <path>",
+      "Explicit Tally install directory (required when multiple installs are detected)",
+    )
+    .action(async (opts: { tallyDir?: string }) => {
+      await runTallyRestoreCommand({ tallyDir: opts.tallyDir });
+      console.log("✓ tally.ini restored from backup");
+      console.log("✓ Firewall rule removed");
     });
 
   return program;
