@@ -95,6 +95,8 @@ export class ClientWirer {
     if (!currentServers?.[KEY]) {
       return { clientId, configPath, action: "noop" };
     }
+    // Backup before remove, matching "backup-before-write everywhere" spec.
+    await backupIfMissing(configPath);
     const stripped = removeUnderKey(existing, serversKey);
     await mkdir(dirname(configPath), { recursive: true });
     await writeAtomic(configPath, JSON.stringify(stripped, null, 2) + "\n");
