@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { fileURLToPath } from "node:url";
 import { runWireCommand } from "./commands/wire.js";
 import { runUnwireCommand } from "./commands/unwire.js";
+import { runTallyFixCommand } from "./commands/tally-fix.js";
 import type { ClientId } from "@tallymcp/client-wirer";
 
 export function createProgram(): Command {
@@ -31,6 +32,20 @@ export function createProgram(): Command {
     .action(async (clientArg: string) => {
       const result = await runUnwireCommand({ clientId: clientArg as ClientId });
       console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
+    });
+
+  program
+    .command("tally-fix")
+    .description("Turn on Tally's XML interface and add the Windows Firewall rule")
+    .option(
+      "--tally-dir <path>",
+      "Explicit Tally install directory (required when multiple installs are detected)",
+    )
+    .action(async (opts: { tallyDir?: string }) => {
+      const result = await runTallyFixCommand({ tallyDir: opts.tallyDir });
+      console.log(`✓ tally.ini at ${result.install.iniPath}: ${result.xmlInterface}`);
+      console.log(`✓ Firewall rule: ${result.firewallRule}`);
+      console.log(`\nNow open TallyPrime and load a company.`);
     });
 
   return program;
