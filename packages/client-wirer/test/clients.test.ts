@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { sep } from "node:path";
 import { CLIENT_REGISTRY, resolveClientConfigPath } from "../src/clients.js";
 
 describe("CLIENT_REGISTRY", () => {
@@ -21,39 +22,44 @@ describe("CLIENT_REGISTRY", () => {
 });
 
 describe("resolveClientConfigPath", () => {
+  // ENV values use backslash separators (mimicking real Windows envvars).
+  // The resolver normalizes to the current platform's `sep` so the
+  // returned path is usable on both Windows and Linux CI.
   const ENV = {
     APPDATA: "C:\\Users\\me\\AppData\\Roaming",
     USERPROFILE: "C:\\Users\\me",
     LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local",
   };
 
+  const p = (...segs: string[]): string => segs.join(sep);
+
   it("expands Claude Desktop path", () => {
     expect(resolveClientConfigPath("claude-desktop", ENV)).toBe(
-      "C:\\Users\\me\\AppData\\Roaming\\Claude\\claude_desktop_config.json",
+      p("C:", "Users", "me", "AppData", "Roaming", "Claude", "claude_desktop_config.json"),
     );
   });
 
   it("expands Cursor path", () => {
     expect(resolveClientConfigPath("cursor", ENV)).toBe(
-      "C:\\Users\\me\\.cursor\\mcp.json",
+      p("C:", "Users", "me", ".cursor", "mcp.json"),
     );
   });
 
   it("expands Claude Code path", () => {
     expect(resolveClientConfigPath("claude-code", ENV)).toBe(
-      "C:\\Users\\me\\.claude.json",
+      p("C:", "Users", "me", ".claude.json"),
     );
   });
 
   it("expands LM Studio path", () => {
     expect(resolveClientConfigPath("lm-studio", ENV)).toBe(
-      "C:\\Users\\me\\.lmstudio\\mcp.json",
+      p("C:", "Users", "me", ".lmstudio", "mcp.json"),
     );
   });
 
   it("expands Ollama bridge path", () => {
     expect(resolveClientConfigPath("ollama", ENV)).toBe(
-      "C:\\Users\\me\\AppData\\Local\\TallyMCP\\ollama-bridge\\config.json",
+      p("C:", "Users", "me", "AppData", "Local", "TallyMCP", "ollama-bridge", "config.json"),
     );
   });
 

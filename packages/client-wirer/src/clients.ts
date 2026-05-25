@@ -1,3 +1,4 @@
+import { sep } from "node:path";
 import type { ClientId } from "./types.js";
 
 export interface ClientSpec {
@@ -40,15 +41,21 @@ export const CLIENT_REGISTRY: Readonly<Record<ClientId, ClientSpec>> = {
  * Expands ${ENV_VAR} placeholders in the client's config-path template
  * against the supplied environment map. Throws if a required env var is
  * absent — callers should pass `process.env` (the harness will have it).
+ *
+ * Templates use Windows-style backslash separators because the production
+ * target is Windows. We normalize all `\` to the current platform's
+ * `path.sep` so the returned path is usable by `fs` APIs on Linux CI
+ * (where `\` is a literal filename character, not a separator).
  */
 export function resolveClientConfigPath(
   clientId: ClientId,
   env: Record<string, string | undefined>,
 ): string {
   const template = CLIENT_REGISTRY[clientId].configPathTemplate;
-  return template.replace(/\$\{([A-Z_]+)\}/g, (_, name: string) => {
+  const expanded = template.replace(/\$\{([A-Z_]+)\}/g, (_, name: string) => {
     const value = env[name];
     if (!value) throw new Error(`Required env var ${name} is not set`);
     return value;
   });
+  return expanded.replace(/\\/g, sep);
 }
