@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { fileURLToPath } from "node:url";
 import { runWireCommand } from "./commands/wire.js";
+import { runUnwireCommand } from "./commands/unwire.js";
 import type { ClientId } from "@tallymcp/client-wirer";
 
 export function createProgram(): Command {
@@ -22,6 +23,14 @@ export function createProgram(): Command {
       });
       console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
       if (result.backupCreated) console.log(`  (backup created at ${result.configPath}.bak)`);
+    });
+
+  program
+    .command("unwire <client>")
+    .description("Remove TallyMCP from the given AI client's config")
+    .action(async (clientArg: string) => {
+      const result = await runUnwireCommand({ clientId: clientArg as ClientId });
+      console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
     });
 
   return program;
