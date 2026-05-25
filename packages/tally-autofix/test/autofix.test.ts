@@ -1,0 +1,78 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtemp, rm, writeFile, readFile, mkdir, access } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { constants } from "node:fs";
+import { TallyAutofixer } from "../src/autofix.js";
+import { FakeExecRunner } from "../src/exec-runner.js";
+
+describe("TallyAutofixer.fixXmlInterface", () => {
+  let root: string;
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "autofix-"));
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("backs up tally.ini, sets the two server lines, and verifies", async () => {
+    const installDir = join(root, "TallyPrime");
+    await mkdir(installDir);
+    const iniPath = join(installDir, "tally.ini");
+    await writeFile(iniPath, "[TALLY]\nDefault Companies=Yes\nLoad=10002\n");
+    await writeFile(join(installDir, "tally.exe"), "");
+
+    const runner = new FakeExecRunner(() => ({
+      exitCode: 0, stdout: "INFO: No tasks are running", stderr: "",
+    }));
+    const fixer = new TallyAutofixer({ runner });
+    const result = await fixer.fixXmlInterface({
+      installDir, exePath: join(installDir, "tally.exe"), iniPath,
+    });
+
+    expect(result.iniBackupCreated).toBe(true);
+    await access(`${iniPath}.tallymcp-bak`, constants.F_OK);
+
+    const after = await readFile(iniPath, "utf8");
+    expect(after).toContain("Client Server=Both");
+    expect(after).toContain("ServerPort=9000");
+    expect(after).toContain("Default Companies=Yes");
+  });
+
+  it("returns noop when tally.ini already has Client Server=Both + ServerPort=9000", async () => {
+    const installDir = join(root, "TallyPrime");
+    await mkdir(installDir);
+    const iniPath = join(installDir, "tally.ini");
+    await writeFile(iniPath, "[TALLY]\nClient Server=Both\nServerPort=9000\n");
+    await writeFile(join(installDir, "tally.exe"), "");
+
+    const runner = new FakeExecRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
+    const fixer = new TallyAutofixer({ runner });
+    const result = await fixer.fixXmlInterface({
+      installDir, exePath: join(installDir, "tally.exe"), iniPath,
+    });
+    expect(result.action).toBe("noop");
+  });
+});
+
+describe("TallyAutofixer.restoreTallyIni", () => {
+  let root: string;
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "autofix-restore-"));
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("copies .tallymcp-bak back over the live file", async () => {
+    const iniPath = join(root, "tally.ini");
+    await writeFile(`${iniPath}.tallymcp-bak`, "ORIGINAL CONTENT");
+    await writeFile(iniPath, "MODIFIED CONTENT");
+
+    const runner = new FakeExecRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
+    const fixer = new TallyAutofixer({ runner });
+    await fixer.restoreTallyIni(iniPath);
+
+    expect(await readFile(iniPath, "utf8")).toBe("ORIGINAL CONTENT");
+  });
+});
