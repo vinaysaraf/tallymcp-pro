@@ -1,0 +1,14 @@
+Rule Name:                            TallyMCP — Tally XML port 9000
+----------------------------------------------------------------------
+Enabled:                              Yes
+Direction:                            In
+Profiles:                             Private
+Grouping:
+LocalIP:                              Any
+RemoteIP:                             Any
+Protocol:                             TCP
+LocalPort:                            9000
+RemotePort:                           Any
+Edge traversal:                       No
+Action:                               Allow
+Ok.
