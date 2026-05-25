@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runTallyFixCommand } from "../src/commands/tally-fix.js";
 import { FakeExecRunner } from "@tallymcp/tally-autofix";
+import { AbortError } from "../src/confirm.js";
 
 describe("tally-fix CLI", () => {
   let root: string;
@@ -31,6 +32,7 @@ describe("tally-fix CLI", () => {
     const result = await runTallyFixCommand({
       scanRoots: [root],
       runner,
+      yes: true,
     });
 
     expect(result.xmlInterface).toBe("applied");
@@ -48,7 +50,7 @@ describe("tally-fix CLI", () => {
 
     const runner = new FakeExecRunner(() => ({ exitCode: 0, stdout: "", stderr: "" }));
     await expect(
-      runTallyFixCommand({ scanRoots: [root], runner }),
+      runTallyFixCommand({ scanRoots: [root], runner, yes: true }),
     ).rejects.toThrow(/Multiple TallyPrime installs found.*--tally-dir/);
   });
 
@@ -65,8 +67,35 @@ describe("tally-fix CLI", () => {
       return { exitCode: 0, stdout: "Ok.", stderr: "" };
     });
 
-    const result = await runTallyFixCommand({ tallyDir: installDir, runner });
+    const result = await runTallyFixCommand({ tallyDir: installDir, runner, yes: true });
     expect(result.install.installDir).toBe(installDir);
     expect(result.xmlInterface).toBe("applied");
+  });
+
+  it("aborts when confirmFn returns false", async () => {
+    const installDir = join(root, "TallyPrime");
+    await mkdir(installDir);
+    const iniPath = join(installDir, "tally.ini");
+    const originalContent = "[TALLY]\nDefault Companies=Yes\n";
+    await writeFile(iniPath, originalContent);
+    await writeFile(join(installDir, "tally.exe"), "");
+
+    const runner = new FakeExecRunner((cmd, args) => {
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks are running", stderr: "" };
+      if (args.includes("show")) return { exitCode: 1, stdout: "No rules match.", stderr: "" };
+      return { exitCode: 0, stdout: "Ok.", stderr: "" };
+    });
+
+    await expect(
+      runTallyFixCommand({
+        tallyDir: installDir,
+        runner,
+        yes: false,
+        confirmFn: async () => false,
+      }),
+    ).rejects.toThrow(AbortError);
+
+    // Verify tally.ini was not modified
+    expect(await readFile(iniPath, "utf8")).toBe(originalContent);
   });
 });

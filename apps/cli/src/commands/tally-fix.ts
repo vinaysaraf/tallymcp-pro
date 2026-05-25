@@ -8,6 +8,7 @@ import {
   RealExecRunner,
   type TallyInstall,
 } from "@tallymcp/tally-autofix";
+import { AbortError, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
 
 export interface RunTallyFixOptions {
   /** Override scan roots (defaults: Program Files / Program Files (x86)). */
@@ -19,6 +20,10 @@ export interface RunTallyFixOptions {
    * this one. Required when multiple installs exist on the machine.
    */
   tallyDir?: string;
+  /** When true, skip the interactive confirmation prompt. */
+  yes?: boolean;
+  /** Override the default stdin reader (used by tests). */
+  confirmFn?: ConfirmFn;
 }
 
 export interface TallyFixResult {
@@ -61,6 +66,29 @@ export async function runTallyFixCommand(opts: RunTallyFixOptions = {}): Promise
       );
     }
     install = found[0]!;
+  }
+
+  // Build and display preview before touching any files.
+  const iniItem =
+    `Edit  ${install.iniPath}\n` +
+    `Add (or update) these 2 lines:\n` +
+    `  Client Server=Both\n` +
+    `  ServerPort=9000\n` +
+    `Backup will be saved to tally.ini.tallymcp-bak first.`;
+
+  const fwItem =
+    `Add a Windows Firewall rule\n` +
+    `name    = "TallyMCP — Tally XML port 9000"\n` +
+    `scope   = inbound TCP 9000, Private profile, ${install.exePath} only`;
+
+  const preview = formatPreview("I will make 2 changes to your PC:", [iniItem, fwItem]);
+  process.stdout.write(preview);
+  process.stdout.write("Both changes are reversible with `tallymcp-cli tally-restore`.\n\n");
+
+  if (!(opts.yes ?? false)) {
+    const confirmFn = opts.confirmFn ?? readStdinConfirm;
+    const confirmed = await confirmFn("Proceed? [y/N] ");
+    if (!confirmed) throw new AbortError();
   }
 
   // If Tally is running, ask the user to close it. The CLI does NOT auto-close.

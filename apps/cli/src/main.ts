@@ -6,6 +6,7 @@ import { runUnwireCommand } from "./commands/unwire.js";
 import { runTallyFixCommand } from "./commands/tally-fix.js";
 import { runTallyRestoreCommand } from "./commands/tally-restore.js";
 import { CLIENT_REGISTRY, type ClientId } from "@tallymcp/client-wirer";
+import { AbortError } from "./confirm.js";
 
 const VALID_CLIENTS = Object.keys(CLIENT_REGISTRY) as ClientId[];
 
@@ -27,21 +28,43 @@ export function createProgram(): Command {
     .command("wire <client>")
     .description("Add TallyMCP to the given AI client's config")
     .requiredOption("--install-dir <path>", "TallyMCP install directory")
-    .action(async (clientArg: string, opts: { installDir: string }) => {
-      const result = await runWireCommand({
-        clientId: assertValidClient(clientArg),
-        installDir: opts.installDir,
-      });
-      console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
-      if (result.backupCreated) console.log(`  (backup created at ${result.configPath}.bak)`);
+    .option("-y, --yes", "skip the interactive confirmation prompt")
+    .action(async (clientArg: string, opts: { installDir: string; yes?: boolean }) => {
+      try {
+        const result = await runWireCommand({
+          clientId: assertValidClient(clientArg),
+          installDir: opts.installDir,
+          yes: opts.yes ?? false,
+        });
+        console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
+        if (result.backupCreated) console.log(`  (backup created at ${result.configPath}.bak)`);
+      } catch (err) {
+        if (err instanceof AbortError) {
+          console.log("Aborted.");
+          process.exit(1);
+        }
+        throw err;
+      }
     });
 
   program
     .command("unwire <client>")
     .description("Remove TallyMCP from the given AI client's config")
-    .action(async (clientArg: string) => {
-      const result = await runUnwireCommand({ clientId: assertValidClient(clientArg) });
-      console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
+    .option("-y, --yes", "skip the interactive confirmation prompt")
+    .action(async (clientArg: string, opts: { yes?: boolean }) => {
+      try {
+        const result = await runUnwireCommand({
+          clientId: assertValidClient(clientArg),
+          yes: opts.yes ?? false,
+        });
+        console.log(`✓ ${result.action} ${result.clientId} → ${result.configPath}`);
+      } catch (err) {
+        if (err instanceof AbortError) {
+          console.log("Aborted.");
+          process.exit(1);
+        }
+        throw err;
+      }
     });
 
   program
@@ -51,11 +74,23 @@ export function createProgram(): Command {
       "--tally-dir <path>",
       "Explicit Tally install directory (required when multiple installs are detected)",
     )
-    .action(async (opts: { tallyDir?: string }) => {
-      const result = await runTallyFixCommand({ tallyDir: opts.tallyDir });
-      console.log(`✓ tally.ini at ${result.install.iniPath}: ${result.xmlInterface}`);
-      console.log(`✓ Firewall rule: ${result.firewallRule}`);
-      console.log(`\nNow open TallyPrime and load a company.`);
+    .option("-y, --yes", "skip the interactive confirmation prompt")
+    .action(async (opts: { tallyDir?: string; yes?: boolean }) => {
+      try {
+        const result = await runTallyFixCommand({
+          tallyDir: opts.tallyDir,
+          yes: opts.yes ?? false,
+        });
+        console.log(`✓ tally.ini at ${result.install.iniPath}: ${result.xmlInterface}`);
+        console.log(`✓ Firewall rule: ${result.firewallRule}`);
+        console.log(`\nNow open TallyPrime and load a company.`);
+      } catch (err) {
+        if (err instanceof AbortError) {
+          console.log("Aborted.");
+          process.exit(1);
+        }
+        throw err;
+      }
     });
 
   program
@@ -65,10 +100,22 @@ export function createProgram(): Command {
       "--tally-dir <path>",
       "Explicit Tally install directory (required when multiple installs are detected)",
     )
-    .action(async (opts: { tallyDir?: string }) => {
-      await runTallyRestoreCommand({ tallyDir: opts.tallyDir });
-      console.log("✓ tally.ini restored from backup");
-      console.log("✓ Firewall rule removed");
+    .option("-y, --yes", "skip the interactive confirmation prompt")
+    .action(async (opts: { tallyDir?: string; yes?: boolean }) => {
+      try {
+        await runTallyRestoreCommand({
+          tallyDir: opts.tallyDir,
+          yes: opts.yes ?? false,
+        });
+        console.log("✓ tally.ini restored from backup");
+        console.log("✓ Firewall rule removed");
+      } catch (err) {
+        if (err instanceof AbortError) {
+          console.log("Aborted.");
+          process.exit(1);
+        }
+        throw err;
+      }
     });
 
   return program;

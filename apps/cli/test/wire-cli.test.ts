@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runWireCommand } from "../src/commands/wire.js";
+import { AbortError } from "../src/confirm.js";
 
 describe("wire CLI", () => {
   let dir: string;
@@ -20,6 +21,7 @@ describe("wire CLI", () => {
       clientId: "claude-desktop",
       installDir,
       env: { APPDATA: appdata },
+      yes: true,
     });
     expect(result.action).toBe("added");
     const written = JSON.parse(await readFile(result.configPath, "utf8"));
@@ -28,5 +30,41 @@ describe("wire CLI", () => {
       args: [join(installDir, "mcp-server", "main.js")],
       env: { TALLYMCP_CONFIG: join(installDir, "config.json") },
     });
+  });
+
+  it("aborts when confirmFn returns false", async () => {
+    const installDir = join(dir, "TallyMCP");
+    const appdata = join(dir, "appdata");
+    const configPath = join(appdata, "Claude", "claude_desktop_config.json");
+
+    await expect(
+      runWireCommand({
+        clientId: "claude-desktop",
+        installDir,
+        env: { APPDATA: appdata },
+        yes: false,
+        confirmFn: async () => false,
+      }),
+    ).rejects.toThrow(AbortError);
+
+    // Verify no file was written
+    await expect(readFile(configPath, "utf8")).rejects.toThrow();
+  });
+
+  it("does not call confirmFn when yes: true", async () => {
+    const installDir = join(dir, "TallyMCP");
+    const appdata = join(dir, "appdata");
+    const spyFn = vi.fn().mockRejectedValue(new Error("confirmFn should not be called"));
+
+    const result = await runWireCommand({
+      clientId: "claude-desktop",
+      installDir,
+      env: { APPDATA: appdata },
+      yes: true,
+      confirmFn: spyFn,
+    });
+
+    expect(spyFn).not.toHaveBeenCalled();
+    expect(result.action).toBe("added");
   });
 });

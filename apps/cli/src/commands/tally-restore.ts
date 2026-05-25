@@ -8,11 +8,16 @@ import {
   type ExecRunner,
   type TallyInstall,
 } from "@tallymcp/tally-autofix";
+import { AbortError, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
 
 export interface RunTallyRestoreOptions {
   scanRoots?: string[];
   runner?: ExecRunner;
   tallyDir?: string;
+  /** When true, skip the interactive confirmation prompt. */
+  yes?: boolean;
+  /** Override the default stdin reader (used by tests). */
+  confirmFn?: ConfirmFn;
 }
 
 export async function runTallyRestoreCommand(
@@ -40,6 +45,24 @@ export async function runTallyRestoreCommand(
       );
     }
     install = found[0]!;
+  }
+
+  // Build and display preview before touching any files.
+  const iniItem =
+    `Restore  ${install.iniPath}\n` +
+    `from its backup at ${install.iniPath}.tallymcp-bak.`;
+
+  const fwItem =
+    `Remove the Windows Firewall rule\n` +
+    `name = "TallyMCP — Tally XML port 9000"`;
+
+  const preview = formatPreview("I will make 2 changes to your PC:", [iniItem, fwItem]);
+  process.stdout.write(preview);
+
+  if (!(opts.yes ?? false)) {
+    const confirmFn = opts.confirmFn ?? readStdinConfirm;
+    const confirmed = await confirmFn("Proceed? [y/N] ");
+    if (!confirmed) throw new AbortError();
   }
 
   if (await detectTallyRunning(runner)) {
