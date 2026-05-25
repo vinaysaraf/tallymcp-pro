@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, readFile, mkdir, access } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir, access, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { constants } from "node:fs";
@@ -37,6 +37,10 @@ describe("TallyAutofixer.fixXmlInterface", () => {
     expect(after).toContain("Client Server=Both");
     expect(after).toContain("ServerPort=9000");
     expect(after).toContain("Default Companies=Yes");
+
+    // Atomic write must not leave a .tmp behind.
+    const entries = await readdir(installDir);
+    expect(entries.some((f) => f.endsWith(".tmp"))).toBe(false);
   });
 
   it("returns noop when tally.ini already has Client Server=Both + ServerPort=9000", async () => {

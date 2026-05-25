@@ -1,7 +1,8 @@
-import { readFile, writeFile, copyFile, access } from "node:fs/promises";
+import { readFile, copyFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { parseTallyIni, ensureXmlInterfaceLines, serializeTallyIni } from "./tally-ini.js";
 import { addFirewallRule, removeFirewallRule, firewallRuleExists, FIREWALL_RULE_NAME } from "./firewall.js";
+import { writeAtomic } from "./atomic-write.js";
 import type { ExecRunner } from "./exec-runner.js";
 import type { TallyInstall } from "./tally-detect.js";
 
@@ -38,7 +39,7 @@ export class TallyAutofixer {
     }
 
     const updated = ensureXmlInterfaceLines(ini);
-    await writeFile(install.iniPath, serializeTallyIni(updated), "utf8");
+    await writeAtomic(install.iniPath, serializeTallyIni(updated));
 
     // Verify.
     const verify = parseTallyIni(await readFile(install.iniPath, "utf8"));
@@ -52,7 +53,8 @@ export class TallyAutofixer {
   async restoreTallyIni(iniPath: string): Promise<void> {
     const backupPath = `${iniPath}${TALLY_INI_BAK_SUFFIX}`;
     await access(backupPath, constants.F_OK); // throw if backup missing
-    await copyFile(backupPath, iniPath);
+    const backupContent = await readFile(backupPath, "utf8");
+    await writeAtomic(iniPath, backupContent);
   }
 
   async ensureFirewallRule(tallyExePath: string): Promise<"added" | "noop"> {
