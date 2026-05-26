@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { constants } from "node:fs";
 import { TallyAutofixer, TallyIniLockedError } from "../src/autofix.js";
-import { FakeExecRunner } from "../src/exec-runner.js";
+import { FakeExecRunner, type ExecResult } from "../src/exec-runner.js";
 
 // Mock writeAtomic at MODULE scope (Cursor H2): vi.spyOn on the imported
 // module object doesn't intercept a static named import in autofix.ts
@@ -106,6 +106,30 @@ describe("TallyAutofixer.ensureFirewallRule", () => {
     const fixer = new TallyAutofixer({ runner });
     const result = await fixer.ensureFirewallRule("C:\\TallyPrime\\tally.exe");
     expect(result).toBe("skipped-non-admin");
+  });
+
+  it("ensureFirewallRule returns 'group-policy-blocked' when Group Policy denies the rule", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "tallymcp-gp-"));
+    const fixer = new TallyAutofixer({
+      runner: new FakeExecRunner((cmd, args): ExecResult => {
+        if (args.includes("show")) {
+          return { exitCode: 1, stdout: "No rules match", stderr: "" };
+        }
+        if (args.includes("add")) {
+          return {
+            exitCode: 1,
+            stdout: "",
+            stderr: "The configuration is not allowed by the Group Policy configured on this computer.",
+          };
+        }
+        return { exitCode: 0, stdout: "", stderr: "" };
+      }),
+    });
+    try {
+      expect(await fixer.ensureFirewallRule("C:\\Tally\\tally.exe")).toBe("group-policy-blocked");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

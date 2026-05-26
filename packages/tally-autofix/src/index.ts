@@ -29,6 +29,7 @@ export {
   addFirewallRule,
   removeFirewallRule,
   FirewallElevationError,
+  GroupPolicyError,
   type AddFirewallRuleOptions,
 } from "./firewall.js";
 export { detectIsElevated } from "./elevation.js";

@@ -13,6 +13,17 @@ export class FirewallElevationError extends Error {
   }
 }
 
+export class GroupPolicyError extends Error {
+  constructor() {
+    super(
+      "Group Policy disallows firewall changes. Ask your IT team to allow " +
+        "inbound TCP 9000 for TallyPrime, or skip this step if you only use " +
+        "AI tools on this same PC (loopback works without the rule).",
+    );
+    this.name = "GroupPolicyError";
+  }
+}
+
 /**
  * Returns true if a firewall rule with our exact name exists.
  * `netsh advfirewall firewall show rule name=<X>` exits non-zero when not found.
@@ -50,9 +61,7 @@ export async function addFirewallRule(
   ]);
   if (result.exitCode !== 0) {
     if (/group policy/i.test(result.stderr)) {
-      throw new Error(
-        "Group Policy disallows firewall changes. Ask your IT team to allow inbound TCP 9000 for TallyPrime.",
-      );
+      throw new GroupPolicyError();
     }
     if (result.stderr.trim() === "") {
       throw new FirewallElevationError();
