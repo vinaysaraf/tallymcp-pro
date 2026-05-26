@@ -16,9 +16,14 @@ export const IPC_CHANNELS = {
   TALLY_FIX: "tally-fix",
   TALLY_RESTORE: "tally-restore",
   GET_CONFIG: "get-config",
+  CHECK_FOR_UPDATES: "check-for-updates",
+  DOWNLOAD_UPDATE: "download-update",
+  QUIT_AND_INSTALL: "quit-and-install",
 } as const;
 
 export const TALLY_STATUS_EVENT = "tally-status" as const;
+
+export const UPDATE_STATUS_EVENT = "update-status" as const;
 
 // Mirror the ClientId from @tallymcp/client-wirer — duplicate here so
 // the shared module has zero cross-package imports (preload bundles
@@ -112,6 +117,34 @@ export interface TallyStatus {
   probedAt: number;
 }
 
+export interface UpdateStatus {
+  /**
+   * Discriminator for the update-flow state machine. Renderer renders
+   * different UI per state:
+   *  - `up-to-date`         — no banner, do nothing.
+   *  - `update-available`   — show the blue banner with "Update now · What's new · Later".
+   *  - `downloading`        — show a progress bar inside the banner.
+   *  - `ready-to-install`   — replace the banner with a "Restart to apply" CTA.
+   *  - `error`              — show a quiet error line, do not block normal use.
+   */
+  status:
+    | "up-to-date"
+    | "update-available"
+    | "downloading"
+    | "ready-to-install"
+    | "error";
+  /** Installed version (always populated, even on error). */
+  currentVersion: string;
+  /** New version available; populated when `status !== "up-to-date"`. */
+  latestVersion?: string;
+  /** 0..1; populated only when `status === "downloading"`. */
+  downloadProgress?: number;
+  /** Release-notes URL; usually the GitHub Release page for `latestVersion`. */
+  releaseNotesUrl?: string;
+  /** Populated only when `status === "error"`. */
+  error?: string;
+}
+
 /**
  * The renderer-facing API surface that the preload script exposes via
  * `contextBridge.exposeInMainWorld("tallymcp", ...)`. Defined here in
@@ -127,6 +160,22 @@ export interface TallymcpApi {
   tallyRestore: () => Promise<TallyRestoreResponse>;
   getConfig: () => Promise<ConfigSnapshot>;
   subscribeTallyStatus: (cb: (status: TallyStatus) => void) => () => void;
+  /** Trigger an explicit update check. Resolves with the current state. */
+  checkForUpdates: () => Promise<UpdateStatus>;
+  /**
+   * Begin downloading the available update. Returns immediately; progress
+   * + completion stream via subscribeUpdateStatus. When `status` flips to
+   * `ready-to-install`, call `quitAndInstall()` to actually install.
+   */
+  downloadUpdate: () => Promise<void>;
+  /**
+   * Quit the app + install the previously-downloaded update + relaunch.
+   * Only valid when `status === "ready-to-install"`. Calling earlier is a
+   * no-op (or returns an error — see auto-update.ts).
+   */
+  quitAndInstall: () => Promise<void>;
+  /** Subscribe to update-status events. Returns an unsubscriber. */
+  subscribeUpdateStatus: (cb: (status: UpdateStatus) => void) => () => void;
 }
 
 export interface IpcContract {
@@ -136,4 +185,7 @@ export interface IpcContract {
   [IPC_CHANNELS.TALLY_FIX]: { req: void; res: TallyFixResponse };
   [IPC_CHANNELS.TALLY_RESTORE]: { req: void; res: TallyRestoreResponse };
   [IPC_CHANNELS.GET_CONFIG]: { req: void; res: ConfigSnapshot };
+  [IPC_CHANNELS.CHECK_FOR_UPDATES]: { req: void; res: UpdateStatus };
+  [IPC_CHANNELS.DOWNLOAD_UPDATE]: { req: void; res: void };
+  [IPC_CHANNELS.QUIT_AND_INSTALL]: { req: void; res: void };
 }
