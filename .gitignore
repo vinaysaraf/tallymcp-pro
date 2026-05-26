@@ -33,3 +33,7 @@ coverage/
 # Phase 3 installer build artifacts (Task 6+7 populate staging/; Task 8 writes dist-installer/)
 installer/staging/
 apps/configurator/dist-installer/
+
+# Code signing — never commit private cert material
+*.pfx
+*.p12
