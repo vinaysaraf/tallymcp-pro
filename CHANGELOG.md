@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.0-phase1 — Installer foundation (2026-05-25)
+
+### Added
+- **`@tallymcp/client-wirer`** package — atomic JSON merge / backup / remove for the 5 supported AI clients (Claude Desktop, Cursor, Claude Code, LM Studio, Ollama).
+- **`@tallymcp/tally-autofix`** package — `tally.ini` parser/editor that preserves order and comments, Windows Firewall rule manager via `netsh`, Tally process detection.
+- **`@tallymcp/cli`** app exposing 4 commands:
+  - `tallymcp-cli wire <client>` — adds TallyMCP to the named AI client's config.
+  - `tallymcp-cli unwire <client>` — surgically removes our entry.
+  - `tallymcp-cli tally-fix` — turns on Tally's XML interface and adds the firewall rule.
+  - `tallymcp-cli tally-restore` — restores `tally.ini` from backup and removes the firewall rule.
+- `claude-code` added to `apps/mcp-server/src/client-config.ts` SupportedClient list so the runtime config-export tool stays in sync with the installer.
+
+### Notes
+- Phase 1 ships only the data-layer libraries and a terminal CLI. The Electron Configurator UI lands in Phase 2.
+- JSON config files written by `client-wirer` are formatted with `JSON.stringify(merged, null, 2)`; whitespace and key order may differ from the original. The `.bak` siblings preserve the pre-edit file byte-for-byte for restore.
+
+### Preview-and-confirm UX for CLI commands (Phase 1 addendum)
+
+All 4 CLI commands now print an explicit preview of every file change they will make before modifying anything on disk.  The user must type `y` or `yes` to proceed; any other input (including empty) aborts with exit code 1.
+
+**`-y` / `--yes` flag** — skips the interactive prompt entirely. Intended for scripted environments and for the Phase 2 Configurator UI (which has its own visual consent surface and will pass `--yes` when invoking the CLI).
+
+Behavior summary per command:
+
+| Command | Preview shows | Reversible with |
+|---|---|---|
+| `wire <client>` | config file path + JSON entry that will be added + backup path | `unwire <client>` |
+| `unwire <client>` | config file path + key that will be removed | — |
+| `tally-fix` | `tally.ini` path + 2 lines that will be added + firewall rule details | `tally-restore` |
+| `tally-restore` | `tally.ini` + backup path that will be restored + firewall rule that will be deleted | — |
+
+The abort path throws an `AbortError` (exported from `apps/cli/src/confirm.ts`); `main.ts` catches it, logs `"Aborted."`, and exits with code 1.  Tests inject a `confirmFn` stub rather than reading from stdin.
+
+### Changed (post-smoke fixes)
+- `tally-fix` now skips the Windows Firewall step gracefully when not run as
+  Administrator, instead of failing. The `tally.ini` edit still proceeds.
+  Most CAs run TallyMCP entirely on loopback (`127.0.0.1:9000`), which does
+  not require the firewall rule. Power users with multi-machine setups can
+  re-run from an elevated terminal to add it.
+- `tally-restore` likewise skips firewall removal gracefully when not run as
+  Administrator — `tally.ini` is still restored. The CLI surfaces a clear
+  warning with instructions rather than crashing with a stack trace.
+- `client-wirer` strips UTF-8 BOM before `JSON.parse` (PowerShell-generated
+  config files frequently have one).
+
 ## [Unreleased]
 
 ### Added

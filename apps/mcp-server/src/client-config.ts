@@ -4,7 +4,7 @@
  */
 import { execPath } from "node:process";
 
-export type SupportedClient = "cursor" | "claude-desktop" | "lm-studio" | "ollama";
+export type SupportedClient = "cursor" | "claude-desktop" | "claude-code" | "lm-studio" | "ollama";
 
 export interface McpClientConfigOptions {
   client: SupportedClient;
@@ -43,6 +43,17 @@ export function exportMcpClientConfig(options: McpClientConfigOptions): {
   if (options.client === "claude-desktop") {
     return {
       client: "claude-desktop",
+      format: "json",
+      content: JSON.stringify(
+        { mcpServers: { "tallymcp-pro": snippet } },
+        null,
+        2,
+      ),
+    };
+  }
+  if (options.client === "claude-code") {
+    return {
+      client: "claude-code",
       format: "json",
       content: JSON.stringify(
         { mcpServers: { "tallymcp-pro": snippet } },

@@ -49,6 +49,31 @@ importers:
         specifier: ^3.2.1
         version: 3.2.4(@types/node@22.19.19)(tsx@4.22.3)
 
+  apps/cli:
+    dependencies:
+      '@tallymcp/client-wirer':
+        specifier: workspace:*
+        version: link:../../packages/client-wirer
+      '@tallymcp/tally-autofix':
+        specifier: workspace:*
+        version: link:../../packages/tally-autofix
+      commander:
+        specifier: ^12.0.0
+        version: 12.1.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.29
+        version: 22.19.19
+      tsx:
+        specifier: ^4.19.4
+        version: 4.22.3
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.1
+        version: 3.2.4(@types/node@22.19.19)(tsx@4.22.3)
+
   apps/mcp-server:
     dependencies:
       '@modelcontextprotocol/sdk':
@@ -95,6 +120,25 @@ importers:
         version: 3.25.76
 
   packages/audit-engine: {}
+
+  packages/client-wirer:
+    dependencies:
+      '@tallymcp/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      zod:
+        specifier: ^3.25.56
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.29
+        version: 22.19.19
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.1
+        version: 3.2.4(@types/node@22.19.19)(tsx@4.22.3)
 
   packages/compliance-engine: {}
 
@@ -164,6 +208,25 @@ importers:
       zod:
         specifier: ^3.25.56
         version: 3.25.76
+
+  packages/tally-autofix:
+    dependencies:
+      '@tallymcp/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+      zod:
+        specifier: ^3.25.56
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.29
+        version: 22.19.19
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.1
+        version: 3.2.4(@types/node@22.19.19)(tsx@4.22.3)
 
   packages/tally-connector:
     dependencies:
@@ -1080,6 +1143,10 @@ packages:
 
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
 
   commander@5.1.0:
     resolution: {integrity: sha512-P0CysNDQ7rtVw4QIQtm+MRxV66vKFSvlsQvGYXZWR3qFU0jlMKHZZZgw8e+8DSah4UDKMqnknRDQz+xuQXQ/Zg==}
@@ -2934,6 +3001,8 @@ snapshots:
       color-name: 1.1.4
 
   color-name@1.1.4: {}
+
+  commander@12.1.0: {}
 
   commander@5.1.0: {}
 
