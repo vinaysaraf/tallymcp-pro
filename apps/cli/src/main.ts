@@ -111,12 +111,20 @@ export function createProgram(): Command {
     .option("-y, --yes", "skip the interactive confirmation prompt")
     .action(async (opts: { tallyDir?: string; yes?: boolean }) => {
       try {
-        await runTallyRestoreCommand({
+        const result = await runTallyRestoreCommand({
           tallyDir: opts.tallyDir,
           yes: opts.yes ?? false,
         });
-        console.log("✓ tally.ini restored from backup");
-        console.log("✓ Firewall rule removed");
+        console.log(`✓ tally.ini at ${result.install.iniPath} restored from backup`);
+        if (result.firewallRule === "removed") {
+          console.log("✓ Firewall rule removed");
+        } else if (result.firewallRule === "noop") {
+          console.log("✓ Firewall rule: not present (nothing to remove)");
+        } else {
+          console.log("⚠ Firewall rule: skipped — requires Administrator");
+          console.log("  If the rule was added by a prior elevated run, re-run from an");
+          console.log("  elevated terminal to remove it. Otherwise no action needed.");
+        }
       } catch (err) {
         if (err instanceof AbortError) {
           console.log("Aborted.");

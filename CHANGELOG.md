@@ -41,6 +41,9 @@ The abort path throws an `AbortError` (exported from `apps/cli/src/confirm.ts`);
   Most CAs run TallyMCP entirely on loopback (`127.0.0.1:9000`), which does
   not require the firewall rule. Power users with multi-machine setups can
   re-run from an elevated terminal to add it.
+- `tally-restore` likewise skips firewall removal gracefully when not run as
+  Administrator — `tally.ini` is still restored. The CLI surfaces a clear
+  warning with instructions rather than crashing with a stack trace.
 - `client-wirer` strips UTF-8 BOM before `JSON.parse` (PowerShell-generated
   config files frequently have one).
 

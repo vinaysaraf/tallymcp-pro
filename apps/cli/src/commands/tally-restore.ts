@@ -20,9 +20,15 @@ export interface RunTallyRestoreOptions {
   confirmFn?: ConfirmFn;
 }
 
+export interface TallyRestoreResult {
+  install: TallyInstall;
+  iniRestored: boolean;
+  firewallRule: "removed" | "noop" | "skipped-non-admin";
+}
+
 export async function runTallyRestoreCommand(
   opts: RunTallyRestoreOptions = {},
-): Promise<void> {
+): Promise<TallyRestoreResult> {
   const runner = opts.runner ?? new RealExecRunner();
 
   let install: TallyInstall;
@@ -74,5 +80,6 @@ export async function runTallyRestoreCommand(
   }
   const fixer = new TallyAutofixer({ runner });
   await fixer.restoreTallyIni(install.iniPath);
-  await fixer.removeFirewallRuleIfPresent();
+  const firewallRule = await fixer.removeFirewallRuleIfPresent();
+  return { install, iniRestored: true, firewallRule };
 }

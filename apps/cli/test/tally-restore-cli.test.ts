@@ -23,15 +23,41 @@ describe("tally-restore CLI", () => {
     await writeFile(`${iniPath}.tallymcp-bak`, "ORIGINAL");
     await writeFile(join(installDir, "tally.exe"), "");
 
-    const runner = new FakeExecRunner((cmd, _args) => {
+    const runner = new FakeExecRunner((cmd, args) => {
       if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks are running", stderr: "" };
-      // firewall delete → success
+      // firewall show → rule present; firewall delete → success
+      if (args.includes("show")) return { exitCode: 0, stdout: "Rule Name: TallyMCP — Tally XML port 9000\nOk.", stderr: "" };
       return { exitCode: 0, stdout: "Deleted 1 rule(s).", stderr: "" };
     });
 
-    await runTallyRestoreCommand({ scanRoots: [root], runner, yes: true });
+    const result = await runTallyRestoreCommand({ scanRoots: [root], runner, yes: true });
 
     expect(await readFile(iniPath, "utf8")).toBe("ORIGINAL");
+    expect(result.iniRestored).toBe(true);
+    expect(result.firewallRule).toBe("removed");
+  });
+
+  it("returns firewallRule='skipped-non-admin' when delete fails with empty stderr", async () => {
+    const installDir = join(root, "TallyPrime");
+    await mkdir(installDir);
+    const iniPath = join(installDir, "tally.ini");
+    await writeFile(iniPath, "MODIFIED");
+    await writeFile(`${iniPath}.tallymcp-bak`, "ORIGINAL");
+    await writeFile(join(installDir, "tally.exe"), "");
+
+    const runner = new FakeExecRunner((cmd, args) => {
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks are running", stderr: "" };
+      // firewall show → rule present; firewall delete → elevation failure
+      if (args.includes("show")) return { exitCode: 0, stdout: "Rule Name: TallyMCP — Tally XML port 9000\nOk.", stderr: "" };
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    const result = await runTallyRestoreCommand({ scanRoots: [root], runner, yes: true });
+
+    // tally.ini must still be restored even when firewall removal is skipped
+    expect(await readFile(iniPath, "utf8")).toBe("ORIGINAL");
+    expect(result.iniRestored).toBe(true);
+    expect(result.firewallRule).toBe("skipped-non-admin");
   });
 
   it("aborts when confirmFn returns false", async () => {
