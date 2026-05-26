@@ -82,4 +82,66 @@ describe("HealthCheck", () => {
     );
     expect(screen.getByText(/Install TallyPrime/i)).toBeDefined();
   });
+
+  it("shows the firewall-skip-non-admin yellow card when firewallSkipReason is 'non-admin'", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: false,
+          configuredClients: [],
+        }}
+        firewallSkipReason="non-admin"
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Couldn't add the firewall rule/i)).toBeDefined();
+    expect(screen.getByText(/admin rights required/i)).toBeDefined();
+    expect(screen.getByText(/loopback/i)).toBeDefined();
+  });
+
+  it("shows Re-check (not Fix loop) when XML is OK and firewall was skipped (Cursor H1)", () => {
+    // Post-skip state: XML on, firewall missing but known-skipped.
+    // The original `needsFix` gate would loop on "Fix both" → re-fail.
+    // Patch A's split gate uses firewallSkipReason to switch to Re-check.
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: false,
+          configuredClients: [],
+        }}
+        firewallSkipReason="non-admin"
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Re-check/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Fix both/i })).toBeNull();
+  });
+
+  it("does NOT show the firewall-skip explanation when firewallSkipReason is undefined", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: false,
+          firewallRulePresent: false,
+          configuredClients: [],
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/Couldn't add the firewall rule/i)).toBeNull();
+  });
 });
