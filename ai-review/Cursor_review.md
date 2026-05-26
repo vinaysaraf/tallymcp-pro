@@ -2,8 +2,8 @@
 
 **Date:** 2026-05-26  
 **Branch:** `feat/v1.0-installer-phase3`  
-**Range:** `a282e29..ed3a2b9` (14 commits ahead of `main`)  
-**Tip SHA:** `ed3a2b9`  
+**Range:** `a282e29..1593a83` (16 commits ahead of `main`)  
+**Tip SHA:** `1593a83` (fix bundle `7fb2979`, audit `1593a83`)  
 **Scope:** NSIS uninstall flow, install-dir + wire-path patches, `pnpm package` pipeline, smoke scripts, staging layout.
 
 **Tests:** `pnpm --filter @tallymcp/configurator test` — **76/76** passed.
@@ -88,3 +88,54 @@ All three Cursor follow-ups landed inline since they're contained to two files:
 Configurator gates after fix: **76/76** unit tests, lint clean, typecheck clean, PS1 parses cleanly under both PowerShell 5.1 and pwsh 7.
 
 **Verdict (post-resolution): ✅ READY TO MERGE.** Branch tip: `7fb2979` (15 commits ahead of `main`).
+
+---
+
+## Round 2 (re-verification of `7fb2979`)
+
+**Scope:** Confirm H1 / M1 / M2 fixes in `uninstall-smoke.ps1` + manual smoke doc.
+
+### H1 — em-dash firewall query
+
+**✅ Resolved.** Runtime construction matches `FIREWALL_RULE_NAME`:
+
+```115:117:installer/test/uninstall-smoke.ps1
+$emDash = [char]0x2014
+$fwRuleName = "TallyMCP $emDash Tally XML port 9000"
+$fwQuery = netsh advfirewall firewall show rule name="$fwRuleName" 2>&1
+```
+
+**ASCII-only confirmed:** byte scan of `installer/test/uninstall-smoke.ps1` — 6258 bytes, **0** bytes > 0x7F. Safe for pwsh 7 + Windows PowerShell 5.1.
+
+### M1 — Stop-Process + manual doc
+
+**✅ Resolved and consistent.** Script stops `TallyMCP` before uninstall (L57–62). Manual smoke §5 (L78) documents closing Configurator for Settings UI uninstall; notes smoke script handles it via `Stop-Process`.
+
+### M2 — Tally scan roots
+
+**✅ Resolved.** Scan roots match `DEFAULT_SCAN_ROOTS` in `tally-detect.ts` L19–21:
+
+```130:141:installer/test/uninstall-smoke.ps1
+$tallyScanRoots = @("C:\Program Files", "C:\Program Files (x86)")
+...
+  Write-Host "  ~ no TallyPrime install found in Program Files - skipping tally.ini check"
+```
+
+**Nit:** Smoke checks any `TallyPrime*` dir with `tally.ini`; `detectTallyInstall` also requires `tally.exe` (L39–47). Divergence is harmless for typical installs; optional tighten later.
+
+### New from fixes
+
+- Manual smoke L107 still embeds a literal em-dash in the example `netsh` one-liner (fine for human copy-paste; script path is the gate).
+- No regressions in NSIS/cleanup code paths.
+
+### Round 2 verdict
+
+**✅ READY TO MERGE** — Round 1 smoke/QA blockers closed. Residual items (M3 network/Windows, M2 `tally.exe` parity) unchanged and non-blocking.
+
+### Round 2 nit resolution (commit `b7e683d`)
+
+The single non-blocking nit (smoke scan vs `detectTallyInstall` parity) was tightened inline since it's a 2-line change. `installer/test/uninstall-smoke.ps1` now requires BOTH `tally.exe` AND `tally.ini` to count a directory as a real TallyPrime install — matches `detectTallyInstall`'s `access` checks in `packages/tally-autofix/src/tally-detect.ts`. Configurator 76/76 still green; file remains pure ASCII.
+
+**Final tip after Round 2 nit cleanup:** `b7e683d` (17 commits ahead of `main`).
+
+**Verdict (post-Round-2-nit-cleanup): ✅ READY TO MERGE — no remaining items.**
