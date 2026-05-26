@@ -35,6 +35,15 @@ Behavior summary per command:
 
 The abort path throws an `AbortError` (exported from `apps/cli/src/confirm.ts`); `main.ts` catches it, logs `"Aborted."`, and exits with code 1.  Tests inject a `confirmFn` stub rather than reading from stdin.
 
+### Changed (post-smoke fixes)
+- `tally-fix` now skips the Windows Firewall step gracefully when not run as
+  Administrator, instead of failing. The `tally.ini` edit still proceeds.
+  Most CAs run TallyMCP entirely on loopback (`127.0.0.1:9000`), which does
+  not require the firewall rule. Power users with multi-machine setups can
+  re-run from an elevated terminal to add it.
+- `client-wirer` strips UTF-8 BOM before `JSON.parse` (PowerShell-generated
+  config files frequently have one).
+
 ## [Unreleased]
 
 ### Added
