@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.0-phase2 — Configurator UI (Electron) (2026-05-26)
+
+### Added
+- **`@tallymcp/configurator`** Electron app — the user-facing UI on top of the Phase 1 libraries. Six screens + one confirmation modal (Home tile grid · Add MCP modal · Health Check · SmartScreen guide · Settings · Done screen · Restore confirmation modal) wired via a typed IPC contract.
+- Electron main process owns all Node.js access (`@tallymcp/client-wirer`, `@tallymcp/tally-autofix`); renderer talks to main exclusively through `contextBridge`-exposed `window.tallymcp` API with `contextIsolation: true` + `nodeIntegration: false` + `sandbox: true`.
+- Background Tally HTTP poller pushes live status to the renderer via `tally-status` IPC events (5 s interval, loopback-only).
+- `electron-updater` scaffolded with a stubbed update source — real `latest.json` integration in Phase 4.
+- 69 unit tests (main IPC handlers + Zustand store + React components, including `configuredClients` probing, `multipleTallyInstalls` detection, `RestoreConfirmModal`, `DoneScreen`, `ErrorBanner`, App-level error surfacing) + 4 Playwright E2E tests (Electron driver launches the built app, exercises all screens).
+
+### Security
+- `wireMcp` IPC handler no longer trusts a renderer-supplied `installDir`. Main resolves the canonical `%LOCALAPPDATA%\TallyMCP` at boot and injects it via `WireMcpContext` when registering the handler. A renderer (or DevTools) caller can no longer point the wire entry at an arbitrary folder. (Cursor review H1, addressed in `f808be9`.)
+
+### Error handling
+- All Tally IPC calls (`wireMcp`, `tallyFix`, `tallyRestore`, `healthCheck`) are now wrapped in try/catch in `App.tsx`. Failures surface via a dismissible red `ErrorBanner` rendered between the `StatusBanner` and the active screen. Errors auto-clear on screen navigation and on the next successful operation. (Cursor review M1 + M3.)
+
+### Notes
+- Phase 2 ships the UI but NOT the installer packaging (Phase 3), code signing (Phase 3), or the GitHub Actions release pipeline (Phase 4).
+- The renderer never persists state to disk — Zustand is in-memory; the canonical config lives in `%LOCALAPPDATA%\TallyMCP\config.json` (managed by the MCP server) and is exposed read-only via `getConfig` IPC.
+- Renderer makes exactly one outbound HTTP call: the Tally poll to `http://127.0.0.1:9000` (loopback). No analytics, no auto-update fetch in Phase 2 (Phase 4 wires that).
+- Bumped `electron-vite` from `2.x` → `4.x` (resolves the `splitVendorChunk` API removal in Vite 5+); preload bundle pinned to CJS output so the main process's hardcoded `../preload/index.js` path keeps working.
+
 ## v1.0.0-phase1 — Installer foundation (2026-05-25)
 
 ### Added
