@@ -14,6 +14,7 @@ import {
   parseTallyIni,
   RealExecRunner,
   TallyAutofixer,
+  detectIsElevated,
   type ExecRunner,
   type TallyInstall,
 } from "@tallymcp/tally-autofix";
@@ -151,6 +152,9 @@ export async function handleHealthCheck(
   // Firewall
   const firewallRulePresent = await firewallRuleExists(runner);
 
+  // Elevation pre-flight (Phase 3.1 Patch C)
+  const isElevated = await detectIsElevated(runner);
+
   // Configured clients — probe each client config file for "tallymcp-pro"
   const configuredClients = await detectConfiguredClients(
     ctx.env ?? process.env,
@@ -164,6 +168,7 @@ export async function handleHealthCheck(
     firewallRulePresent,
     configuredClients,
     multipleTallyInstalls: found.length > 1 ? found.map((i) => i.installDir) : undefined,
+    isElevated,
   };
 }
 
