@@ -75,6 +75,8 @@ should respond by calling tools through the bundled MCP server.
 
 ## 5. Uninstall round-trip
 
+**First close the Configurator** (the window TallyMCP auto-opened at end of install). electron-builder's NSIS template runs `un.checkAppRunning` on silent uninstall — a still-open `TallyMCP.exe` will stall the uninstaller before our `customUnInstall` cleanup hook fires. The `pnpm package:uninstall` smoke script handles this with a defensive `Stop-Process` step; if you're uninstalling via the Windows Settings UI, close the Configurator window first.
+
 Open Settings → Apps → installed apps, find **TallyMCP**, click Uninstall.
 Or run the smoke script:
 

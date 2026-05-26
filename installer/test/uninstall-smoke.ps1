@@ -8,7 +8,11 @@
     - install dir is gone
     - Start Menu shortcut is gone
     - tallymcp-pro is no longer in claude_desktop_config.json (if it was)
-    - Windows Firewall rule "TallyMCP - Tally XML port 9000" is gone
+    - Windows Firewall rule "TallyMCP (em-dash U+2014) Tally XML port 9000"
+      is gone. The name uses an em-dash, matching FIREWALL_RULE_NAME from
+      packages/tally-autofix/src/firewall.ts. The script constructs it at
+      runtime via [char]0x2014 so this file stays pure ASCII for
+      cross-PowerShell-version compatibility.
     - tally.ini is restored from .tallymcp-bak (if a backup existed)
   Exits 0 on success, 1 on any assertion failure.
 
@@ -43,6 +47,18 @@ if (Test-Path $claudeConfig) {
     $hadTallymcpPro = $true
     Write-Host "[uninstall-smoke] pre: claude_desktop_config has tallymcp-pro entry"
   }
+}
+
+# Defensive: electron-builder's NSIS template runs un.checkAppRunning on
+# silent uninstall. A still-open TallyMCP.exe (e.g., from the auto-launch
+# at end of install) can stall the uninstaller before customUnInstall
+# fires. Kill any running Configurator first.
+# (Cursor review M1, 2026-05-26.)
+$running = Get-Process -Name "TallyMCP" -ErrorAction SilentlyContinue
+if ($running) {
+  Write-Host "[uninstall-smoke] stopping running TallyMCP.exe processes (count: $($running.Count))..."
+  $running | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Seconds 1
 }
 
 # /S = silent uninstall (electron-builder NSIS uninstaller supports this).
@@ -88,7 +104,17 @@ if ($hadTallymcpPro -and (Test-Path $claudeConfig)) {
 }
 
 # 4. Firewall rule should be gone.
-$fwQuery = netsh advfirewall firewall show rule name="TallyMCP - Tally XML port 9000" 2>&1
+# IMPORTANT: the name must match FIREWALL_RULE_NAME from
+# packages/tally-autofix/src/firewall.ts EXACTLY -- netsh name matching is
+# exact-byte. The separator is U+2014 EM DASH, NOT an ASCII hyphen-minus.
+# Constructed via [char]0x2014 so this source file stays pure ASCII and
+# parses correctly under both pwsh 7 (UTF-8 default) and Windows
+# PowerShell 5.1 (Windows-1252 default, no BOM detection).
+# (Cursor review H1, 2026-05-26: previous ASCII-hyphen version always
+# false-passed even when the real rule remained.)
+$emDash = [char]0x2014
+$fwRuleName = "TallyMCP $emDash Tally XML port 9000"
+$fwQuery = netsh advfirewall firewall show rule name="$fwRuleName" 2>&1
 if ($LASTEXITCODE -eq 0) {
   Write-Host "  X firewall rule still present" -ForegroundColor Red
   $failed += "firewall-present"
@@ -96,19 +122,32 @@ if ($LASTEXITCODE -eq 0) {
   Write-Host "  + firewall rule removed (or never existed)"
 }
 
-# 5. tally.ini restore - only assert if a .tallymcp-bak exists somewhere
-#    we can find. The autofixer normally removes the .bak after restoring;
-#    so if the .bak is missing AND the original ini doesn't have our two
-#    lines, that's also a pass.
-$tallyDir = "C:\Program Files\TallyPrime"
-$tallyIni = Join-Path $tallyDir "tally.ini"
-if (Test-Path $tallyIni) {
-  $iniText = Get-Content $tallyIni -Raw
-  if ($iniText -match "Client Server=Both" -or $iniText -match "ServerPort=9000") {
-    Write-Host "  X tally.ini still has TallyMCP XML lines" -ForegroundColor Red
-    $failed += "tally-ini-stale"
-  } else {
-    Write-Host "  + tally.ini does not contain TallyMCP XML lines"
+# 5. tally.ini restore - scan standard Tally locations (matches the
+#    detectTallyInstall scan roots in @tallymcp/tally-autofix). If no
+#    tally.ini found, log a skip note rather than silently false-passing.
+#    (Cursor review M2, 2026-05-26: previous hard-coded
+#    "C:\Program Files\TallyPrime" missed non-default installs.)
+$tallyScanRoots = @("C:\Program Files", "C:\Program Files (x86)")
+$tallyIniPaths = @()
+foreach ($root in $tallyScanRoots) {
+  if (Test-Path $root) {
+    $tallyIniPaths += Get-ChildItem -Path $root -Filter "TallyPrime*" -Directory -ErrorAction SilentlyContinue |
+      ForEach-Object { Join-Path $_.FullName "tally.ini" } |
+      Where-Object { Test-Path $_ }
+  }
+}
+
+if ($tallyIniPaths.Count -eq 0) {
+  Write-Host "  ~ no TallyPrime install found in Program Files - skipping tally.ini check"
+} else {
+  foreach ($tallyIni in $tallyIniPaths) {
+    $iniText = Get-Content $tallyIni -Raw
+    if ($iniText -match "Client Server=Both" -or $iniText -match "ServerPort=9000") {
+      Write-Host "  X $tallyIni still has TallyMCP XML lines" -ForegroundColor Red
+      $failed += "tally-ini-stale:$tallyIni"
+    } else {
+      Write-Host "  + $tallyIni does not contain TallyMCP XML lines"
+    }
   }
 }
 
