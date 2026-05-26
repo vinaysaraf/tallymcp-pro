@@ -128,12 +128,18 @@ if ($LASTEXITCODE -eq 0) {
 #    (Cursor review M2, 2026-05-26: previous hard-coded
 #    "C:\Program Files\TallyPrime" missed non-default installs.)
 $tallyScanRoots = @("C:\Program Files", "C:\Program Files (x86)")
+# Require BOTH tally.exe AND tally.ini to count a directory as a real
+# install (Cursor Round 2 nit, matches detectTallyInstall's `access`
+# checks on both files in packages/tally-autofix/src/tally-detect.ts).
 $tallyIniPaths = @()
 foreach ($root in $tallyScanRoots) {
   if (Test-Path $root) {
     $tallyIniPaths += Get-ChildItem -Path $root -Filter "TallyPrime*" -Directory -ErrorAction SilentlyContinue |
-      ForEach-Object { Join-Path $_.FullName "tally.ini" } |
-      Where-Object { Test-Path $_ }
+      Where-Object {
+        (Test-Path (Join-Path $_.FullName "tally.exe")) -and
+        (Test-Path (Join-Path $_.FullName "tally.ini"))
+      } |
+      ForEach-Object { Join-Path $_.FullName "tally.ini" }
   }
 }
 
