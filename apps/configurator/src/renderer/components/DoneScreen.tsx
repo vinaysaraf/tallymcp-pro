@@ -6,7 +6,7 @@ export interface DoneScreenProps {
   onClose: () => void;
 }
 
-export function DoneScreen({ clientId, clientDisplayName, onClose }: DoneScreenProps): JSX.Element {
+export function DoneScreen({ clientId: _clientId, clientDisplayName, onClose }: DoneScreenProps): JSX.Element {
   return (
     <div
       role="dialog"
