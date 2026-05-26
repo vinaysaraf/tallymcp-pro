@@ -30,22 +30,29 @@ import {
 } from "../shared/ipc-types.js";
 
 /**
- * Test injection point — production callers pass nothing and we use
- * process.env; tests inject a synthetic env so we don't touch real
- * %APPDATA% during unit tests.
+ * Test injection point — production callers pass `installDir` (resolved
+ * by main at boot from %LOCALAPPDATA%\TallyMCP); tests inject a synthetic
+ * env so we don't touch real %APPDATA% during unit tests.
+ *
+ * `installDir` is in the CONTEXT, not the request, because it must come
+ * from main — never from the renderer (Cursor review H1).
  */
 export interface HandlerContext {
   env?: Record<string, string | undefined>;
 }
 
+export interface WireMcpContext extends HandlerContext {
+  installDir: string;
+}
+
 export async function handleWireMcp(
   req: WireRequest,
-  ctx: HandlerContext = {},
+  ctx: WireMcpContext,
 ): Promise<WireResponse> {
   const entry: McpServerEntry = {
-    command: join(req.installDir, "node.exe"),
-    args: [join(req.installDir, "mcp-server", "main.js")],
-    env: { TALLYMCP_CONFIG: join(req.installDir, "config.json") },
+    command: join(ctx.installDir, "node.exe"),
+    args: [join(ctx.installDir, "mcp-server", "main.js")],
+    env: { TALLYMCP_CONFIG: join(ctx.installDir, "config.json") },
   };
   const wirer = new ClientWirer({ env: ctx.env ?? process.env, entry });
   return wirer.add(req.clientId);
@@ -237,7 +244,9 @@ export function registerIpcHandlers(
   ipcMain: { handle: (channel: string, handler: (event: unknown, payload: unknown) => unknown) => void },
   ctx: RegisterContext,
 ): void {
-  ipcMain.handle(IPC_CHANNELS.WIRE_MCP, (_evt, payload) => handleWireMcp(payload as WireRequest));
+  ipcMain.handle(IPC_CHANNELS.WIRE_MCP, (_evt, payload) =>
+    handleWireMcp(payload as WireRequest, { installDir: ctx.installDir }),
+  );
   ipcMain.handle(IPC_CHANNELS.UNWIRE_MCP, (_evt, payload) => handleUnwireMcp(payload as UnwireRequest));
   ipcMain.handle(IPC_CHANNELS.HEALTH_CHECK, () => handleHealthCheck());
   ipcMain.handle(IPC_CHANNELS.TALLY_FIX, () => handleTallyFix());

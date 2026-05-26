@@ -10,9 +10,9 @@ declare global {
   var window: any;
 }
 
-// NOTE: The mock returns "C:\\TallyMCP" for installDir to keep the test
-// readable. Production resolves to %LOCALAPPDATA%\TallyMCP via the
-// LOCALAPPDATA env var in src/main/index.ts (see Task 9 fix).
+// NOTE: getConfig.installDir is "C:\\TallyMCP" for readability — but
+// installDir is no longer relayed back via WireRequest (Cursor H1).
+// It's used only for the Settings display.
 function buildFakeApi(overrides: Partial<TallymcpApi> = {}): TallymcpApi {
   return {
     wireMcp: vi.fn().mockResolvedValue({
@@ -90,8 +90,29 @@ describe("App", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(api.wireMcp).toHaveBeenCalledWith({
       clientId: "claude-desktop",
-      installDir: "C:\\TallyMCP",
     });
+  });
+
+  it("hydrates configuredClients from healthCheck (H10): Claude Desktop tile shows Connected + Reconfigure", async () => {
+    const api = buildFakeApi({
+      healthCheck: vi.fn().mockResolvedValue({
+        tallyInstalled: true,
+        tallyInstallDir: "C:\\Tally",
+        tallyRunning: true,
+        xmlInterfaceEnabled: true,
+        firewallRulePresent: true,
+        configuredClients: ["claude-desktop"],
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    // findByRole waits for the post-healthCheck re-render to apply the hydrate.
+    expect(
+      await screen.findByRole("button", { name: /Reconfigure/i }),
+    ).toBeDefined();
+    // "Not added" should NOT appear for Claude Desktop since it's configured.
+    // (Other 4 tiles are still "Not added" — so this assertion is per-tile via the connected text.)
+    expect(screen.getAllByText(/Connected/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it("opens DoneScreen after wireMcp succeeds", async () => {

@@ -32,7 +32,10 @@ export type ClientId =
 
 export interface WireRequest {
   clientId: ClientId;
-  installDir: string;
+  // NOTE: installDir is NOT renderer-supplied. Main resolves the canonical
+  // %LOCALAPPDATA%\TallyMCP path at boot and injects it via HandlerContext.
+  // Trusting a renderer-supplied path would let DevTools point the wire
+  // entry at an arbitrary folder (Cursor review H1, 2026-05-26).
 }
 
 export interface WireResponse {

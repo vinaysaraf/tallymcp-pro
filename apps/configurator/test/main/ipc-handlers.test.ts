@@ -19,8 +19,8 @@ describe("handleWireMcp", () => {
     const env = { APPDATA: join(dir, "appdata") };
 
     const result = await handleWireMcp(
-      { clientId: "claude-desktop", installDir },
-      { env },
+      { clientId: "claude-desktop" },
+      { env, installDir },
     );
 
     expect(result.action).toBe("added");
@@ -45,7 +45,7 @@ describe("handleUnwireMcp", () => {
     const installDir = join(dir, "TallyMCP");
     const env = { APPDATA: join(dir, "appdata") };
 
-    await handleWireMcp({ clientId: "claude-desktop", installDir }, { env });
+    await handleWireMcp({ clientId: "claude-desktop" }, { env, installDir });
 
     const result = await handleUnwireMcp({ clientId: "claude-desktop" }, { env });
 

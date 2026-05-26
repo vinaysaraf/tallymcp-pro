@@ -59,11 +59,13 @@ export function App(): JSX.Element {
 
   const handleConfirmAdd = async (): Promise<void> => {
     if (!modalFor) return;
+    // installDir is no longer renderer-supplied — main injects it from
+    // its canonical %LOCALAPPDATA%\TallyMCP resolution (Cursor review H1).
+    // This also removes the prior race where wireMcp could fire before
+    // the initial getConfig() promise settled.
     const api = getApi();
     try {
-      // config may still be loading on first render; resolve lazily if needed
-      const cfg = config ?? (await api.getConfig());
-      await api.wireMcp({ clientId: modalFor, installDir: cfg.installDir });
+      await api.wireMcp({ clientId: modalFor });
       markClientConfigured(modalFor);
       const wiredClient = modalFor;
       setModalFor(undefined);
