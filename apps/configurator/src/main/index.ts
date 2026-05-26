@@ -100,6 +100,23 @@ if (process.argv.includes("--uninstall-cleanup")) {
       env: process.env,
       homedirPath: homedir(),
     });
+
+    // Register IPC handlers FIRST (before createWindow) so the renderer's
+    // mount-time IPC calls (healthCheck, getConfig) find handlers waiting.
+    // The auto-updater bootstraps below and registers its 3 channels
+    // separately if it succeeds.
+    //
+    // Earlier Phase 4 drafts attempted a Cursor H3 "single registerIpcHandlers
+    // call after the auto-updater is ready" — that broke E2E because the
+    // renderer mounts during await createWindow() and its mount-effect
+    // healthCheck() raced ahead of the post-updater registration. The
+    // current shape: core handlers BEFORE the window, update handlers
+    // AFTER the updater (separate function).
+    registerIpcHandlers(ipcMain, {
+      installDir,
+      version: app.getVersion(),
+    });
+
     const mainWindow = await createWindow();
     const poller = createTallyPoller({
       url: "http://127.0.0.1:9000",
@@ -114,29 +131,41 @@ if (process.argv.includes("--uninstall-cleanup")) {
 
     app.on("before-quit", () => poller.stop());
 
-    // Auto-updater (Phase 4)
-    const { createAutoUpdater } = await import("./auto-update.js");
-    const updater = createAutoUpdater({ currentVersion: app.getVersion() });
-    const unsubUpdate = updater.subscribe((status) => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(UPDATE_STATUS_EVENT, status);
-      }
-    });
-    app.on("before-quit", () => unsubUpdate());
+    // Auto-updater (Phase 4). Wrapped in try/catch because
+    // electron-updater's autoUpdater singleton throws when the app is
+    // running unpackaged (dev mode, Playwright E2E preview). On failure
+    // the renderer's update banner stays hidden — the rest of the app
+    // still works because the core IPC handlers were registered above.
+    try {
+      const { createAutoUpdater } = await import("./auto-update.js");
+      const updater = createAutoUpdater({ currentVersion: app.getVersion() });
 
-    // IPC handlers (includes the new update channels via ctx.autoUpdater).
-    registerIpcHandlers(ipcMain, {
-      installDir,
-      version: app.getVersion(),
-      autoUpdater: updater,
-    });
-
-    // Initial update check 5 seconds after window opens.
-    setTimeout(() => {
-      void updater.checkForUpdates().catch((err) => {
-        console.error("[auto-update] initial check failed:", err);
+      const unsubUpdate = updater.subscribe((status) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(UPDATE_STATUS_EVENT, status);
+        }
       });
-    }, 5_000);
+      app.on("before-quit", () => unsubUpdate());
+
+      // Register the 3 update IPC channels. These are separate from the
+      // core registerIpcHandlers call because they depend on the updater
+      // (which may not initialize in dev/E2E).
+      ipcMain.handle("check-for-updates", () => updater.checkForUpdates());
+      ipcMain.handle("download-update", () => updater.downloadUpdate());
+      ipcMain.handle("quit-and-install", () => { updater.quitAndInstall(); });
+
+      // Initial update check 5 seconds after window opens.
+      setTimeout(() => {
+        void updater.checkForUpdates().catch((err) => {
+          console.error("[auto-update] initial check failed:", err);
+        });
+      }, 5_000);
+    } catch (err) {
+      console.warn(
+        "[auto-update] disabled (likely unpackaged dev/E2E):",
+        (err as Error).message,
+      );
+    }
 
     app.on("activate", async () => {
       if (BrowserWindow.getAllWindows().length === 0) await createWindow();
