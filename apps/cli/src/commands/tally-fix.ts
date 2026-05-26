@@ -29,7 +29,7 @@ export interface RunTallyFixOptions {
 export interface TallyFixResult {
   install: TallyInstall;
   xmlInterface: "applied" | "noop";
-  firewallRule: "added" | "noop";
+  firewallRule: "added" | "noop" | "skipped-non-admin";
 }
 
 export async function runTallyFixCommand(opts: RunTallyFixOptions = {}): Promise<TallyFixResult> {

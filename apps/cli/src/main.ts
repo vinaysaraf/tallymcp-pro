@@ -82,7 +82,15 @@ export function createProgram(): Command {
           yes: opts.yes ?? false,
         });
         console.log(`✓ tally.ini at ${result.install.iniPath}: ${result.xmlInterface}`);
-        console.log(`✓ Firewall rule: ${result.firewallRule}`);
+        if (result.firewallRule === "skipped-non-admin") {
+          console.log(`⚠ Firewall rule: skipped — requires Administrator`);
+          console.log(`  Loopback (127.0.0.1:9000) works without it. If you need other PCs`);
+          console.log(`  on your network to reach this Tally over port 9000, re-run from an`);
+          console.log(`  elevated terminal:`);
+          console.log(`    powershell -Command "Start-Process pwsh -Verb RunAs"`);
+        } else {
+          console.log(`✓ Firewall rule: ${result.firewallRule}`);
+        }
         console.log(`\nNow open TallyPrime and load a company.`);
       } catch (err) {
         if (err instanceof AbortError) {

@@ -72,6 +72,33 @@ describe("tally-fix CLI", () => {
     expect(result.xmlInterface).toBe("applied");
   });
 
+  it("returns firewallRule='skipped-non-admin' when running non-admin", async () => {
+    const installDir = join(root, "TallyPrime");
+    await mkdir(installDir);
+    const iniPath = join(installDir, "tally.ini");
+    await writeFile(iniPath, "[TALLY]\nDefault Companies=Yes\n");
+    await writeFile(join(installDir, "tally.exe"), "");
+
+    const runner = new FakeExecRunner((cmd, args) => {
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks are running", stderr: "" };
+      // firewall show → no rule
+      if (args.includes("show")) return { exitCode: 1, stdout: "No rules match.", stderr: "" };
+      // firewall add → elevation failure (exit 1, empty stderr)
+      if (args.includes("add")) return { exitCode: 1, stdout: "", stderr: "" };
+      return { exitCode: 0, stdout: "Ok.", stderr: "" };
+    });
+
+    const result = await runTallyFixCommand({
+      tallyDir: installDir,
+      runner,
+      yes: true,
+    });
+
+    expect(result.firewallRule).toBe("skipped-non-admin");
+    expect(result.xmlInterface).toBe("applied");
+    expect(await readFile(iniPath, "utf8")).toContain("Client Server=Both");
+  });
+
   it("aborts when confirmFn returns false", async () => {
     const installDir = join(root, "TallyPrime");
     await mkdir(installDir);
