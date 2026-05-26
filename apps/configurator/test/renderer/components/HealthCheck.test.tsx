@@ -144,4 +144,44 @@ describe("HealthCheck", () => {
     );
     expect(screen.queryByText(/Couldn't add the firewall rule/i)).toBeNull();
   });
+
+  it("shows '(Admin needed)' on the Fix button when status.isElevated is false and a fix is needed", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: false,
+          firewallRulePresent: false,
+          configuredClients: [],
+          isElevated: false,
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Fix both \(Admin needed\)/i })).toBeDefined();
+    expect(screen.getByText(/Run as administrator/i)).toBeDefined();
+  });
+
+  it("shows the plain 'Fix both' button when status.isElevated is true", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: false,
+          firewallRulePresent: false,
+          configuredClients: [],
+          isElevated: true,
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Fix both, continue/i })).toBeDefined();
+    expect(screen.queryByText(/Run as administrator/i)).toBeNull();
+  });
 });

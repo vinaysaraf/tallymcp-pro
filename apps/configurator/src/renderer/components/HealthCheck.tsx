@@ -90,14 +90,24 @@ export function HealthCheck({ status, firewallSkipReason, onFixAll, onReCheck }:
           )}
 
           {needsFix && (
-            <div className="text-right mt-4">
-              <button
-                type="button"
-                onClick={onFixAll}
-                className="bg-tm-blue text-white py-1.5 px-4 rounded font-medium text-sm hover:opacity-90"
-              >
-                Fix both, continue →
-              </button>
+            <div className="mt-4">
+              {status.isElevated === false && (
+                <div className="mb-2 text-xs text-tm-text-muted leading-relaxed">
+                  💡 <strong>Right-click TallyMCP → Run as administrator</strong>,
+                  OR follow the manual steps after clicking Fix.
+                </div>
+              )}
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={onFixAll}
+                  className="bg-tm-blue text-white py-1.5 px-4 rounded font-medium text-sm hover:opacity-90"
+                >
+                  {status.isElevated === false
+                    ? "Fix both (Admin needed) →"
+                    : "Fix both, continue →"}
+                </button>
+              </div>
             </div>
           )}
           {!needsFix && (
