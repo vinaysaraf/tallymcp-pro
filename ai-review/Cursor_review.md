@@ -1,241 +1,270 @@
-# Cursor review — Phase 4 plan (release pipeline + auto-update)
+# Cursor review — Phase 3.1 plan (admin/elevation UX hotfix)
 
 **Date:** 2026-05-26  
-**Branch:** (not yet created — plan-only review)  
-**Plan:** `docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md` (~1,800 lines, 13 tasks)  
-**Spec:** `docs/superpowers/specs/2026-05-25-tallymcp-installer-design.md` v1.0.3 (§9, §10, §11.2, §12, Appendix C)  
-**Prerequisite:** Phase 3 merged; `electron-updater ^6.3.9` present in `apps/configurator/package.json` L19 ✓
+**Branch:** (not yet created — plan-only)  
+**Base:** `main` @ `c90848d` (Phase 3 merged)  
+**Plan:** `docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md` (~2,100 lines, 12 tasks)  
+**Spec:** `docs/superpowers/specs/2026-05-25-tallymcp-installer-design.md` v1.0.3 (§7, §7.5)
 
 ---
 
 ## Findings
 
-### Critical
-
-**C1 — Update flow contradicts itself: Task 3 auto-restarts; Tasks 6/12 expect a “Restart now” step**  
-Task 3 `downloadAndInstallUpdate` downloads **and** calls `quitAndInstall()` in one IPC handler:
-
-```707:716:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-    downloadAndInstallUpdate: async () => {
-      const downloadFinished = new Promise<void>((resolve) => {
-        downloadResolver = resolve;
-      });
-      await autoUpdater.downloadUpdate();
-      await downloadFinished;
-      autoUpdater.quitAndInstall();
-    },
-```
-
-Tasks 6 + 12 + CHANGELOG describe two-step UX: “Update now” → progress → **“Restart to apply”** → user clicks Restart (`handleRestartClick` L1389–1392; manual smoke §7–8 L2309–2317; Notes L2213). `handleRestartClick` re-invokes `downloadAndInstallUpdate()` (L1389–1392), which always calls `downloadUpdate()` first — wrong when already `ready-to-install`.
-
-**Fix before execution:** Split responsibilities — e.g. `downloadUpdate()` IPC ends at `ready-to-install`; add `applyUpdate()` / `quitAndInstall()` IPC for Restart. Align Task 3 tests, Task 6 handlers, and Task 12 smoke.
-
 ### High
 
-**H1 — `downloadAndInstallUpdate` can hang if `downloadUpdate()` rejects without emitting `error`**  
-`downloadResolver` is cleared on `error` event (L682–692), but `await autoUpdater.downloadUpdate()` (L713) can throw/reject **before** the listener runs — `await downloadFinished` never completes. **Fix:** `try/catch/finally` around `downloadUpdate()`; reject or resolve `downloadFinished` on all paths.
+**H1 — Health Check still hard-gates on missing firewall rule after successful skip (user can remain stuck)**  
+Patch A explains the skip but `needsFix` is unchanged:
 
-**H2 — `generateLatestJson` download URL can disagree with the built artifact name**  
-```1630:1630:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-    downloadUrl: `https://github.com/${owner}/${repo}/releases/download/${tag}/TallyMCP-Setup-${tag}.exe`,
+```920:920:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+  const needsFix = status.tallyInstalled && (!status.xmlInterfaceEnabled || !status.firewallRulePresent);
 ```
-electron-builder uses `artifactName: TallyMCP-Setup-v${version}.${ext}` (Task 8 / Phase 3 yml). If `tag` is `v1.0.0` but `package.json` `version` is still `0.0.1`, URL points at `TallyMCP-Setup-v1.0.0.exe` while the built file is `TallyMCP-Setup-v0.0.1.exe`. Release procedure bumps version (Task 10) — add an explicit gate: **tag must match `v${version}`** or derive filename from `version` only.
 
-**H3 — Task 4 risks duplicate `registerIpcHandlers`**  
-Step 2 (L800–837) adds updater wiring while Step 3’s “before” snippet (L845–849) still shows an early `registerIpcHandlers` **without** `autoUpdater`. Final shape (L889–894) is correct, but subagents may leave **two** registrations. **Fix:** Step 3 must explicitly **delete** the early call, not only show the final block.
+After `tallyFix` with `skipped-non-admin`: XML on, firewall still missing → `needsFix` stays true → **"Fix both (Admin needed)"** loops. No **Continue / Re-check only** when `firewallSkipReason` is set and XML is OK. Spec §7.5 GP row says "No retry storm" — this is adjacent. **Fix:** when `xmlInterfaceEnabled && firewallSkipReason`, show Re-check + loopback copy instead of Fix loop (or split `needsFix` into xml vs firewall).
+
+**H2 — Task 2 `vi.spyOn(writeAtomicModule, "writeAtomic")` likely won't intercept `autofix.ts` calls**  
+`autofix.ts` uses a static named import:
+
+```5:5:packages/tally-autofix/src/autofix.ts
+import { writeAtomic } from "./atomic-write.js";
+```
+
+Plan mocks the export after dynamic import (L243–248) but ESM binds `writeAtomic` at module load — spy on `atomic-write.js` often **does not** replace the binding inside `autofix.js`. Tests may pass only if Vitest rewrites the graph; likely **red never goes green** without `vi.mock("../src/atomic-write.js", …)` or dependency injection. **Fix before Task 2 execution.**
+
+**H3 — `handleFixAll`: `healthCheck()` failure after successful `tallyFix` drops firewall UX**  
+
+```1407:1424:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+      const result = await api.tallyFix();
+      setHealth(await api.healthCheck());
+      // Phase 3.1 Patch A + D: surface the firewall outcome.
+      if (result.firewallRule === "skipped-non-admin") {
+```
+
+If `healthCheck()` throws, `catch` runs — **`setFirewallSkipReason` / modal never run** though fix succeeded. **Fix:** set skip reason / modal from `result` before refresh; wrap `healthCheck` separately.
 
 ### Medium
 
-**M1 — Spec §10 says “GET latest.json”; plan uses `latest.yml` for in-app updates**  
-Architecture (plan L7–8) is coherent: electron-updater + `latest.yml`; `latest.json` for landing/Phase 4 upload (Task 7/9). Document as intentional split in plan deferred section (like Phase 3 path drift). SHA-256 in-app: electron-updater verifies via `latest.yml` digests (typically sha512); human/landing verification uses `.exe.sha256` sidecar — defensible, not literal §10 JSON fetch.
+**M1 — Test math: DoD ~92 / +16 configurator; task checkpoints sum to 89 / +13**  
 
-**M2 — Spec §11.2 headless install/uninstall not in `release.yml`**  
-Workflow runs unit + E2E (Task 9 L1816–1820) but not Phase 3 `install-smoke.ps1` / `uninstall-smoke.ps1`. Acceptable Phase 4 scope (manual smoke Task 12); call out §11.2 CI gap for Phase 4.1.
+| Task | Δ |
+|------|---|
+| 4 | +2 |
+| 5 | +2 |
+| 6 | +2 |
+| 7 | +2 |
+| 8 | +3 |
+| 9 | +2 |
+| **Σ** | **+13 → 89** |
 
-**M3 — `minSupportedFromVersion` emitted but not enforced in app**  
-Task 7 + Appendix C field; plan deferred block L91–92 (renderer reads `latest.yml`, not `latest.json`). Defensible for v1.0 if always `minSupportedFromVersion === version`; note for future breaking releases.
+DoD L33, CHANGELOG L1504, Task 12 L1669 say **~92 / +16**. tally-autofix **44→51 (+7)** ✓. Align DoD or add 3 tests (e.g. `handleTallyFix` `group-policy-blocked`, `TallyIniLockedError` IPC, `firewallSkipReason` on `group-policy` without modal-only).
 
-**M4 — IPC types test still asserts “6 channels” (Task 1)**  
-Plan adds 2 channels but does not update the existing test title/body (`ipc-types.test.ts` currently L12–18). Add assertions for `CHECK_FOR_UPDATES` / `DOWNLOAD_AND_INSTALL_UPDATE` or rename test to “8 channels”.
+**M2 — `ITPolicyHelpModal` hardcodes `C:\Program Files\TallyPrime\tally.exe`**  
 
-**M5 — `release.yml` fails on missing `CSC_LINK_BASE64` but not missing `CSC_KEY_PASSWORD`**  
-Decode step errors on empty base64 (L1830–1832) ✓. Empty password → unsigned build + upload (Phase 3 warns). Consider `::error::` if `CSC_KEY_PASSWORD` unset on tag releases.
+```1258:1258:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+{`netsh advfirewall firewall add rule name="TallyMCP — Tally XML port 9000" ... program="C:\\Program Files\\TallyPrime\\tally.exe" ...`}
+```
+
+`addFirewallRule` uses `opts.tallyExePath` (spec §7.5 multiple installs). Modal should take `tallyExePath` or `tallyInstallDir` from `health.tallyInstallDir` (Task 9).
+
+**M3 — `GroupPolicyError` detection: `/group policy/i` on stderr is English-centric**  
+
+```444:445:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+    if (/group policy/i.test(result.stderr)) {
+      throw new GroupPolicyError();
+```
+
+Spec §7.5 L258 expects GP messaging; localized `netsh` may not match. Consider exit-code heuristics + English fallback, or document English-only v1.0.
+
+**M4 — Spec §7.5 edge cases not in Phase 3.1 scope (acceptable hotfix gaps, document)**  
+
+| §7.5 case | Plan |
+|-----------|------|
+| Tally won't close (60 s modal) | Deferred L84 — `TallyIniLockedError` mentions running Tally only |
+| Antivirus blocks `netsh` | **Not mapped** — generic `Error` → ErrorBanner, no guide |
+| `tally.ini` missing | detect path — not 3.1 |
+| Port 9000 in use | **Not mapped** |
+| GP blocks firewall | Tasks 3, 8, 9 ✓ |
+| Multiple installs | Phase 2 `resolveSingleInstall` — modal path not 3.1 |
+
+**M5 — `firewallSkipReason: "group-policy"` set but Patch A card is `non-admin` only**  
+Task 9 sets `"group-policy"` + opens modal (L1413–1415); Task 6 yellow card only when `=== "non-admin"` (L963). Intentional (modal = D) — OK; ensure navigating away clears both.
 
 ### Nit
 
-**N1 — Auto-update state machine names are consistent** across Task 1 `UpdateStatus`, Task 3 events, Task 5 `UpdateBanner`, Task 6 store (`setUpdateStatus` / `dismissUpdate`), preload (`subscribeUpdateStatus`). Five statuses; `error` hidden in banner (Task 5 L1101) — errors via `ErrorBanner` on user actions only.
+**N1 — Symbol chain consistent** — `FirewallSkipReason` Task 5 → Task 6/9 ✓; `isElevated` Task 4 → Task 7 ✓; `group-policy-blocked` Task 3/4 → Task 9 switch ✓; `TallyIniLockedError` Task 2 → `handleFixAll` catch only ✓; `detectIsElevated` Task 1 → `handleHealthCheck` Task 4 only ✓.
 
-**N2 — Symbol alignment** — `UPDATE_STATUS_EVENT`, `IPC_CHANNELS.CHECK_FOR_UPDATES` / `DOWNLOAD_AND_INSTALL_UPDATE`, `AutoUpdater` factory (`getStatus` / `subscribe` / `checkForUpdates` / `downloadAndInstallUpdate`) match end-to-end.
+**N2 — Execution order 1→12** — No inversion. Shared files: `autofix.ts` (2→3), `index.ts` (1→2→3), `HealthCheck.tsx` (6→7), `autofix.test.ts` (2→3). Task 3 note "requires Task 2 scaffold" = same file order, not circular.
 
-**N3 — Execution order 1→13** — No Phase-2-style inversion: 1→2→3→4→5→6 chain; 7–8 parallel; 9 consumes 7+8; 10–13 docs/gate. Task 6 imports Task 5 `UpdateBanner` ✓.
+**N3 — Placeholders / TDD** — No TBD/TODO/`implement later`/`similar to Task N`. Full code blocks; red→green→commit per task ✓.
 
-**N4 — Placeholders / TDD** — No `TBD` / `TODO` / “implement later” / “similar to Task N” in plan body. Tasks include full code blocks and red→green steps.
+**N4 — No auto-elevation** — Out of scope L82–83; NSIS user-mode ✓.
 
-**N5 — Test math** — 76 + 2 + 3 + 7 (net auto-update) + 5 + 2 + 1 = **96** configurator; +2 installer-script tests (Task 7/13) — matches plan DoD L33–34.
+**N5 — `ITPolicyHelpModal` netsh vs `firewall.ts`** — Args match `addFirewallRule` L40–49 (`dir=in`, `protocol=TCP`, `localport=9000`, `profile=private`, `enable=yes`, rule name). PowerShell equivalent is reasonable; only `program=` path is the drift (M2).
 
-**N6 — `release.yml` security (good)** — `permissions: contents: write` only (L1783–1784); checkout pinned to tag ref (L1801–1804); PFX to `RUNNER_TEMP` + `GITHUB_ENV` path only (L1834–1840); `softprops/action-gh-release@v2` with `fail_on_unmatched_files` (L1864); no secret echo. `windows-latest` matches spec §9.
+**N6 — Task 4 Step 1 title "2 new channels"** — N/A here; ipc-handlers adds 0 channels ✓.
 
-**N7 — Phase 2/3 prerequisites** — `electron-updater` dep ✓; CSC env vars documented (plan L76–82, Task 10b); `pnpm package` chain reused ✓.
-
-**N8 — `UpdateBanner` `error` state** — Renders `null` (L1101); `autoUpdater` `error` events update store but may not surface until user acts — acceptable if initial-check failures stay quiet.
+**N7 — `clearLastError()` on skip/GP paths (Task 9 L1412–1420)** — Intentional: avoid stale EPERM while showing yellow card/modal. Not masking `tallyFix` throw path (catch L1422–1423) ✓.
 
 ---
 
-## Spec coverage (Phase 4 slice)
+## Spec coverage (§7 + §7.5)
 
-| Spec | Plan mapping | Gap |
-|------|----------------|-----|
-| **§9** trigger/build/package/sign/publish | Task 9 `release.yml` + Task 8 publish + `pnpm package` | ✓ |
-| **§10** electron-updater, consent, banner | Tasks 3–6 | **C1** breaks “Restart to apply” UX |
-| **§10** SHA-256 verify | electron-updater + `.sha256` sidecar (procedure §6) | Via yml hash, not JSON |
-| **§10** MCP piggyback | Deferred L89 + CHANGELOG L2214 | ✓ (same install dir) |
-| **Appendix C** `latest.json` | Task 7 + upload Task 9 | ✓ |
-| **Appendix C** `minSupportedFromVersion` guard | Emitted Task 7; enforcement deferred L91 | v1.0 OK |
-| **§11.2** integration | Phase 3 smoke local only | Not in CI |
-| **§12** full DoD | Partial (landing, etc. later phases) | Expected |
+| Area | Mapped |
+|------|--------|
+| §7.2 XML write / permission failure | Task 2 `TallyIniLockedError` |
+| §7.3 firewall add / admin | Tasks 1, 3, 4, 6, 7, 8, 9 |
+| §7.5 GP firewall block | Tasks 3, 8, 9 (+ modal copy) |
+| §7.5 non-admin / elevation | Tasks 1, 6, 7, 9 |
+| §7.2 close-Tally-before-edit modal | Deferred (message-only) |
+| §7.5 antivirus / port-in-use | Not in plan |
+| No UAC auto-elevate | Deferred L82 ✓ |
 
 ---
 
 ## Verdict
 
-**❌ NOT READY TO EXECUTE** — **C1** (download vs restart split) must be reconciled across Tasks 3, 6, and 12 before subagents start. After that: patch **H1–H3**, then **🟡 READY** (M-items are follow-ups/docs).
+**🟡 READY WITH FOLLOW-UPS** — Patch A–D architecture is sound and symbols align. **Fix H1** (post-skip Health Check gate) and **H2** (Task 2 mock strategy) before subagent execution; **H3** + **M1–M2** recommended in same pass. After those: **✅ READY TO EXECUTE**.
 
 ---
 
-## Round 1 resolutions (applied inline to plan, pre-execution)
+## Round 1 resolutions (applied 2026-05-26)
 
-| # | Severity | Resolution |
-|---|---|---|
-| **C1** | Critical | **Fixed across Tasks 1, 2, 3, 4, 6, 11, plan header.** Split `downloadAndInstallUpdate` into two separate IPCs + `TallymcpApi` methods: `downloadUpdate` (kicks off download, returns immediately, state transitions via `subscribeUpdateStatus`) and `quitAndInstall` (separate user-consent step invoked by the banner's "Restart now" only when status is `ready-to-install`). The `AutoUpdater` factory's `quitAndInstall` method has a state-machine guard (no-op unless `ready-to-install`) so a buggy renderer or replay can't quit prematurely. Channel names: `DOWNLOAD_UPDATE` + `QUIT_AND_INSTALL`. Task 6's `handleUpdateClick` calls `downloadUpdate`; `handleRestartClick` calls `quitAndInstall`. |
-| **H1** | High | **Dissolved into C1.** The `downloadFinished` Promise dance is gone entirely — `downloadUpdate` no longer waits for `update-downloaded`. Added try/catch around `autoUpdater.downloadUpdate()` that captures rejection into the `error` state instead of propagating (renderer sees the error via `subscribeUpdateStatus` instead of an IPC rejection). New test "downloadUpdate() captures rejection into the error state instead of throwing" enforces it. |
-| **H2** | High | **Fixed in Task 7.** `generateLatestJson` now derives `artifactName` from `version` (matches electron-builder's `artifactName` template). Added an explicit guard: throws if `tag !== \`v${version}\``. New test "throws when tag doesn't equal v${version}" enforces it. The release procedure (Task 10a) bumps version BEFORE tagging, so this catches the case where that step was skipped. |
-| **H3** | High | **Fixed in Task 4 Step 3.** Added explicit "(a) DELETE the existing `registerIpcHandlers(...)` call from its current position — it is currently right after `const installDir = resolveInstallDir(...)`" instruction with the explanation that two registrations would silently clobber the AutoUpdater handlers. Step 3 is now prescriptive ("delete then replace"), not just declarative ("show final shape"). |
-| **M1** | Medium | **No action — confirmation.** `latest.json` (landing/diagnostic) vs `latest.yml` (electron-updater) split is intentional and documented in the plan's deferred section. Cursor classified as defensible. |
-| **M2** | Medium | **No action — confirmation.** §11.2 headless install/uninstall CI is deferred to Phase 4.1; manual smoke (Task 12) covers it for the Phase 4 ship. |
-| **M3** | Medium | **No action — confirmation.** `minSupportedFromVersion` field is emitted (Task 7); renderer-side enforcement is in the plan's Deferred list. Defensible for v1.0 since field always equals current version. |
-| **M4** | Medium | **Fixed in Task 1.** The existing "exports the 6 required channel names" test now needs 3 additional channel assertions + the test title is renamed to "exports the 9 required channel names". |
-| **M5** | Medium | **Fixed in Task 9.** Workflow's Decode-signing-cert step now `::error::`s on missing `CSC_KEY_PASSWORD` (parity with `CSC_LINK_BASE64`). Tag releases now fail loudly instead of producing an unsigned "Unknown publisher" .exe. |
-| **N1–N8** | Nit | **No action — all confirmations.** Symbol consistency ✓, execution order ✓, placeholders ✓, prerequisites ✓, security ✓. |
+All 8 findings applied inline to `docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md`. Round 2 review requested next.
 
-Test count updates after split (running totals through the plan):
-- Task 1: 76 → 78 (+2 IPC types)
-- Task 2: 78 → 82 (+4 preload — split from 3)
-- Task 3: 82 → 91 (+10 auto-update minus 1 Phase 2 stub = +9)
-- Task 4: 91 → 91 (glue, no new tests)
-- Task 5: 91 → 96 (+5 UpdateBanner)
-- Task 6: 96 → 98 (+2 store) → 99 (+1 App)
-- Task 7: 3 installer-script tests (added H2 guard test)
+| ID | Severity | Status | Fix location | Approach |
+|----|----------|--------|--------------|----------|
+| **H1** | High | ✅ Fixed | Task 6, `HealthCheck.tsx` line gate | Split `needsFix` into `xmlNeedsFix \|\| (firewallNeedsFix && !firewallIsKnownSkipped)`. Added 3rd Patch A test asserting "Re-check" button (not "Fix both") renders in post-skip XML-OK state. Per-task count bumped 82→83; cascaded through Tasks 7→8→9 (85, 88, 90). |
+| **H2** | High | ✅ Fixed | Task 2, `autofix.test.ts` mock setup | Replaced `vi.spyOn(writeAtomicModule, "writeAtomic")` with `vi.mock("../src/atomic-write.js", () => ({ writeAtomic: vi.fn(...) }))` at module scope + a `writeAtomicState` bag controlled by `beforeEach`. Default implementation delegates to `node:fs/promises.writeFile` so happy-path tests still pass; `nextError` slot toggles the EPERM/EACCES branches. |
+| **H3** | High | ✅ Fixed | Task 9, `handleFixAll` body | Reordered: process `result.firewallRule` (set `firewallSkipReason` / open modal) BEFORE calling `api.healthCheck()`. Wrapped `setHealth(await api.healthCheck())` in its own try/catch that surfaces a "Couldn't refresh status: …" message via `setLastError` but does NOT clear the firewall UX. Outer catch only handles `tallyFix()` throws (TallyIniLockedError + transport). |
+| **M1** | Medium | ✅ Fixed | DoD line, CHANGELOG, Task 12 final gate, per-task `Step 4` checkpoints | Reconciled to **+14 configurator / 76→90** (the extra +1 over Cursor's +13 comes from H1's added Re-check test). `@tallymcp/tally-autofix` count unchanged at +7 / 44→51. Per-task expected counts cascaded: Task 6 → 83, Task 7 → 85, Task 8 → 88, Task 9 → 90. |
+| **M2** | Medium | ✅ Fixed | Task 8 (`ITPolicyHelpModalProps`) + Task 9 (App.tsx instantiation) | Added required `tallyExePath: string` prop to `ITPolicyHelpModalProps`; netsh + PowerShell command strings interpolate `${tallyExePath}` instead of the hardcoded `C:\Program Files\TallyPrime\tally.exe`. App.tsx passes `health.tallyInstallDir + "\\tally.exe"` with a defensive Program Files fallback for the race window. Tests now use `D:\Tally Solutions\TallyPrime\tally.exe` so a hardcoded regression is detectable. |
+| **M3** | Medium | ✅ Documented | Plan §"Out of scope" | Added explicit "English-only `netsh` Group Policy detection" deferral note. Tracks the localization gap (Hindi/Tamil/Bengali Windows locales) + v1.1 plan: combine regex with exit-code heuristic + translation table. |
+| **M4** | Medium | ✅ Documented | Plan §"Out of scope" | Added 5 §7.5 edge cases deferred to v1.1: antivirus blocks netsh, port 9000 in use, multiple installs picker, tally.ini ENOENT, "Tally won't close" 60s modal. Each with a concrete v1.1 implementation sketch. |
+| **M5** | Polish | ✅ Fixed | Task 6 (Patch A guard) + Task 9 (`handleFixAll`) | Added matched code comments at both ends explaining that `firewallSkipReason: "group-policy"` is intentionally routed to ITPolicyHelpModal (Patch D), not the Patch A yellow card. Comment in HealthCheck.tsx also notes that both states still trigger the post-skip Re-check gate via `firewallIsKnownSkipped` (links H1 + M5). |
 
-Plan DoD updated: **~99 configurator unit tests + 3 installer-script tests**.
-
-**Verdict (post-resolution): ✅ READY TO EXECUTE.** All blockers resolved. Final plan tip will be visible once Phase 3 lands and Phase 4 branch is created.
+**Status:** ✅ All Round 1 findings resolved inline. Awaiting Cursor Round 2 verification.
 
 ---
 
-## Round 2 (post–Round 1 resolutions)
+## Round 2 — verification (2026-05-26)
 
-**Verdict: ✅ READY TO EXECUTE** — C1/H1/H2/H3/M4/M5 verified in plan. One doc drift in Task 11 CHANGELOG (non-blocking).
+**Verdict: ✅ READY TO EXECUTE** — all Round 1 fixes verified in `docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md`.
 
-### Verification matrix
+### Verified fixes (exact anchors)
 
-| # | Check | Result |
-|---|--------|--------|
-| **C1** | Split IPCs + API + factory; Task 6 handlers; smoke/CHANGELOG | ✅ No `downloadAndInstallUpdate` / `DOWNLOAD_AND_INSTALL` / `downloadFinished` anywhere in plan |
-| **H1** | Promise dance removed; try/catch on `downloadUpdate` | ✅ |
-| **H2** | `artifactName` from `version`; `tag !== \`v${version}\`` guard + test | ✅ |
-| **H3** | Task 4 Step 3 prescriptive DELETE | ✅ L946–950 **(a) DELETE** … **(b) Replace** |
-| **M4** | 9-channel test title + 3 new asserts | ✅ L103–111 |
-| **M5** | `CSC_KEY_PASSWORD` `::error::` | ✅ L1994–1996 |
-| **7** | DoD ~99 + 3 installer tests | ✅ DoD L33–34; running totals L273, L427, L822, L1323, L1621 |
+**H1 (HealthCheck skip gate + Re-check test)**
 
-### Evidence (spot checks)
-
-**C1 — end-to-end split**
-
-```245:247:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-  CHECK_FOR_UPDATES: "check-for-updates",
-  DOWNLOAD_UPDATE: "download-update",
-  QUIT_AND_INSTALL: "quit-and-install",
+```965:971:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+const xmlNeedsFix = status.tallyInstalled && !status.xmlInterfaceEnabled;
+const firewallNeedsFix = status.tallyInstalled && !status.firewallRulePresent;
+const firewallIsKnownSkipped = firewallSkipReason !== undefined;
+const needsFix = xmlNeedsFix || (firewallNeedsFix && !firewallIsKnownSkipped);
 ```
 
-```262:263:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-  [IPC_CHANNELS.DOWNLOAD_UPDATE]: { req: void; res: void };
-  [IPC_CHANNELS.QUIT_AND_INSTALL]: { req: void; res: void };
-```
-
-```783:811:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-    downloadUpdate: async () => {
-      try {
-        await autoUpdater.downloadUpdate();
-      } catch (err) {
-        setStatus({ status: "error", ... });
-      }
-    },
-    quitAndInstall: () => {
-      if (status.status !== "ready-to-install") {
-        return;
-      }
-      autoUpdater.quitAndInstall();
-    },
-```
-
-```891:897:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-    ipcMain.handle(IPC_CHANNELS.DOWNLOAD_UPDATE, () => updater.downloadUpdate());
-    ipcMain.handle(IPC_CHANNELS.QUIT_AND_INSTALL, () => {
-      updater.quitAndInstall();
-    });
-```
-
-```1487:1514:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-  const handleUpdateClick = async (): Promise<void> => {
-    ...
-      await getApi().downloadUpdate();
+```886:907:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+it("shows Re-check (not Fix loop) when XML is OK and firewall was skipped (Cursor H1)", () => {
+  // Post-skip state: XML on, firewall missing but known-skipped.
+  // Patch A's split gate uses firewallSkipReason to switch to Re-check.
   ...
-  const handleRestartClick = async (): Promise<void> => {
-    ...
-      await getApi().quitAndInstall();
+  expect(screen.getByRole("button", { name: /Re-check/i })).toBeDefined();
+  expect(screen.queryByRole("button", { name: /Fix both/i })).toBeNull();
+});
 ```
 
-Smoke L2473–2480 + CHANGELOG L2377 — two-step UX aligned.
+**H2 (Task 2 atomic-write mocking via `vi.mock` + state bag; spy removed)**
 
-**H2**
+```235:255:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+vi.mock("../src/atomic-write.js", () => ({
+  writeAtomic: vi.fn(async (path: string, content: string) => { ... }),
+}));
 
-```1689:1699:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-  it("throws when tag doesn't equal v${version} (Cursor H2 guard)", () => {
-    ...
-    ).toThrow(/tag\/version mismatch/);
+beforeEach(() => {
+  writeAtomicState.nextError = undefined;
+  writeAtomicState.callCount = 0;
+});
 ```
 
-```1773:1781:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase4.md
-if (tag !== `v${version}`) {
-  ...
-const artifactName = `TallyMCP-Setup-v${version}.exe`;
+**H3 (Task 9 `handleFixAll`: process `result.firewallRule` BEFORE `healthCheck()`; refresh wrapped separately)**
+
+```1480:1519:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+const result = await api.tallyFix();
+if (result.firewallRule === "skipped-non-admin") { ... }
+else if (result.firewallRule === "group-policy-blocked") { ... }
+else { clearFirewallSkipReason(); clearLastError(); }
+
+try {
+  setHealth(await api.healthCheck());
+} catch (refreshErr) {
+  setLastError(`Couldn't refresh status: ${(refreshErr as Error).message}`);
+}
+} catch (err) {
+  setLastError((err as Error).message);
+}
 ```
 
-Expected URL L1669: `.../TallyMCP-Setup-v1.0.0.exe` (version-derived).
+**M1 (counts + DoD / per-task expected checkpoints / Task 12 final gate)**
 
-### New / residual (non-blocking)
+```1611:1612:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
++14 net new configurator unit tests. Configurator count: **76 → 90**.
+```
 
-**N-R2-1 — Task 11 CHANGELOG test math stale vs DoD**  
-DoD L33: **~99** configurator + **3** installer-script tests. CHANGELOG L2363–2370 still says “2 unit tests”, “~96 + 2 installer”, “3 preload”, “8 auto-update”. Implementation tasks (L1621, L33) are correct — fix CHANGELOG bullet when executing Task 11.
+```1075:1075:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+Expected: **83/83** unit tests pass
+```
+```1184:1184:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+Expected: **85/85** unit tests pass
+```
+```1371:1372:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+Expected: **88/88** unit tests pass
+```
+```1564:1565:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+Expected: **90/90** unit tests pass
+```
+```1745:1745:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+Configurator: **90 unit** + 4 E2E.
+```
 
-**N-R2-2 — “returns immediately” semantics**  
-`downloadUpdate` still `await autoUpdater.downloadUpdate()` (L792). Means: no `quitAndInstall` in same call + rejection → `error` state (H1). Real electron-updater may hold the IPC until download completes; UI still streams via `subscribeUpdateStatus`. Not a Round 1 regression.
+**M2 (ITPolicyHelpModal: required `tallyExePath` prop + `${tallyExePath}` interpolation; App.tsx passes health-derived path; test uses D:\\...)**
 
-**N-R2-3 — Task 4 Step 1 prose says “2 new channels”** (L851) but registers **3** (`CHECK_FOR_UPDATES` + download + quit) — cosmetic.
+```1260:1272:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+export interface ITPolicyHelpModalProps {
+  tallyExePath: string;
+  onClose: () => void;
+}
+```
 
-### Round 2 verdict
+```1334:1345:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+program="${tallyExePath}"
+...
+-Program "${tallyExePath}"
+```
 
-**✅ READY TO EXECUTE** — all Round 1 blockers closed in plan text. Patch **N-R2-1** during Task 11 so release notes match DoD counts.
+```1546:1550:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+tallyExePath={
+  health?.tallyInstallDir ? `${health.tallyInstallDir}\\tally.exe`
+  : "C:\\Program Files\\TallyPrime\\tally.exe"
+}
+```
 
-### Round 2 nit resolutions (applied inline before any Phase 4 execution starts)
+```1214:1214:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+const tallyExePath = "D:\\Tally Solutions\\TallyPrime\\tally.exe";
+```
 
-| # | Resolution |
-|---|---|
-| **N-R2-1** | **Fixed in Task 11 CHANGELOG section.** Updated stale counts: "8 auto-update" → "10 auto-update (net +9 after replacing the Phase 2 stub)"; "3 preload" → "4 preload" (the C1 split added a fourth method); "2 unit tests" for generate-latest-json → "3 unit tests" (added the H2 guard test); "~96 configurator + 2 installer" → "~99 configurator + 3 installer-script" (matches the Phase 4 DoD). Also updated Task 13's "Configurator unit tests should be ~96" → "~99" and the "What ships" section. |
-| **N-R2-2** | **No action — documented observation.** `await autoUpdater.downloadUpdate()` semantics (download promise resolves after completion, not after start) is electron-updater's behavior; not a regression. UI still streams progress via `subscribeUpdateStatus`. |
-| **N-R2-3** | **Fixed in Task 4 Step 1.** "Add IPC handlers for the 2 new channels" → "Add IPC handlers for the 3 new update channels (CHECK_FOR_UPDATES, DOWNLOAD_UPDATE, QUIT_AND_INSTALL per the Cursor C1 split)". Prose now matches the registered count. |
+**M3 + M4 (Out-of-scope includes English-only GP note + 5 §7.5 deferrals)**
 
-All Cursor findings on Phase 4 plan (C1 + H1–H3 + M4 + M5 + N-R2-1 + N-R2-3) now closed. Plan is fully execution-ready pending Phase 3 merge.
+```86:92:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+Localized `netsh` Group Policy detection (Cursor M3) — English-only deferral note.
+Other §7.5 edge cases deferred: antivirus blocks netsh, port 9000 in use, multiple installs picker, tally.ini ENOENT, "Tally won't close" 60s modal.
+```
 
-**Final Round 2 verdict (post-nit-cleanup): ✅ READY TO EXECUTE.**
+**M5 (routing comment present in both Task 6 + Task 9)**
+
+```1014:1022:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+// Patch A yellow card is **deliberately scoped to "non-admin"** —
+// "group-policy" case is routed to ITPolicyHelpModal (Patch D) ...
+```
+
+```1489:1493:c:/Projects/Tally MCP/docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.1.md
+// firewallSkipReason: "group-policy" is intentionally
+// routed to ITPolicyHelpModal, not the Patch A yellow card —
+```
+
