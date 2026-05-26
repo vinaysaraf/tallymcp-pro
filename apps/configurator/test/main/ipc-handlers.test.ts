@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleWireMcp, handleUnwireMcp, handleHealthCheck, handleTallyFix, handleTallyRestore } from "../../src/main/ipc-handlers.js";
+import { handleWireMcp, handleUnwireMcp, handleHealthCheck, handleTallyFix, handleTallyRestore, handleGetConfig } from "../../src/main/ipc-handlers.js";
 import { FakeExecRunner, type ExecResult } from "@tallymcp/tally-autofix";
 
 describe("handleWireMcp", () => {
@@ -226,5 +226,19 @@ describe("handleTallyRestore", () => {
     expect(result.iniRestored).toBe(true);
     expect(result.firewallRule).toBe("noop");
     expect(await readFile(join(installDir, "tally.ini"), "utf8")).toBe("ORIGINAL");
+  });
+});
+
+describe("handleGetConfig", () => {
+  it("returns the installDir + version + best-effort tallyInstallDir", async () => {
+    const cfg = await handleGetConfig({
+      installDir: "C:\\X\\TallyMCP",
+      version: "0.0.1",
+      scanRoots: ["C:\\nonexistent"],
+    });
+
+    expect(cfg.installDir).toBe("C:\\X\\TallyMCP");
+    expect(cfg.version).toBe("0.0.1");
+    expect(cfg.tallyInstallDir).toBeUndefined();
   });
 });

@@ -19,6 +19,7 @@ import {
 } from "@tallymcp/tally-autofix";
 import {
   IPC_CHANNELS,
+  type ConfigSnapshot,
   type WireRequest,
   type WireResponse,
   type UnwireRequest,
@@ -203,16 +204,45 @@ export async function handleTallyRestore(
   return { iniRestored: true, firewallRule };
 }
 
+export interface GetConfigContext {
+  installDir: string;
+  version: string;
+  scanRoots?: string[];
+}
+
+export async function handleGetConfig(
+  ctx: GetConfigContext,
+): Promise<ConfigSnapshot> {
+  const found = (await detectTallyInstall({
+    scanRoots: ctx.scanRoots,
+    returnAll: true,
+  })) as TallyInstall[];
+  return {
+    installDir: ctx.installDir,
+    version: ctx.version,
+    tallyInstallDir: found[0]?.installDir,
+  };
+}
+
+export interface RegisterContext {
+  installDir: string;
+  version: string;
+}
+
 /**
  * Registers IPC handlers on the supplied ipcMain. Called once at Electron
  * `app.ready`. Tests invoke the `handle*` functions directly.
  */
 export function registerIpcHandlers(
   ipcMain: { handle: (channel: string, handler: (event: unknown, payload: unknown) => unknown) => void },
+  ctx: RegisterContext,
 ): void {
   ipcMain.handle(IPC_CHANNELS.WIRE_MCP, (_evt, payload) => handleWireMcp(payload as WireRequest));
   ipcMain.handle(IPC_CHANNELS.UNWIRE_MCP, (_evt, payload) => handleUnwireMcp(payload as UnwireRequest));
   ipcMain.handle(IPC_CHANNELS.HEALTH_CHECK, () => handleHealthCheck());
   ipcMain.handle(IPC_CHANNELS.TALLY_FIX, () => handleTallyFix());
   ipcMain.handle(IPC_CHANNELS.TALLY_RESTORE, () => handleTallyRestore());
+  ipcMain.handle(IPC_CHANNELS.GET_CONFIG, () =>
+    handleGetConfig({ installDir: ctx.installDir, version: ctx.version }),
+  );
 }
