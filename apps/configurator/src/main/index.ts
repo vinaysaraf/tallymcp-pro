@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { registerIpcHandlers } from "./ipc-handlers.js";
+import { createTallyPoller } from "./tally-poller.js";
+import { TALLY_STATUS_EVENT } from "../shared/ipc-types.js";
 
 /** Where the preload bundle lives relative to the main bundle dir. */
 export const PRELOAD_RELATIVE_PATH = "../preload/index.js";
@@ -61,7 +63,19 @@ if (process.env.NODE_ENV !== "test") {
       installDir,
       version: app.getVersion(),
     });
-    await createWindow();
+    const mainWindow = await createWindow();
+    const poller = createTallyPoller({
+      url: "http://127.0.0.1:9000",
+      intervalMs: 5_000,
+      onStatus: (status) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(TALLY_STATUS_EVENT, status);
+        }
+      },
+    });
+    poller.start();
+
+    app.on("before-quit", () => poller.stop());
     app.on("activate", async () => {
       if (BrowserWindow.getAllWindows().length === 0) await createWindow();
     });
