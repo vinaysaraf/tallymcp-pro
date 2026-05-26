@@ -68,10 +68,14 @@ export async function removeFirewallRule(runner: ExecRunner): Promise<void> {
     "advfirewall", "firewall", "delete", "rule",
     `name="${FIREWALL_RULE_NAME}"`,
   ]);
-  // Delete on a missing rule returns non-zero; that's a noop from our POV.
-  if (result.exitCode !== 0 && !/no rules match/i.test(result.stdout + result.stderr)) {
-    throw new Error(
-      `Failed to remove firewall rule (exit ${result.exitCode}). stderr: ${result.stderr.trim() || "(empty)"}`,
-    );
+  if (result.exitCode === 0) return;
+  // "no rules match" is a noop from our POV (rule wasn't there)
+  if (/no rules match/i.test(result.stdout + result.stderr)) return;
+  // Empty stderr on non-zero exit = elevation issue (mirrors addFirewallRule)
+  if (result.stderr.trim() === "") {
+    throw new FirewallElevationError();
   }
+  throw new Error(
+    `Failed to remove firewall rule (exit ${result.exitCode}). stderr: ${result.stderr.trim()}`,
+  );
 }

@@ -88,4 +88,9 @@ describe("removeFirewallRule", () => {
       `name="${FIREWALL_RULE_NAME}"`,
     ]);
   });
+
+  it("throws FirewallElevationError when netsh exits non-zero with empty stderr (non-admin)", async () => {
+    const runner = new FakeExecRunner(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+    await expect(removeFirewallRule(runner)).rejects.toBeInstanceOf(FirewallElevationError);
+  });
 });

@@ -84,6 +84,43 @@ describe("TallyAutofixer.ensureFirewallRule", () => {
   });
 });
 
+describe("TallyAutofixer.removeFirewallRuleIfPresent", () => {
+  it("returns 'noop' when the rule doesn't exist", async () => {
+    const runner = new FakeExecRunner((_cmd, args) => {
+      // show rule → not found
+      if (args.includes("show")) return { exitCode: 1, stdout: "No rules match the specified criteria.", stderr: "" };
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+    const fixer = new TallyAutofixer({ runner });
+    const result = await fixer.removeFirewallRuleIfPresent();
+    expect(result).toBe("noop");
+  });
+
+  it("returns 'removed' on success", async () => {
+    const runner = new FakeExecRunner((_cmd, args) => {
+      // show rule → rule present
+      if (args.includes("show")) return { exitCode: 0, stdout: "Rule Name: TallyMCP — Tally XML port 9000\nOk.", stderr: "" };
+      // delete rule → success
+      return { exitCode: 0, stdout: "Deleted 1 rule(s).", stderr: "" };
+    });
+    const fixer = new TallyAutofixer({ runner });
+    const result = await fixer.removeFirewallRuleIfPresent();
+    expect(result).toBe("removed");
+  });
+
+  it("returns 'skipped-non-admin' on elevation failure", async () => {
+    const runner = new FakeExecRunner((_cmd, args) => {
+      // show rule → rule present
+      if (args.includes("show")) return { exitCode: 0, stdout: "Rule Name: TallyMCP — Tally XML port 9000\nOk.", stderr: "" };
+      // delete rule → elevation failure (exit 1, empty stderr)
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+    const fixer = new TallyAutofixer({ runner });
+    const result = await fixer.removeFirewallRuleIfPresent();
+    expect(result).toBe("skipped-non-admin");
+  });
+});
+
 describe("TallyAutofixer.restoreTallyIni", () => {
   let root: string;
   beforeEach(async () => {

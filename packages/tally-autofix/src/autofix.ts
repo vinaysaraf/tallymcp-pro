@@ -68,8 +68,15 @@ export class TallyAutofixer {
     }
   }
 
-  async removeFirewallRuleIfPresent(): Promise<void> {
-    await removeFirewallRule(this.opts.runner);
+  async removeFirewallRuleIfPresent(): Promise<"removed" | "noop" | "skipped-non-admin"> {
+    if (!(await firewallRuleExists(this.opts.runner))) return "noop";
+    try {
+      await removeFirewallRule(this.opts.runner);
+      return "removed";
+    } catch (err) {
+      if (err instanceof FirewallElevationError) return "skipped-non-admin";
+      throw err;
+    }
   }
 }
 
