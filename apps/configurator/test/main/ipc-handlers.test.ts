@@ -2,9 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleWireMcp, handleUnwireMcp } from "../../src/main/ipc-handlers.js";
+import { handleWireMcp, handleUnwireMcp, handleHealthCheck, handleTallyFix, handleTallyRestore } from "../../src/main/ipc-handlers.js";
 import { FakeExecRunner, type ExecResult } from "@tallymcp/tally-autofix";
-import { handleHealthCheck } from "../../src/main/ipc-handlers.js";
 
 describe("handleWireMcp", () => {
   let dir: string;
@@ -168,5 +167,64 @@ describe("handleHealthCheck", () => {
 
     const result = await handleHealthCheck({ scanRoots: [dir], runner });
     expect(result.multipleTallyInstalls).toEqual([a, b]);
+  });
+});
+
+describe("handleTallyFix", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "configurator-ipc-fix-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("applies tally.ini changes + skips firewall gracefully on non-admin", async () => {
+    const installDir = join(dir, "TallyPrime");
+    await mkdir(installDir);
+    await writeFile(join(installDir, "tally.exe"), "");
+    await writeFile(join(installDir, "tally.ini"), "[TALLY]\nDefault Companies=Yes\n");
+
+    const runner = new FakeExecRunner((cmd, _args): ExecResult => {
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks", stderr: "" };
+      // netsh add returns the elevation signature (exit 1, empty stderr)
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    const result = await handleTallyFix({ scanRoots: [dir], runner });
+
+    expect(result.xmlInterface).toBe("applied");
+    expect(result.iniBackupCreated).toBe(true);
+    expect(result.firewallRule).toBe("skipped-non-admin");
+  });
+});
+
+describe("handleTallyRestore", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "configurator-ipc-restore-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("restores tally.ini from .tallymcp-bak and reports firewall noop", async () => {
+    const installDir = join(dir, "TallyPrime");
+    await mkdir(installDir);
+    await writeFile(join(installDir, "tally.exe"), "");
+    await writeFile(join(installDir, "tally.ini"), "MODIFIED");
+    await writeFile(join(installDir, "tally.ini.tallymcp-bak"), "ORIGINAL");
+
+    const runner = new FakeExecRunner((cmd, _args): ExecResult => {
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks", stderr: "" };
+      // show rule → no rule exists
+      return { exitCode: 1, stdout: "No rules match", stderr: "" };
+    });
+
+    const result = await handleTallyRestore({ scanRoots: [dir], runner });
+
+    expect(result.iniRestored).toBe(true);
+    expect(result.firewallRule).toBe("noop");
+    expect(await readFile(join(installDir, "tally.ini"), "utf8")).toBe("ORIGINAL");
   });
 });

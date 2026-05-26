@@ -13,6 +13,7 @@ import {
   firewallRuleExists,
   parseTallyIni,
   RealExecRunner,
+  TallyAutofixer,
   type ExecRunner,
   type TallyInstall,
 } from "@tallymcp/tally-autofix";
@@ -23,6 +24,8 @@ import {
   type UnwireRequest,
   type UnwireResponse,
   type HealthCheckResponse,
+  type TallyFixResponse,
+  type TallyRestoreResponse,
 } from "../shared/ipc-types.js";
 
 /**
@@ -152,6 +155,54 @@ export async function handleHealthCheck(
   };
 }
 
+export interface TallyOpContext {
+  scanRoots?: string[];
+  runner?: ExecRunner;
+}
+
+async function resolveSingleInstall(
+  ctx: TallyOpContext,
+): Promise<TallyInstall> {
+  const found = (await detectTallyInstall({
+    scanRoots: ctx.scanRoots,
+    returnAll: true,
+  })) as TallyInstall[];
+  if (found.length === 0) {
+    throw new Error("TallyPrime is not installed. Install it from https://tallysolutions.com");
+  }
+  if (found.length > 1) {
+    const list = found.map((i) => `  - ${i.installDir}`).join("\n");
+    throw new Error(`Multiple TallyPrime installs found:\n${list}`);
+  }
+  return found[0]!;
+}
+
+export async function handleTallyFix(
+  ctx: TallyOpContext = {},
+): Promise<TallyFixResponse> {
+  const runner = ctx.runner ?? new RealExecRunner();
+  const install = await resolveSingleInstall(ctx);
+  const fixer = new TallyAutofixer({ runner });
+  const xml = await fixer.fixXmlInterface(install);
+  const firewallRule = await fixer.ensureFirewallRule(install.exePath);
+  return {
+    xmlInterface: xml.action,
+    iniBackupCreated: xml.iniBackupCreated,
+    firewallRule,
+  };
+}
+
+export async function handleTallyRestore(
+  ctx: TallyOpContext = {},
+): Promise<TallyRestoreResponse> {
+  const runner = ctx.runner ?? new RealExecRunner();
+  const install = await resolveSingleInstall(ctx);
+  const fixer = new TallyAutofixer({ runner });
+  await fixer.restoreTallyIni(install.iniPath);
+  const firewallRule = await fixer.removeFirewallRuleIfPresent();
+  return { iniRestored: true, firewallRule };
+}
+
 /**
  * Registers IPC handlers on the supplied ipcMain. Called once at Electron
  * `app.ready`. Tests invoke the `handle*` functions directly.
@@ -162,4 +213,6 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.WIRE_MCP, (_evt, payload) => handleWireMcp(payload as WireRequest));
   ipcMain.handle(IPC_CHANNELS.UNWIRE_MCP, (_evt, payload) => handleUnwireMcp(payload as UnwireRequest));
   ipcMain.handle(IPC_CHANNELS.HEALTH_CHECK, () => handleHealthCheck());
+  ipcMain.handle(IPC_CHANNELS.TALLY_FIX, () => handleTallyFix());
+  ipcMain.handle(IPC_CHANNELS.TALLY_RESTORE, () => handleTallyRestore());
 }
