@@ -27,4 +27,17 @@ describe("detectIsElevated", () => {
     });
     expect(await detectIsElevated(runner)).toBe(false);
   });
+
+  it("returns false when `net session` exits with an unexpected non-zero code (defensive)", async () => {
+    // Spec says net session exits 0 (admin) or 2 (non-admin), but a hosed
+    // PATH or a localized Windows variant could surface a different code.
+    // Treat any non-zero as "not elevated" so the caller's elevation-gated
+    // UX never falsely promises admin.
+    const runner = new FakeExecRunner((_cmd, _args): ExecResult => ({
+      exitCode: 5,
+      stdout: "",
+      stderr: "",
+    }));
+    expect(await detectIsElevated(runner)).toBe(false);
+  });
 });
