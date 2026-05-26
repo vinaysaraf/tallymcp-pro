@@ -1,4 +1,4 @@
-export { TallyAutofixer, FIREWALL_RULE_NAME } from "./autofix.js";
+export { TallyAutofixer, FIREWALL_RULE_NAME, TallyIniLockedError } from "./autofix.js";
 export type { TallyAutofixerOptions, FixXmlResult } from "./autofix.js";
 export {
   detectTallyInstall,
