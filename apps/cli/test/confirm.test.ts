@@ -1,5 +1,6 @@
+import { Readable } from "node:stream";
 import { describe, it, expect, afterEach } from "vitest";
-import { AbortError, assertInteractiveOrYes, formatPreview } from "../src/confirm.js";
+import { AbortError, assertInteractiveOrYes, formatPreview, readStdinConfirm } from "../src/confirm.js";
 
 describe("AbortError", () => {
   it("extends Error and has correct name", () => {
@@ -35,6 +36,43 @@ describe("assertInteractiveOrYes", () => {
     expect(() => assertInteractiveOrYes({ yes: false })).toThrow(
       "stdin is not a terminal. Re-run with --yes (-y) to apply changes without a prompt.",
     );
+  });
+});
+
+describe("readStdinConfirm", () => {
+  const origStdin = process.stdin;
+  const origWrite = process.stdout.write.bind(process.stdout);
+
+  afterEach(() => {
+    Object.defineProperty(process, "stdin", { value: origStdin, configurable: true });
+    process.stdout.write = origWrite;
+  });
+
+  function mockStdin(input: string): void {
+    const fakeStream = Readable.from([input]);
+    Object.defineProperty(process, "stdin", { value: fakeStream, configurable: true });
+    // Suppress the prompt output during tests.
+    process.stdout.write = (_chunk: unknown, ..._rest: unknown[]) => true;
+  }
+
+  it("returns true for 'y'", async () => {
+    mockStdin("y\n");
+    expect(await readStdinConfirm("Proceed? ")).toBe(true);
+  });
+
+  it("returns true for 'YES'", async () => {
+    mockStdin("YES\n");
+    expect(await readStdinConfirm("Proceed? ")).toBe(true);
+  });
+
+  it("returns false for empty input", async () => {
+    mockStdin("\n");
+    expect(await readStdinConfirm("Proceed? ")).toBe(false);
+  });
+
+  it("returns false for 'n'", async () => {
+    mockStdin("n\n");
+    expect(await readStdinConfirm("Proceed? ")).toBe(false);
   });
 });
 
