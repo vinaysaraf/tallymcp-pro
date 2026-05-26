@@ -88,3 +88,34 @@ projection, then client-side filter. Connector public API unchanged.
 9 seconds each, and the full 12-report sweep does not wedge the gateway.
 The Silver-edition workaround documented in v0.6 (`tally_import_vouchers_from_file`)
 remains; write-side flow is out of scope for this release.
+
+## v1.0 Installer Phase 1 — Manual smoke (2026-05-26)
+
+**Run:** `docs/v1-installer-phase1-manual-smoke.md` adapted to the **realistic fixture-folder** pattern — a synthetic `C:\Users\info\tallymcp-smoke-fixture\TallyPrime\` with a hand-crafted `tally.ini` that lacks the XML interface lines, plus a mock TallyMCP install at `%LOCALAPPDATA%\TallyMCP-smoke\`. The real `C:\Program Files\TallyPrime (1)\tally.ini` was **never touched** by any of the 4 CLI commands during the smoke.
+
+**Branch tip at smoke:** `e226ad5` (PR #2). Build green on ubuntu-latest + windows-latest CI.
+
+### Steps + results
+
+| # | Step | Command | Result |
+|---:|---|---|:---:|
+| 1 | Build + create fixtures | `pnpm install && pnpm -r build` + PowerShell fixture setup | ✅ |
+| 2 | Wire Claude Desktop | `wire claude-desktop --install-dir <mock> --yes` | ✅ `added`, `tally-prime` sibling preserved byte-for-byte, `.bak` SHA unchanged from prior session |
+| 3 | Re-wire is noop | `wire claude-desktop --install-dir <mock> --yes` (2nd time) | ✅ `noop`, config + `.bak` SHA both identical to step 2 |
+| 4 | Unwire | `unwire claude-desktop --yes` | ✅ `removed`, `tally-prime` survives, `.bak` SHA still identical |
+| 5 | tally-fix (applied path) | `tally-fix --tally-dir <fixture> --yes` | ✅ tally.ini 175→209 bytes, XML lines added, others preserved, `.tallymcp-bak` == pre-fix SHA; firewall step gracefully skipped (non-admin) with a clear warning, exit code 0 |
+| 6 | verify-all-reports against real Tally | `pnpm verify-all-reports` | ✅ **12/12** on live OM JAI JAGDISH, sweep in ~6.8 s |
+| 7 | tally-restore | `tally-restore --tally-dir <fixture> --yes` | ✅ tally.ini restored byte-for-byte to pristine SHA, firewall noop branch fired ("not present"), exit 0 |
+| 8 | Backup-once across 2 cycles | tally-fix → fix → restore → fix → restore | ✅ `.bak` SHA `C28AB0C8...` across every step; never overwritten |
+
+### Real bugs the smoke caught (and fixed before merge)
+
+1. **`98ba509`** — `client-wirer` failed `JSON.parse` on the user's PowerShell-generated `claude_desktop_config.json` because it had a UTF-8 BOM. Added BOM-strip in `readJsonOrEmpty` per RFC 8259 §8.1. Would have blocked every CA whose Claude config originated from PowerShell tooling.
+2. **`625b581` + `02c5089`** — `addFirewallRule` threw an uncaught Error when run non-admin (`netsh add` requires elevation). Spec-vs-reality mismatch ("no UAC" promised but firewall rule needs admin). Added `FirewallElevationError` and graceful skip — `tally-fix` now exits 0 with a clear warning. Loopback works without the rule.
+3. **`866f087` + `e226ad5`** — `removeFirewallRule` had the same non-admin pattern as `addFirewallRule`. Parallel fix; `tally-restore` now distinguishes `removed` / `noop` / `skipped-non-admin`.
+
+### Independent review
+
+Cursor reviewed twice (initial + post-fix), then again on the consent feature: all three rounds ended at **✅ READY TO MERGE** with only Phase 2 backlog items remaining. The 3 post-smoke bug fixes above were caught by the smoke, NOT by the unit tests or by Cursor — a strong argument for keeping manual smoke as a release gate.
+
+**Decision: ✅ Phase 1 installer + CLI are live-verified.** All 4 commands (`wire`, `unwire`, `tally-fix`, `tally-restore`) work correctly on the live Windows + Tally Silver box with realistic config-file shapes (BOM-prefixed JSON, missing XML lines) and the spec-promised "no admin" path. Loopback connectivity to Tally verified via `verify-all-reports` 12/12.
