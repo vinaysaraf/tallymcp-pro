@@ -1,7 +1,7 @@
 import { readFile, copyFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { parseTallyIni, ensureXmlInterfaceLines, serializeTallyIni } from "./tally-ini.js";
-import { addFirewallRule, removeFirewallRule, firewallRuleExists, FIREWALL_RULE_NAME } from "./firewall.js";
+import { addFirewallRule, removeFirewallRule, firewallRuleExists, FIREWALL_RULE_NAME, FirewallElevationError } from "./firewall.js";
 import { writeAtomic } from "./atomic-write.js";
 import type { ExecRunner } from "./exec-runner.js";
 import type { TallyInstall } from "./tally-detect.js";
@@ -57,10 +57,15 @@ export class TallyAutofixer {
     await writeAtomic(iniPath, backupContent);
   }
 
-  async ensureFirewallRule(tallyExePath: string): Promise<"added" | "noop"> {
+  async ensureFirewallRule(tallyExePath: string): Promise<"added" | "noop" | "skipped-non-admin"> {
     if (await firewallRuleExists(this.opts.runner)) return "noop";
-    await addFirewallRule(this.opts.runner, { tallyExePath });
-    return "added";
+    try {
+      await addFirewallRule(this.opts.runner, { tallyExePath });
+      return "added";
+    } catch (err) {
+      if (err instanceof FirewallElevationError) return "skipped-non-admin";
+      throw err;
+    }
   }
 
   async removeFirewallRuleIfPresent(): Promise<void> {

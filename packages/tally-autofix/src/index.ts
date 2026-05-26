@@ -28,5 +28,6 @@ export {
   firewallRuleExists,
   addFirewallRule,
   removeFirewallRule,
+  FirewallElevationError,
   type AddFirewallRuleOptions,
 } from "./firewall.js";

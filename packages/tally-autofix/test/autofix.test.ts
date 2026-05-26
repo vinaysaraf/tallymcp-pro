@@ -59,6 +59,31 @@ describe("TallyAutofixer.fixXmlInterface", () => {
   });
 });
 
+describe("TallyAutofixer.ensureFirewallRule", () => {
+  it("returns 'added' on success", async () => {
+    const runner = new FakeExecRunner((_cmd, args) => {
+      // show rule → not found; add rule → success
+      if (args.includes("show")) return { exitCode: 1, stdout: "No rules match.", stderr: "" };
+      return { exitCode: 0, stdout: "Ok.", stderr: "" };
+    });
+    const fixer = new TallyAutofixer({ runner });
+    const result = await fixer.ensureFirewallRule("C:\\TallyPrime\\tally.exe");
+    expect(result).toBe("added");
+  });
+
+  it("returns 'skipped-non-admin' when netsh fails with empty stderr (non-admin)", async () => {
+    const runner = new FakeExecRunner((_cmd, args) => {
+      // show rule → not found; add rule → elevation failure (exit 1, empty stderr)
+      if (args.includes("show")) return { exitCode: 1, stdout: "No rules match.", stderr: "" };
+      // add rule → fails silently (elevation required)
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+    const fixer = new TallyAutofixer({ runner });
+    const result = await fixer.ensureFirewallRule("C:\\TallyPrime\\tally.exe");
+    expect(result).toBe("skipped-non-admin");
+  });
+});
+
 describe("TallyAutofixer.restoreTallyIni", () => {
   let root: string;
   beforeEach(async () => {

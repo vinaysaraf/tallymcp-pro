@@ -6,6 +6,7 @@ import {
   firewallRuleExists,
   addFirewallRule,
   removeFirewallRule,
+  FirewallElevationError,
   FIREWALL_RULE_NAME,
 } from "../src/firewall.js";
 import { FakeExecRunner } from "../src/exec-runner.js";
@@ -64,6 +65,17 @@ describe("addFirewallRule", () => {
     await expect(
       addFirewallRule(runner, { tallyExePath: "C:\\tally.exe" }),
     ).rejects.toThrow(/Group Policy/);
+  });
+
+  it("throws FirewallElevationError when netsh exits non-zero with empty stderr", async () => {
+    const runner = new FakeExecRunner(() => ({
+      exitCode: 1,
+      stdout: "",
+      stderr: "",
+    }));
+    await expect(
+      addFirewallRule(runner, { tallyExePath: "C:\\tally.exe" }),
+    ).rejects.toBeInstanceOf(FirewallElevationError);
   });
 });
 
