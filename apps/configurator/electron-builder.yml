@@ -59,6 +59,14 @@ nsis:
   installerLanguages: en_US
   deleteAppDataOnUninstall: false  # CA's data is sacred; never wipe %APPDATA%
 
-# Auto-update is deferred to Phase 4 (this is a stubbed publish target
-# so electron-builder doesn't error on missing `publish` config).
-publish: null
+# GitHub Releases publish target. electron-builder uses this to:
+#   - generate latest.yml (for electron-updater).
+#   - upload artifacts to the release matching the current tag IF the
+#     build is invoked with `--publish always` (release workflow only).
+# Local `pnpm package` does NOT auto-publish (electron-builder defaults
+# to `--publish never` outside a CI tag context).
+publish:
+  provider: github
+  owner: vinaysaraf
+  repo: tallymcp-pro
+  releaseType: release
