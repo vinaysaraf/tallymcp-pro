@@ -54,6 +54,35 @@ describe("wire CLI", () => {
     await expect(readFile(configPath, "utf8")).rejects.toThrow();
   });
 
+  it("preview entry snippet is valid JSON with properly escaped paths", async () => {
+    const installDir = join(dir, "TallyMCP");
+    const appdata = join(dir, "appdata");
+
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: unknown, ...rest: unknown[]) => {
+      chunks.push(String(chunk));
+      return (origWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+    };
+    try {
+      await runWireCommand({
+        clientId: "claude-desktop",
+        installDir,
+        env: { APPDATA: appdata },
+        yes: true,
+      });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    const allOutput = chunks.join("");
+    // The snippet is indented JSON — find the outermost { ... } block in the preview.
+    const match = allOutput.match(/\{[\s\S]*\}/);
+    expect(match).not.toBeNull();
+    const parsed: Record<string, unknown> = JSON.parse(match![0].trim());
+    expect(parsed).toHaveProperty("tallymcp-pro");
+  });
+
   it("does not call confirmFn when yes: true", async () => {
     const installDir = join(dir, "TallyMCP");
     const appdata = join(dir, "appdata");

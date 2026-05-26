@@ -34,6 +34,29 @@ describe("unwire CLI", () => {
     expect(after.mcpServers["sibling"]).toEqual({ command: "x", args: [] });
   });
 
+  it("preview uses 'servers' key for Ollama", async () => {
+    const installDir = join(dir, "TallyMCP");
+    const env = { LOCALAPPDATA: join(dir, "localappdata") };
+    // Wire ollama first so the config path is valid.
+    await runWireCommand({ clientId: "ollama", installDir, env, yes: true });
+
+    const chunks: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: unknown, ...rest: unknown[]) => {
+      chunks.push(String(chunk));
+      return (origWrite as (...args: unknown[]) => boolean)(chunk, ...rest);
+    };
+    try {
+      await runUnwireCommand({ clientId: "ollama", env, yes: true });
+    } finally {
+      process.stdout.write = origWrite;
+    }
+
+    const allOutput = chunks.join("");
+    expect(allOutput).toContain('"servers"');
+    expect(allOutput).not.toContain('"mcpServers"');
+  });
+
   it("aborts when confirmFn returns false", async () => {
     const installDir = join(dir, "TallyMCP");
     const env = { APPDATA: join(dir, "appdata") };

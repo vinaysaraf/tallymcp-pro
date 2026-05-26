@@ -1,4 +1,4 @@
-import { ClientWirer, type ClientId, type UnwireResult, resolveClientConfigPath } from "@tallymcp/client-wirer";
+import { ClientWirer, type ClientId, type UnwireResult, CLIENT_REGISTRY, resolveClientConfigPath } from "@tallymcp/client-wirer";
 import { AbortError, assertInteractiveOrYes, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
 
 export interface RunUnwireOptions {
@@ -13,10 +13,11 @@ export interface RunUnwireOptions {
 export async function runUnwireCommand(opts: RunUnwireOptions): Promise<UnwireResult> {
   const env = opts.env ?? process.env;
   const configPath = resolveClientConfigPath(opts.clientId, env);
+  const serversKey = CLIENT_REGISTRY[opts.clientId].serversKey;
 
   const previewItem =
     `Edit  ${configPath}\n` +
-    `Remove the "tallymcp-pro" entry from "mcpServers".\n` +
+    `Remove the "tallymcp-pro" entry from "${serversKey}".\n` +
     `Other entries in the file are preserved exactly.\n` +
     `A new .bak will be created (if none exists) before the edit.`;
 

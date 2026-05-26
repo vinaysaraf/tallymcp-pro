@@ -74,7 +74,8 @@ export async function runTallyFixCommand(opts: RunTallyFixOptions = {}): Promise
     `Add (or update) these 2 lines:\n` +
     `  Client Server=Both\n` +
     `  ServerPort=9000\n` +
-    `Backup will be saved to tally.ini.tallymcp-bak first.`;
+    `Backup will be saved to ${install.iniPath}.tallymcp-bak first.\n` +
+    `TallyPrime must be closed before the edit.`;
 
   const fwItem =
     `Add a Windows Firewall rule\n` +

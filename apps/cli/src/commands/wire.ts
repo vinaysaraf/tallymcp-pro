@@ -25,18 +25,15 @@ export async function runWireCommand(opts: RunWireOptions): Promise<WireResult> 
   };
 
   const serversKey = CLIENT_REGISTRY[opts.clientId].serversKey;
-  const entryLines = [
-    `"tallymcp-pro": {`,
-    `  "command": "${entry.command}",`,
-    `  "args":    ["${entry.args[0]}"],`,
-    `  "env":     { "TALLYMCP_CONFIG": "${entry.env!["TALLYMCP_CONFIG"]}" }`,
-    `}`,
-  ].join("\n");
+  const entrySnippet = JSON.stringify({ "tallymcp-pro": entry }, null, 2)
+    .split("\n")
+    .map((l) => `  ${l}`)
+    .join("\n");
 
   const previewItem =
     `Edit  ${configPath}\n` +
     `Add this entry to "${serversKey}":\n` +
-    entryLines + `\n` +
+    entrySnippet + `\n` +
     `Backup will be saved to ${configPath}.bak first.`;
 
   const preview = formatPreview("I will make 1 change to your PC:", [previewItem]);
