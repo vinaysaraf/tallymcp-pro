@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.0-phase3.1 — Admin/elevation UX hotfix (2026-05-26)
+
+### Added
+- **`detectIsElevated(runner): Promise<boolean>`** in `@tallymcp/tally-autofix` — runs `net session 2>nul` and returns true on exit 0. Used by the Configurator's HealthCheck to render an admin-needed hint when applicable.
+- **`TallyIniLockedError`** error class in `@tallymcp/tally-autofix`. Thrown by `fixXmlInterface` when the underlying write fails with `EPERM`/`EACCES`. Carries a CA-friendly message ("Couldn't edit tally.ini at <path>. This usually means TallyPrime is currently running...") that replaces the raw OS error in the renderer's ErrorBanner.
+- **`GroupPolicyError`** error class + `firewallRule: "group-policy-blocked"` outcome in `TallyAutofixer.ensureFirewallRule`. The library used to throw a generic `Error` with a "Group Policy" message; now it throws the typed class and the `TallyAutofixer` wrapper catches it into a discriminated outcome the IPC contract exposes.
+- **`HealthCheckResponse.isElevated?: boolean`** — optional field populated by `handleHealthCheck` via `detectIsElevated`. Drives the Fix button's "(Admin needed)" label + a small "Right-click → Run as administrator" hint.
+- **`ITPolicyHelpModal` React component** — opens when `handleFixAll` sees `firewallRule === "group-policy-blocked"`. Shows the exact `netsh` command IT can run, the equivalent `New-NetFirewallRule` PowerShell, and a "skip if loopback-only" reassurance with the technical reason.
+- **Zustand `firewallSkipReason` slice** — `"non-admin" | "group-policy" | undefined`. Set by `handleFixAll` based on the `tallyFix` response. Auto-cleared on screen navigation (extends Phase 2's `navigateTo` `lastError` clear).
+- **HealthCheck Patch A yellow card** — renders below the status list when `firewallSkipReason === "non-admin"`. Explains that the XML interface change DID apply, that AI tools on this same PC still work over loopback, and that the firewall rule is only needed for multi-machine setups.
+- **HealthCheck Patch C admin pre-flight** — when `status.isElevated === false` and a fix is needed, the Fix button reads "Fix both (Admin needed) →" and a hint above it suggests "Right-click TallyMCP → Run as administrator, OR follow the manual steps after clicking Fix."
+- **+14 net new configurator unit tests** (2 handleHealthCheck.isElevated + 2 store + 3 HealthCheck Patch A — incl. Cursor H1 Re-check gate — + 2 HealthCheck Patch C + 3 ITPolicyHelpModal + 2 App-level) plus **+8 in `@tallymcp/tally-autofix`** (4 elevation including the defensive exit-code test added during code review + 2 TallyIniLockedError + 2 GroupPolicyError/group-policy-blocked). Configurator count: **76 → 90**. `@tallymcp/tally-autofix` count: **44 → 52**. All Phase 1 + Phase 2 + v0.7 tests unchanged + green.
+
+### Changed
+- `TallyAutofixer.ensureFirewallRule` return type widened from `"added" | "noop" | "skipped-non-admin"` to add `"group-policy-blocked"`. Backwards-compatible for callers that exhaustively switch on the union (they'll get a TypeScript hint about the new variant).
+- `TallyFixResponse.firewallRule` IPC field widened identically.
+- `@tallymcp/cli` `TallyFixResult.firewallRule` widened to match (Task 4 code-review follow-up) and `apps/cli/src/main.ts` gained an explicit `else if (result.firewallRule === "group-policy-blocked")` branch with IT-policy guidance — previously the CLI silently printed `✓ Firewall rule: group-policy-blocked` (wrong; IT-policy block is a warning, not success).
+
+### Notes
+- No new IPC channels — `HealthCheckResponse.isElevated` is the only new field, and `TallyFixResponse.firewallRule` adds a new variant. Both backwards-compatible.
+- No auto-elevation (UAC prompt). The NSIS installer is user-mode per Phase 3 (no elevation manifest); the user manually re-launches as admin when needed. Acceptable v1.0 trade-off.
+- The 4 patches were prompted by a real screenshot of a Windows Firewall "Allow" button grayed by org policy on a managed Windows install (different project, but the same UX trap applies to TallyMCP's firewall + tally.ini admin touchpoints).
+
 ## v1.0.0-phase3 — NSIS Installer + uninstall hooks + signing (2026-05-26)
 
 ### Added
