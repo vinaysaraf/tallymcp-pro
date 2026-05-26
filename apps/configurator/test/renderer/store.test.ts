@@ -9,6 +9,7 @@ describe("useAppStore", () => {
       tallyStatus: { reachable: false, probedAt: 0 },
       configuredClients: new Set(),
       lastError: undefined,
+      firewallSkipReason: undefined,
     });
   });
 
@@ -54,6 +55,25 @@ describe("useAppStore", () => {
     useAppStore.getState().setLastError("Multiple TallyPrime installs found");
     useAppStore.getState().navigateTo("settings");
     expect(useAppStore.getState().currentScreen).toBe("settings");
+    expect(useAppStore.getState().lastError).toBeUndefined();
+  });
+
+  it("setFirewallSkipReason + clearFirewallSkipReason manage the firewall skip state", () => {
+    useAppStore.getState().setFirewallSkipReason("non-admin");
+    expect(useAppStore.getState().firewallSkipReason).toBe("non-admin");
+
+    useAppStore.getState().setFirewallSkipReason("group-policy");
+    expect(useAppStore.getState().firewallSkipReason).toBe("group-policy");
+
+    useAppStore.getState().clearFirewallSkipReason();
+    expect(useAppStore.getState().firewallSkipReason).toBeUndefined();
+  });
+
+  it("navigateTo clears firewallSkipReason (along with lastError)", () => {
+    useAppStore.getState().setFirewallSkipReason("non-admin");
+    useAppStore.getState().setLastError("boom");
+    useAppStore.getState().navigateTo("settings");
+    expect(useAppStore.getState().firewallSkipReason).toBeUndefined();
     expect(useAppStore.getState().lastError).toBeUndefined();
   });
 });
