@@ -1,0 +1,64 @@
+# electron-builder NSIS config for the TallyMCP Configurator.
+#
+# Paths in this file are relative to apps/configurator/ (the package
+# directory). When invoked from the repo root via `pnpm package`, the
+# orchestrator script (root package.json) `cd`s into apps/configurator/
+# before running `electron-builder build`.
+
+appId: com.vinaysaraf.tallymcp.configurator
+productName: TallyMCP
+copyright: Copyright © 2026 Vinay Saraf
+artifactName: TallyMCP-Setup-v${version}.${ext}
+
+asar: true
+asarUnpack: []
+
+directories:
+  # buildResources holds installer icons + license texts (Phase 3 ships
+  # without custom icons; electron-builder falls back to its default).
+  buildResources: ../../installer/buildResources
+  output: dist-installer
+
+files:
+  - dist/**
+  - package.json
+  - "!node_modules/**"
+
+# extraFiles land at the NSIS install dir ROOT (not inside `resources/`),
+# which is what the (Phase 3 migrated) wire snippet expects:
+#   command: <installDir>\node.exe
+#   args:    <installDir>\mcp-server\dist\main.js
+# (See Task 6 — Phase 2's original mcp-server\main.js was patched to align
+# with pnpm deploy --prod's output layout, which preserves dist/.)
+extraFiles:
+  - from: ../../installer/staging/node.exe
+    to: ./node.exe
+  - from: ../../installer/staging/mcp-server
+    to: ./mcp-server
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  publisherName: Vinay Saraf
+  # Code signing: electron-builder picks up CSC_LINK + CSC_KEY_PASSWORD
+  # automatically. If unset, build proceeds unsigned with a console warning
+  # (see docs/v1-installer-phase3-signing-setup.md).
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  artifactName: TallyMCP-Setup-v${version}.${ext}
+  unicode: true
+  warningsAsErrors: true
+  include: ../../installer/installer.nsh
+  shortcutName: TallyMCP
+  menuCategory: false
+  installerLanguages: en_US
+  deleteAppDataOnUninstall: false  # CA's data is sacred; never wipe %APPDATA%
+
+# Auto-update is deferred to Phase 4 (this is a stubbed publish target
+# so electron-builder doesn't error on missing `publish` config).
+publish: null
