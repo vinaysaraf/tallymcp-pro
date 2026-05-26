@@ -73,8 +73,16 @@ export function HealthCheck({ status, firewallSkipReason, onFixAll, onReCheck }:
             blocks (re-launch as admin / loopback-only reassurance).
             Both states still trigger the post-skip Re-check gate above
             via `firewallIsKnownSkipped`. (Cursor M5, 2026-05-26.)
+
+            Additionally guarded by `!status.firewallRulePresent` (Cursor
+            M-R3-1, 2026-05-26): if IT/the user adds the rule externally
+            then clicks Re-check, the status line flips to "✓ Firewall
+            rule present" — without this guard the yellow card would
+            remain and directly contradict the status. The
+            `firewallSkipReason` slice also gets cleared by `navigateTo`
+            (store.ts), so screen navigation is a second cleanup path.
           */}
-          {firewallSkipReason === "non-admin" && (
+          {firewallSkipReason === "non-admin" && !status.firewallRulePresent && (
             <div className="mt-4 p-3 bg-tm-amber-soft border border-tm-amber-border rounded-lg text-xs leading-relaxed">
               <div className="font-semibold mb-1">⚠ Couldn't add the firewall rule</div>
               <div className="mb-2">

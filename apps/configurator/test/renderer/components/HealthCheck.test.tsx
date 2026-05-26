@@ -145,6 +145,32 @@ describe("HealthCheck", () => {
     expect(screen.queryByText(/Couldn't add the firewall rule/i)).toBeNull();
   });
 
+  it("hides the yellow card after the firewall rule appears externally + Re-check (Cursor M-R3-1)", () => {
+    // Scenario: user clicks Fix → firewall fails with skipped-non-admin →
+    // yellow card shown. User asks IT to add the rule; IT does. User clicks
+    // Re-check; healthCheck refresh now reports firewallRulePresent=true.
+    // Without the M-R3-1 guard, the yellow "Couldn't add the firewall rule"
+    // card would still render alongside the green "Firewall rule present"
+    // status line — a direct contradiction. The guard at HealthCheck.tsx
+    // L77 (`!status.firewallRulePresent`) prevents that.
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: true, // ← IT just added it externally
+          configuredClients: [],
+        }}
+        firewallSkipReason="non-admin" // ← slice not yet cleared
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/Couldn't add the firewall rule/i)).toBeNull();
+  });
+
   it("shows '(Admin needed)' on the Fix button when status.isElevated is false and a fix is needed", () => {
     render(
       <HealthCheck
