@@ -3,8 +3,8 @@
 **Date:** 2026-05-26
 **Branch:** `feat/v1.0-installer-phase2`
 **Range reviewed:** `14b9ac7..83b19e4` (33 commits) — verdict: 🟡 MERGE WITH FOLLOW-UPS
-**Fix commit:** `f808be9` — H1 + M2 + N4 addressed
-**Tip after fixes:** `f808be9` (34 commits ahead of `main`)
+**Fix commits:** `f808be9` (H1/M2/N4), `c21a561` (review doc)  
+**Tip SHA:** `c21a561` (35 commits ahead of `main`)
 
 ---
 
@@ -45,3 +45,42 @@ These are tracked in `f808be9`'s commit body. Both are pure additions; neither a
 ## Verdict (post-fix)
 
 **✅ READY TO MERGE** — H1 merge-blocker resolved; M2 test gap closed; N4 tightened. M1/M3 are post-merge polish per Cursor's original classification.
+
+---
+
+## Round 2
+
+**Range:** `83b19e4..c21a561` (`f808be9`, `c21a561`) — independent re-verification of H1 / M2 / N4 only.
+
+### H1 — installDir IPC boundary
+
+**✅ Fixed in production path.** `WireRequest` is `{ clientId }` only (`ipc-types.ts` L33–38). `handleWireMcp` builds paths from `ctx.installDir` only (`ipc-handlers.ts` L48–58). `registerIpcHandlers` injects `{ installDir: ctx.installDir }` from main boot (`L247–248`). Renderer calls `wireMcp({ clientId: modalFor })` (`App.tsx` L68). `ipc-handlers.test.ts` asserts `node.exe` under context `installDir`, not request field (L21–30).
+
+**No bypass:** `grep` shows no `req.installDir` / `payload.installDir` in `src/`. Extra keys on the IPC payload would be ignored by `handleWireMcp` (defense in depth).
+
+**Nit (tests only):** `preload.test.ts` L11–15 and `ipc-types.test.ts` L27 still construct `wireMcp` / `WireRequest` with `installDir`; those files are outside `tsconfig.node` `include`, so excess-property drift is not typechecked. Runtime still passes 64/64. Update tests to `{ clientId }` only for contract parity — not a security hole.
+
+### M2 — H10 hydration test
+
+**✅ Exercises the real path.** Test overrides `healthCheck` → `configuredClients: ["claude-desktop"]` (`App.test.tsx` L97–105), which drives `useEffect` → `markClientConfigured` (`App.tsx` L49–51). `findByRole("button", { name: /Reconfigure/i })` (L110–112) waits for post-promise re-render — not a fixed `setTimeout`.
+
+**Robust enough:** Single configured tile ⇒ one Reconfigure + one “Connected”; `>= 1` on Connected is loose but stable (no other “Connected” copy in tree). Could tighten to `getByRole` scoped under “Claude Desktop” later; not flaky in practice.
+
+### N4 — SmartScreenGuide `>= 2`
+
+**✅ Consistent with UI.** Component duplicates headlines in two mock panels (`SmartScreenGuide.tsx` L37 + L63) and repeats “More info” / “Run anyway” in step copy + mocks (L34/46/59, L57/59/69). Assertions `>= 2` match comments (`SmartScreenGuide.test.tsx` L16–19).
+
+### New from fix
+
+- **Positive:** Removing renderer `installDir` also dropped the lazy `getConfig` race in `handleConfirmAdd` (`App.tsx` L62–65) — cleaner than Round 1’s `config ?? await getConfig()` approach.
+- **Nit only:** Stale `installDir` in two main-process unit tests (above); no new blockers. M1/M3 deferral unchanged and safe.
+
+### Round 2 verdict
+
+**✅ READY TO MERGE**
+
+### Round 2 nit resolution
+
+The two stale `installDir` constructions Cursor flagged (`preload.test.ts` L11/L13–15 and `ipc-types.test.ts` L27) were fixed in `8924c2b` — both files now use `{ clientId }` only, matching the post-H1 `WireRequest` contract. Configurator tests remain 64/64; full workspace build + lint + E2E still green.
+
+**Final tip after round 2:** `8924c2b` (36 commits ahead of `main`).
