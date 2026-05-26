@@ -192,8 +192,11 @@ describe("fixXmlInterface — EPERM/EACCES handling", () => {
       iniPath,
     };
 
-    await expect(fixer.fixXmlInterface(install)).rejects.toBeInstanceOf(TallyIniLockedError);
-    await rm(tmpDir, { recursive: true, force: true });
+    try {
+      await expect(fixer.fixXmlInterface(install)).rejects.toBeInstanceOf(TallyIniLockedError);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 
   it("throws TallyIniLockedError with a CA-friendly message on EACCES", async () => {
