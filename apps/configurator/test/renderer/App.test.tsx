@@ -3,11 +3,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { App } from "../../src/renderer/App.js";
 import { useAppStore } from "../../src/renderer/store.js";
-import type { TallymcpApi } from "../../src/preload/index.js";
+import type { TallymcpApi } from "../../src/shared/ipc-types.js";
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  var window: any;
+  interface Window {
+    tallymcp?: TallymcpApi;
+  }
 }
 
 // NOTE: getConfig.installDir is "C:\\TallyMCP" for readability — but

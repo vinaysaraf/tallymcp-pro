@@ -1,4 +1,4 @@
-import type { TallymcpApi } from "../preload/index.js";
+import type { TallymcpApi } from "../shared/ipc-types.js";
 
 export interface WindowWithTallyMcp extends Window {
   tallymcp?: TallymcpApi;

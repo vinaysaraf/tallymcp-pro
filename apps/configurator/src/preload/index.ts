@@ -2,16 +2,19 @@ import { contextBridge, ipcRenderer } from "electron";
 import {
   IPC_CHANNELS,
   TALLY_STATUS_EVENT,
-  type WireRequest,
   type WireResponse,
-  type UnwireRequest,
   type UnwireResponse,
   type HealthCheckResponse,
   type TallyFixResponse,
   type TallyRestoreResponse,
   type ConfigSnapshot,
   type TallyStatus,
+  type TallymcpApi,
 } from "../shared/ipc-types.js";
+
+// Re-export so existing callers can still `import type { TallymcpApi } from "../preload/..."`.
+// Canonical location is now shared/ipc-types.ts (no electron runtime coupling).
+export type { TallymcpApi } from "../shared/ipc-types.js";
 
 /**
  * Injectable bridge over Electron's ipcRenderer so we can unit-test the
@@ -21,16 +24,6 @@ export interface IpcBridge {
   invoke: (channel: string, payload?: unknown) => Promise<unknown>;
   on: (channel: string, handler: (event: unknown, ...args: unknown[]) => void) => void;
   removeListener?: (channel: string, handler: (...args: unknown[]) => void) => void;
-}
-
-export interface TallymcpApi {
-  wireMcp: (req: WireRequest) => Promise<WireResponse>;
-  unwireMcp: (req: UnwireRequest) => Promise<UnwireResponse>;
-  healthCheck: () => Promise<HealthCheckResponse>;
-  tallyFix: () => Promise<TallyFixResponse>;
-  tallyRestore: () => Promise<TallyRestoreResponse>;
-  getConfig: () => Promise<ConfigSnapshot>;
-  subscribeTallyStatus: (cb: (status: TallyStatus) => void) => () => void;
 }
 
 export function buildTallymcpApi(bridge: IpcBridge): TallymcpApi {

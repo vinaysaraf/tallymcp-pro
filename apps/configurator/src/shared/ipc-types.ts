@@ -96,6 +96,23 @@ export interface TallyStatus {
   probedAt: number;
 }
 
+/**
+ * The renderer-facing API surface that the preload script exposes via
+ * `contextBridge.exposeInMainWorld("tallymcp", ...)`. Defined here in
+ * shared/ so renderer test code can reference it without importing
+ * the preload module (whose `electron` runtime imports aren't valid
+ * in the renderer tsconfig scope).
+ */
+export interface TallymcpApi {
+  wireMcp: (req: WireRequest) => Promise<WireResponse>;
+  unwireMcp: (req: UnwireRequest) => Promise<UnwireResponse>;
+  healthCheck: () => Promise<HealthCheckResponse>;
+  tallyFix: () => Promise<TallyFixResponse>;
+  tallyRestore: () => Promise<TallyRestoreResponse>;
+  getConfig: () => Promise<ConfigSnapshot>;
+  subscribeTallyStatus: (cb: (status: TallyStatus) => void) => () => void;
+}
+
 export interface IpcContract {
   [IPC_CHANNELS.WIRE_MCP]: { req: WireRequest; res: WireResponse };
   [IPC_CHANNELS.UNWIRE_MCP]: { req: UnwireRequest; res: UnwireResponse };

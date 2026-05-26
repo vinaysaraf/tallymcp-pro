@@ -2,11 +2,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { getApi, type WindowWithTallyMcp } from "../../src/renderer/api.js";
 
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  var window: any;
-}
-
 describe("getApi", () => {
   beforeEach(() => {
     delete (globalThis.window as WindowWithTallyMcp).tallymcp;
