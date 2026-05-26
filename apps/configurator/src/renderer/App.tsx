@@ -11,6 +11,7 @@ import { SmartScreenGuide } from "./components/SmartScreenGuide.js";
 import { DoneScreen } from "./components/DoneScreen.js";
 import { RestoreConfirmModal } from "./components/RestoreConfirmModal.js";
 import { ITPolicyHelpModal } from "./components/ITPolicyHelpModal.js";
+import { UpdateBanner } from "./components/UpdateBanner.js";
 import type {
   ClientId,
   ConfigSnapshot,
@@ -40,6 +41,10 @@ export function App(): JSX.Element {
   const firewallSkipReason = useAppStore((s) => s.firewallSkipReason);
   const setFirewallSkipReason = useAppStore((s) => s.setFirewallSkipReason);
   const clearFirewallSkipReason = useAppStore((s) => s.clearFirewallSkipReason);
+  const updateStatus = useAppStore((s) => s.updateStatus);
+  const setUpdateStatus = useAppStore((s) => s.setUpdateStatus);
+  const updateDismissedThisSession = useAppStore((s) => s.updateDismissedThisSession);
+  const dismissUpdate = useAppStore((s) => s.dismissUpdate);
 
   const [config, setConfig] = useState<ConfigSnapshot | undefined>(undefined);
   const [health, setHealth] = useState<HealthCheckResponse | undefined>(undefined);
@@ -60,8 +65,18 @@ export function App(): JSX.Element {
       h.configuredClients.forEach((id) => markClientConfigured(id));
     });
     const unsub = api.subscribeTallyStatus(setTallyStatus);
-    return unsub;
-  }, [setTallyStatus, markClientConfigured]);
+    // Phase 4: update-status subscription.
+    const unsubUpdate = api.subscribeUpdateStatus(setUpdateStatus);
+    // The main process triggers an initial check 5s after launch; we ALSO
+    // call once here so a renderer reload during dev gets the current state.
+    void api.checkForUpdates()
+      .then(setUpdateStatus)
+      .catch(() => { /* main process logs; banner stays hidden */ });
+    return () => {
+      unsub();
+      unsubUpdate();
+    };
+  }, [setTallyStatus, markClientConfigured, setUpdateStatus]);
 
   const handleAdd = (clientId: ClientId): void => setModalFor(clientId);
   const handleReconfigure = (clientId: ClientId): void => setModalFor(clientId);
@@ -155,6 +170,27 @@ export function App(): JSX.Element {
     }
   };
 
+  const handleUpdateClick = async (): Promise<void> => {
+    try {
+      await getApi().downloadUpdate();
+    } catch (err) {
+      setLastError(`Update failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleWhatsNewClick = (): void => {
+    const url = updateStatus?.releaseNotesUrl;
+    if (url) window.open(url, "_blank", "noopener");
+  };
+
+  const handleRestartClick = async (): Promise<void> => {
+    try {
+      await getApi().quitAndInstall();
+    } catch (err) {
+      setLastError(`Restart failed: ${(err as Error).message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen p-5 max-w-6xl mx-auto">
       <header className="flex items-center justify-between mb-4">
@@ -189,6 +225,16 @@ export function App(): JSX.Element {
         serverHealthy={tallyStatus.reachable}
         version={config?.version ?? ""}
       />
+
+      {updateStatus && !updateDismissedThisSession && (
+        <UpdateBanner
+          status={updateStatus}
+          onUpdateClick={handleUpdateClick}
+          onWhatsNewClick={handleWhatsNewClick}
+          onDismiss={dismissUpdate}
+          onRestartClick={handleRestartClick}
+        />
+      )}
 
       {lastError !== undefined && (
         <ErrorBanner message={lastError} onDismiss={clearLastError} />

@@ -227,4 +227,17 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Fix both/i }));
     expect(await screen.findByText(/Couldn't add the firewall rule/i)).toBeDefined();
   });
+
+  it("shows the UpdateBanner when an update is available", async () => {
+    const api = buildFakeApi({
+      checkForUpdates: vi.fn().mockResolvedValue({
+        status: "update-available",
+        currentVersion: "1.0.0",
+        latestVersion: "1.1.0",
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    expect(await screen.findByText(/TallyMCP v1\.1\.0 is available/i)).toBeDefined();
+  });
 });
