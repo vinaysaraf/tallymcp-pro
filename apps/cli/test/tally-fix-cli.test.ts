@@ -99,6 +99,41 @@ describe("tally-fix CLI", () => {
     expect(await readFile(iniPath, "utf8")).toContain("Client Server=Both");
   });
 
+  it("returns firewallRule='group-policy-blocked' when netsh stderr mentions Group Policy (Cursor N-R3-3)", async () => {
+    // Locks in the apps/cli/src/main.ts hotfix (commit ebb64f7) by exercising
+    // the underlying library outcome the CLI now branches on. Before the
+    // hotfix the CLI's local TallyFixResult.firewallRule union was narrower
+    // than the library returned, so this outcome would have been a TS error;
+    // and the printed CLI output silently used the success branch.
+    const installDir = join(root, "TallyPrime");
+    await mkdir(installDir);
+    const iniPath = join(installDir, "tally.ini");
+    await writeFile(iniPath, "[TALLY]\nDefault Companies=Yes\n");
+    await writeFile(join(installDir, "tally.exe"), "");
+
+    const runner = new FakeExecRunner((cmd, args) => {
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks are running", stderr: "" };
+      if (args.includes("show")) return { exitCode: 1, stdout: "No rules match.", stderr: "" };
+      if (args.includes("add")) {
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: "The configuration is not allowed by the Group Policy configured on this computer.",
+        };
+      }
+      return { exitCode: 0, stdout: "Ok.", stderr: "" };
+    });
+
+    const result = await runTallyFixCommand({
+      tallyDir: installDir,
+      runner,
+      yes: true,
+    });
+
+    expect(result.firewallRule).toBe("group-policy-blocked");
+    expect(result.xmlInterface).toBe("applied");
+  });
+
   it("aborts when confirmFn returns false", async () => {
     const installDir = join(root, "TallyPrime");
     await mkdir(installDir);

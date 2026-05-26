@@ -10,6 +10,7 @@ import { Settings } from "./components/Settings.js";
 import { SmartScreenGuide } from "./components/SmartScreenGuide.js";
 import { DoneScreen } from "./components/DoneScreen.js";
 import { RestoreConfirmModal } from "./components/RestoreConfirmModal.js";
+import { ITPolicyHelpModal } from "./components/ITPolicyHelpModal.js";
 import type {
   ClientId,
   ConfigSnapshot,
@@ -36,6 +37,9 @@ export function App(): JSX.Element {
   const lastError = useAppStore((s) => s.lastError);
   const setLastError = useAppStore((s) => s.setLastError);
   const clearLastError = useAppStore((s) => s.clearLastError);
+  const firewallSkipReason = useAppStore((s) => s.firewallSkipReason);
+  const setFirewallSkipReason = useAppStore((s) => s.setFirewallSkipReason);
+  const clearFirewallSkipReason = useAppStore((s) => s.clearFirewallSkipReason);
 
   const [config, setConfig] = useState<ConfigSnapshot | undefined>(undefined);
   const [health, setHealth] = useState<HealthCheckResponse | undefined>(undefined);
@@ -43,6 +47,7 @@ export function App(): JSX.Element {
   const [showSmartScreen, setShowSmartScreen] = useState(false);
   const [showDoneFor, setShowDoneFor] = useState<ClientId | undefined>(undefined);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [showITPolicyModal, setShowITPolicyModal] = useState(false);
 
   // Initial load
   useEffect(() => {
@@ -87,10 +92,41 @@ export function App(): JSX.Element {
   const handleFixAll = async (): Promise<void> => {
     const api = getApi();
     try {
-      await api.tallyFix();
-      setHealth(await api.healthCheck());
-      clearLastError();
+      const result = await api.tallyFix();
+      // Phase 3.1 Patch A + D + Cursor H3 (2026-05-26): surface the
+      // firewall outcome BEFORE the healthCheck() refresh. If the
+      // refresh throws, the user still sees the yellow card / IT-policy
+      // modal — the fix DID succeed; only the displayed status would
+      // be stale.
+      // (Note: firewallSkipReason: "group-policy" is intentionally
+      // routed to ITPolicyHelpModal, not the Patch A yellow card —
+      // see HealthCheck.tsx Patch A guard at `=== "non-admin"`. The
+      // store keeps the reason set so post-skip Re-check logic in
+      // HealthCheck.tsx works for both cases — Cursor M5.)
+      if (result.firewallRule === "skipped-non-admin") {
+        setFirewallSkipReason("non-admin");
+        clearLastError();
+      } else if (result.firewallRule === "group-policy-blocked") {
+        setFirewallSkipReason("group-policy");
+        setShowITPolicyModal(true);
+        clearLastError();
+      } else {
+        // "added" or "noop" — successful path; clear any prior skip state.
+        clearFirewallSkipReason();
+        clearLastError();
+      }
+      // Refresh the displayed status. Wrap separately so a healthCheck
+      // failure surfaces in lastError but does NOT drop the firewall UX
+      // (Cursor H3, 2026-05-26).
+      try {
+        setHealth(await api.healthCheck());
+      } catch (refreshErr) {
+        setLastError(`Couldn't refresh status: ${(refreshErr as Error).message}`);
+      }
     } catch (err) {
+      // tallyFix() itself threw — likely a TallyIniLockedError (Task 2),
+      // a non-firewall error, or an IPC transport failure. Surface via
+      // existing ErrorBanner path; no firewall state changes apply.
       setLastError((err as Error).message);
     }
   };
@@ -166,7 +202,12 @@ export function App(): JSX.Element {
         />
       )}
       {currentScreen === "health-check" && health && (
-        <HealthCheck status={health} onFixAll={handleFixAll} onReCheck={handleReCheck} />
+        <HealthCheck
+          status={health}
+          firewallSkipReason={firewallSkipReason}
+          onFixAll={handleFixAll}
+          onReCheck={handleReCheck}
+        />
       )}
       {currentScreen === "settings" && config && (
         <Settings config={config} onRestoreTallySettings={handleRestoreClick} onReCheck={handleReCheck} />
@@ -193,6 +234,21 @@ export function App(): JSX.Element {
         <RestoreConfirmModal
           onConfirm={handleRestoreConfirmed}
           onCancel={() => setShowRestoreConfirm(false)}
+        />
+      )}
+      {showITPolicyModal && (
+        <ITPolicyHelpModal
+          // Cursor M2 (2026-05-26): substitute the user's actual install
+          // path into the netsh/PowerShell commands. Fall back to the
+          // Program Files default only if health didn't populate a
+          // tallyInstallDir yet (modal shouldn't open without a real
+          // detect — but defend against the race).
+          tallyExePath={
+            health?.tallyInstallDir
+              ? `${health.tallyInstallDir}\\tally.exe`
+              : "C:\\Program Files\\TallyPrime\\tally.exe"
+          }
+          onClose={() => setShowITPolicyModal(false)}
         />
       )}
     </div>

@@ -88,6 +88,11 @@ export function createProgram(): Command {
           console.log(`  on your network to reach this Tally over port 9000, re-run from an`);
           console.log(`  elevated terminal:`);
           console.log(`    powershell -Command "Start-Process pwsh -Verb RunAs"`);
+        } else if (result.firewallRule === "group-policy-blocked") {
+          console.log(`⚠ Firewall rule: blocked by your IT policy (Group Policy)`);
+          console.log(`  Loopback (127.0.0.1:9000) works without it. If you need other PCs`);
+          console.log(`  on your network to reach this Tally over port 9000, ask your IT team`);
+          console.log(`  to add an inbound TCP 9000 allow rule for the TallyPrime executable.`);
         } else {
           console.log(`✓ Firewall rule: ${result.firewallRule}`);
         }

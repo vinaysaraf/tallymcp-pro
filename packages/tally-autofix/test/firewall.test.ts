@@ -7,9 +7,10 @@ import {
   addFirewallRule,
   removeFirewallRule,
   FirewallElevationError,
+  GroupPolicyError,
   FIREWALL_RULE_NAME,
 } from "../src/firewall.js";
-import { FakeExecRunner } from "../src/exec-runner.js";
+import { FakeExecRunner, type ExecResult } from "../src/exec-runner.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const presentFixture = join(HERE, "fixtures", "netsh-show-rule-present.txt");
@@ -76,6 +77,17 @@ describe("addFirewallRule", () => {
     await expect(
       addFirewallRule(runner, { tallyExePath: "C:\\tally.exe" }),
     ).rejects.toBeInstanceOf(FirewallElevationError);
+  });
+
+  it("throws GroupPolicyError when stderr mentions group policy (not the generic Error)", async () => {
+    const runner = new FakeExecRunner((_cmd, _args): ExecResult => ({
+      exitCode: 1,
+      stdout: "",
+      stderr: "The configuration is not allowed by the Group Policy configured on this computer.",
+    }));
+    await expect(
+      addFirewallRule(runner, { tallyExePath: "C:\\Tally\\tally.exe" }),
+    ).rejects.toBeInstanceOf(GroupPolicyError);
   });
 });
 

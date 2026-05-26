@@ -65,12 +65,28 @@ export interface HealthCheckResponse {
   configuredClients: ClientId[];
   /** Populated when >1 TallyPrime install was detected. UI should ask user. */
   multipleTallyInstalls?: string[];
+  /**
+   * True when the Configurator process is running with Administrator
+   * privileges. Populated by `handleHealthCheck` via `detectIsElevated`
+   * from `@tallymcp/tally-autofix`. Optional for backwards compat (Phase
+   * 2/3 tests don't pass this; older renderer code treats `undefined` as
+   * "unknown" and shows the Fix button without an admin hint).
+   */
+  isElevated?: boolean;
 }
 
 export interface TallyFixResponse {
   xmlInterface: "applied" | "noop";
   iniBackupCreated: boolean;
-  firewallRule: "added" | "noop" | "skipped-non-admin";
+  /**
+   * Outcome of the firewall rule add attempt:
+   *  - `added` — the rule was successfully created.
+   *  - `noop` — the rule already existed.
+   *  - `skipped-non-admin` — current process isn't admin, netsh refused.
+   *  - `group-policy-blocked` — IT policy disallows firewall changes.
+   *    The renderer should open the IT-policy help modal (Phase 3.1 D).
+   */
+  firewallRule: "added" | "noop" | "skipped-non-admin" | "group-policy-blocked";
 }
 
 export interface TallyRestoreResponse {

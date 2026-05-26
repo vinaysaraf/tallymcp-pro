@@ -82,4 +82,132 @@ describe("HealthCheck", () => {
     );
     expect(screen.getByText(/Install TallyPrime/i)).toBeDefined();
   });
+
+  it("shows the firewall-skip-non-admin yellow card when firewallSkipReason is 'non-admin'", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: false,
+          configuredClients: [],
+        }}
+        firewallSkipReason="non-admin"
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Couldn't add the firewall rule/i)).toBeDefined();
+    expect(screen.getByText(/admin rights required/i)).toBeDefined();
+    expect(screen.getByText(/loopback/i)).toBeDefined();
+  });
+
+  it("shows Re-check (not Fix loop) when XML is OK and firewall was skipped (Cursor H1)", () => {
+    // Post-skip state: XML on, firewall missing but known-skipped.
+    // The original `needsFix` gate would loop on "Fix both" → re-fail.
+    // Patch A's split gate uses firewallSkipReason to switch to Re-check.
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: false,
+          configuredClients: [],
+        }}
+        firewallSkipReason="non-admin"
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Re-check/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Fix both/i })).toBeNull();
+  });
+
+  it("does NOT show the firewall-skip explanation when firewallSkipReason is undefined", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: false,
+          firewallRulePresent: false,
+          configuredClients: [],
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/Couldn't add the firewall rule/i)).toBeNull();
+  });
+
+  it("hides the yellow card after the firewall rule appears externally + Re-check (Cursor M-R3-1)", () => {
+    // Scenario: user clicks Fix → firewall fails with skipped-non-admin →
+    // yellow card shown. User asks IT to add the rule; IT does. User clicks
+    // Re-check; healthCheck refresh now reports firewallRulePresent=true.
+    // Without the M-R3-1 guard, the yellow "Couldn't add the firewall rule"
+    // card would still render alongside the green "Firewall rule present"
+    // status line — a direct contradiction. The guard at HealthCheck.tsx
+    // L77 (`!status.firewallRulePresent`) prevents that.
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: true, // ← IT just added it externally
+          configuredClients: [],
+        }}
+        firewallSkipReason="non-admin" // ← slice not yet cleared
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/Couldn't add the firewall rule/i)).toBeNull();
+  });
+
+  it("shows '(Admin needed)' on the Fix button when status.isElevated is false and a fix is needed", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: false,
+          firewallRulePresent: false,
+          configuredClients: [],
+          isElevated: false,
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Fix both \(Admin needed\)/i })).toBeDefined();
+    expect(screen.getByText(/Run as administrator/i)).toBeDefined();
+  });
+
+  it("shows the plain 'Fix both' button when status.isElevated is true", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: false,
+          firewallRulePresent: false,
+          configuredClients: [],
+          isElevated: true,
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Fix both, continue/i })).toBeDefined();
+    expect(screen.queryByText(/Run as administrator/i)).toBeNull();
+  });
 });

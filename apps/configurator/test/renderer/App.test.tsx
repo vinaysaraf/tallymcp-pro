@@ -169,4 +169,55 @@ describe("App", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(await screen.findByText(/TallyMCP is wired into Claude Desktop/i)).toBeDefined();
   });
+
+  it("opens ITPolicyHelpModal when tallyFix returns firewallRule='group-policy-blocked'", async () => {
+    const api = buildFakeApi({
+      // Navigate to Health Check screen so the Fix button is reachable.
+      healthCheck: vi.fn().mockResolvedValue({
+        tallyInstalled: true,
+        tallyInstallDir: "C:\\Tally",
+        tallyRunning: true,
+        xmlInterfaceEnabled: false,
+        firewallRulePresent: false,
+        configuredClients: [],
+        isElevated: true,
+      }),
+      tallyFix: vi.fn().mockResolvedValue({
+        xmlInterface: "applied",
+        iniBackupCreated: true,
+        firewallRule: "group-policy-blocked",
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    await screen.findByText("Claude Desktop"); // wait for the initial useEffect chain
+    fireEvent.click(screen.getByRole("button", { name: /Health Check/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix both/i }));
+    expect(await screen.findByRole("dialog", { name: /IT policy firewall guidance/i })).toBeDefined();
+  });
+
+  it("sets firewallSkipReason in the store when tallyFix returns firewallRule='skipped-non-admin'", async () => {
+    const api = buildFakeApi({
+      healthCheck: vi.fn().mockResolvedValue({
+        tallyInstalled: true,
+        tallyInstallDir: "C:\\Tally",
+        tallyRunning: true,
+        xmlInterfaceEnabled: false,
+        firewallRulePresent: false,
+        configuredClients: [],
+        isElevated: false,
+      }),
+      tallyFix: vi.fn().mockResolvedValue({
+        xmlInterface: "applied",
+        iniBackupCreated: true,
+        firewallRule: "skipped-non-admin",
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    await screen.findByText("Claude Desktop");
+    fireEvent.click(screen.getByRole("button", { name: /Health Check/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix both/i }));
+    expect(await screen.findByText(/Couldn't add the firewall rule/i)).toBeDefined();
+  });
 });

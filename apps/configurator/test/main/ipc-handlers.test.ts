@@ -171,6 +171,42 @@ describe("handleHealthCheck", () => {
     const result = await handleHealthCheck({ scanRoots: [dir], runner });
     expect(result.multipleTallyInstalls).toEqual([a, b]);
   });
+
+  it("populates isElevated from detectIsElevated (true when net session exit 0)", async () => {
+    const installDir = join(dir, "TallyPrime");
+    await mkdir(installDir);
+    await writeFile(join(installDir, "tally.exe"), "");
+    await writeFile(join(installDir, "tally.ini"), "[TALLY]\n");
+
+    const runner = new FakeExecRunner((cmd, args): ExecResult => {
+      if (cmd === "net" && args[0] === "session") {
+        return { exitCode: 0, stdout: "There are no entries.", stderr: "" };
+      }
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks", stderr: "" };
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    const result = await handleHealthCheck({ scanRoots: [dir], runner });
+    expect(result.isElevated).toBe(true);
+  });
+
+  it("populates isElevated=false when net session exits non-zero", async () => {
+    const installDir = join(dir, "TallyPrime");
+    await mkdir(installDir);
+    await writeFile(join(installDir, "tally.exe"), "");
+    await writeFile(join(installDir, "tally.ini"), "[TALLY]\n");
+
+    const runner = new FakeExecRunner((cmd, args): ExecResult => {
+      if (cmd === "net" && args[0] === "session") {
+        return { exitCode: 2, stdout: "", stderr: "Access is denied." };
+      }
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks", stderr: "" };
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    const result = await handleHealthCheck({ scanRoots: [dir], runner });
+    expect(result.isElevated).toBe(false);
+  });
 });
 
 describe("handleTallyFix", () => {

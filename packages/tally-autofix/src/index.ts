@@ -1,4 +1,4 @@
-export { TallyAutofixer, FIREWALL_RULE_NAME } from "./autofix.js";
+export { TallyAutofixer, FIREWALL_RULE_NAME, TallyIniLockedError } from "./autofix.js";
 export type { TallyAutofixerOptions, FixXmlResult } from "./autofix.js";
 export {
   detectTallyInstall,
@@ -29,5 +29,7 @@ export {
   addFirewallRule,
   removeFirewallRule,
   FirewallElevationError,
+  GroupPolicyError,
   type AddFirewallRuleOptions,
 } from "./firewall.js";
+export { detectIsElevated } from "./elevation.js";

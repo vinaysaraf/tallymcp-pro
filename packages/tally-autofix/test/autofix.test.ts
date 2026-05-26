@@ -1,10 +1,35 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, mkdir, access, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { constants } from "node:fs";
-import { TallyAutofixer } from "../src/autofix.js";
-import { FakeExecRunner } from "../src/exec-runner.js";
+import { TallyAutofixer, TallyIniLockedError } from "../src/autofix.js";
+import { FakeExecRunner, type ExecResult } from "../src/exec-runner.js";
+
+// Mock writeAtomic at MODULE scope (Cursor H2): vi.spyOn on the imported
+// module object doesn't intercept a static named import in autofix.ts
+// because ESM binds the reference at module-load time. vi.mock with a
+// factory + state-bag REPLACES the module before autofix.ts is loaded.
+const writeAtomicState: {
+  nextError?: NodeJS.ErrnoException;
+  callCount: number;
+} = { callCount: 0 };
+
+vi.mock("../src/atomic-write.js", () => ({
+  writeAtomic: vi.fn(async (path: string, content: string) => {
+    writeAtomicState.callCount++;
+    if (writeAtomicState.nextError) {
+      const err = writeAtomicState.nextError;
+      writeAtomicState.nextError = undefined;
+      throw err;
+    }
+    // Default behavior: actually write (the test still wants the happy
+    // path tests in the existing describes to work). Use node:fs/promises
+    // directly since we've replaced the wrapper.
+    const { writeFile: realWriteFile } = await import("node:fs/promises");
+    await realWriteFile(path, content, "utf8");
+  }),
+}));
 
 describe("TallyAutofixer.fixXmlInterface", () => {
   let root: string;
@@ -82,6 +107,30 @@ describe("TallyAutofixer.ensureFirewallRule", () => {
     const result = await fixer.ensureFirewallRule("C:\\TallyPrime\\tally.exe");
     expect(result).toBe("skipped-non-admin");
   });
+
+  it("ensureFirewallRule returns 'group-policy-blocked' when Group Policy denies the rule", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "tallymcp-gp-"));
+    const fixer = new TallyAutofixer({
+      runner: new FakeExecRunner((cmd, args): ExecResult => {
+        if (args.includes("show")) {
+          return { exitCode: 1, stdout: "No rules match", stderr: "" };
+        }
+        if (args.includes("add")) {
+          return {
+            exitCode: 1,
+            stdout: "",
+            stderr: "The configuration is not allowed by the Group Policy configured on this computer.",
+          };
+        }
+        return { exitCode: 0, stdout: "", stderr: "" };
+      }),
+    });
+    try {
+      expect(await fixer.ensureFirewallRule("C:\\Tally\\tally.exe")).toBe("group-policy-blocked");
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("TallyAutofixer.removeFirewallRuleIfPresent", () => {
@@ -140,5 +189,69 @@ describe("TallyAutofixer.restoreTallyIni", () => {
     await fixer.restoreTallyIni(iniPath);
 
     expect(await readFile(iniPath, "utf8")).toBe("ORIGINAL CONTENT");
+  });
+});
+
+describe("fixXmlInterface — EPERM/EACCES handling", () => {
+  beforeEach(() => {
+    writeAtomicState.nextError = undefined;
+    writeAtomicState.callCount = 0;
+  });
+
+  it("throws TallyIniLockedError when the write fails with EPERM (Tally running or non-admin on Program Files)", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "tallymcp-perm-"));
+    const iniPath = join(tmpDir, "tally.ini");
+    await writeFile(iniPath, "[TALLY]\nDefault Companies=Yes\n", "utf8");
+
+    const epermErr = new Error("EPERM: operation not permitted, rename") as NodeJS.ErrnoException;
+    epermErr.code = "EPERM";
+    writeAtomicState.nextError = epermErr;
+
+    const fixer = new TallyAutofixer({ runner: new FakeExecRunner(() => ({
+      exitCode: 0, stdout: "", stderr: "",
+    })) });
+    const install = {
+      installDir: tmpDir,
+      exePath: join(tmpDir, "tally.exe"),
+      iniPath,
+    };
+
+    try {
+      await expect(fixer.fixXmlInterface(install)).rejects.toBeInstanceOf(TallyIniLockedError);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws TallyIniLockedError with a CA-friendly message on EACCES", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "tallymcp-acc-"));
+    const iniPath = join(tmpDir, "tally.ini");
+    await writeFile(iniPath, "[TALLY]\n", "utf8");
+
+    const eaccErr = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+    eaccErr.code = "EACCES";
+    writeAtomicState.nextError = eaccErr;
+
+    const fixer = new TallyAutofixer({ runner: new FakeExecRunner(() => ({
+      exitCode: 0, stdout: "", stderr: "",
+    })) });
+    const install = {
+      installDir: tmpDir,
+      exePath: join(tmpDir, "tally.exe"),
+      iniPath,
+    };
+
+    try {
+      await fixer.fixXmlInterface(install);
+      throw new Error("expected fixXmlInterface to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(TallyIniLockedError);
+      const msg = (err as Error).message;
+      expect(msg).toMatch(/TallyPrime is currently running/i);
+      expect(msg).toMatch(/run TallyMCP as Administrator/i);
+      expect(msg).toContain(iniPath);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
