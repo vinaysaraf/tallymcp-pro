@@ -1,102 +1,172 @@
-# Cursor review — Phase 2 Configurator (code)
+# Cursor review — Phase 3 plan (NSIS installer)
 
-**Date:** 2026-05-26
-**Branch:** `feat/v1.0-installer-phase2`
-**Range reviewed:** `14b9ac7..83b19e4` (33 commits) — verdict: 🟡 MERGE WITH FOLLOW-UPS
-**Fix commits:** `f808be9` (H1/M2/N4), `c21a561` (review doc)  
-**Tip SHA:** `c21a561` (35 commits ahead of `main`)
-
----
-
-## Resolutions
-
-| # | Severity | Finding | Resolution |
-|---|---|---|---|
-| **H1** | High | `wireMcp` trusts renderer-supplied `installDir` (IPC trust boundary gap) | **Fixed in `f808be9`.** `installDir` removed from `WireRequest`; main injects it via `WireMcpContext` inside `registerIpcHandlers` (mirrors `handleGetConfig`). Renderer now calls `wireMcp({ clientId })` only. Side benefit: `handleConfirmAdd` no longer needs the lazy `getConfig` fallback. |
-| **M1** | Medium | `lastError` written to store but never displayed | **Deferred to follow-up.** Cursor flagged this as not merge-blocking. Tracked in commit body. |
-| **M2** | Medium | H10 hydrate path has no App-level integration test | **Fixed in `f808be9`.** New test in `App.test.tsx`: mocks `configuredClients: ["claude-desktop"]`, asserts Claude Desktop tile renders with Reconfigure button. (H8 modal-gating test still deferred — `RestoreConfirmModal` unit tests cover the modal in isolation; the App-level gate is exercised manually via the smoke doc.) |
-| **M3** | Medium | Tally IPC error paths lack renderer handling | **Deferred to follow-up.** Cursor flagged this as not merge-blocking. Tracked in commit body. |
-| **M4** | Medium | `multipleTallyInstalls` backend-only (Phase 2.1) | **Already documented as deferred** per Deviation #5 in the plan. No change. |
-| **N1** | Nit | Security flags + preload boundary good | No action (confirmation). |
-| **N2** | Nit | H5–H10 wired end-to-end | No action (confirmation). |
-| **N3** | Nit | electron-vite v4 preload CJS workaround still required | No action (confirmation). |
-| **N4** | Nit | SmartScreenGuide test asserted `≥1` instead of `≥2` for parity | **Fixed in `f808be9`.** Tightened "More info" and "Run anyway" assertions to `≥2`. |
-| **N5** | Nit | Test-count drift in plan comments only, not in tests | No action (confirmation). |
-| **N6** | Nit | `unmarkClientConfigured` unused (Phase 2.1) | No action — eslint-disable comment is appropriate. |
+**Date:** 2026-05-26  
+**Branch:** (not yet created — plan-only review)  
+**Plan:** `docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.md` (~1,890 lines, 14 tasks)  
+**Spec:** `docs/superpowers/specs/2026-05-25-tallymcp-installer-design.md` v1.0.1 (§8, §9, §11.2, §12, Appendix D)  
+**Baseline:** Configurator **69** unit tests on current `main` / Phase 2 branch (verified)
 
 ---
 
-## Verification after fix commit
+## Findings
 
-- `pnpm --filter @tallymcp/configurator typecheck`: ✅ clean
-- `pnpm --filter @tallymcp/configurator lint`: ✅ clean
-- `pnpm --filter @tallymcp/configurator test`: ✅ **64/64** (+1 from M2 hydration test)
-- `pnpm --filter @tallymcp/configurator build`: ✅ all three dist artifacts produced
-- `pnpm --filter @tallymcp/configurator e2e`: ✅ 4/4 Playwright Electron tests pass
-- `pnpm -r test`: ✅ Phase 1 (45+44+29) + v0.7 (22+22+17+62+36+24+8+44+8+14) + Phase 2 (64) — no regressions
+### Critical
 
-## Deferred for post-merge (Cursor M1, M3)
+_None — if Task 5 Electron bootstrap is patched before execution (see High H1)._
 
-These are tracked in `f808be9`'s commit body. Both are pure additions; neither alters existing behavior.
+### High
 
-1. **M1** — surface `lastError` from Zustand in `StatusBanner` (or a toast/alert), clear on success/navigation. ~30 min.
-2. **M3** — wrap `handleFixAll` / `handleRestoreConfirmed` / `handleReCheck` in `try/catch`, surface failures via the same error-display added for M1. ~20 min.
+**H1 — `--uninstall-cleanup` must use `app.whenReady()` (Task 5)**  
+Task 5 wires cleanup at module top level with a bare async IIFE + `app.quit()` (`plan` L748–762). Electron does not guarantee `app` / `process.env` are ready until `app.whenReady()`. NSIS `ExecWait` needs a clean process exit; a race here yields silent no-op cleanup or hang.
 
-## Verdict (post-fix)
+```748:762:docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.md
+if (process.argv.includes("--uninstall-cleanup")) {
+  void (async () => {
+    const { runUninstallCleanup } = await import("./uninstall-cleanup.js");
+    ...
+    app.quit();
+  })();
+} else if (process.env.NODE_ENV !== "test") {
+```
 
-**✅ READY TO MERGE** — H1 merge-blocker resolved; M2 test gap closed; N4 tightened. M1/M3 are post-merge polish per Cursor's original classification.
+**Fix:** `app.whenReady().then(async () => { await runUninstallCleanup(); app.exit(0); });` and `app.requestSingleInstanceLock()` / `app.disableHardwareAcceleration()` optional; do not open a window.
+
+**H2 — `customUnInstall` hook choice is correct (Task 4) — plan comment stands**  
+Verified against electron-builder `uninstaller.nsh`: `customUnInstall` is expanded **before** the `RMDir /r $INSTDIR` block (not after). `ExecWait '"$INSTDIR\TallyMCP.exe" --uninstall-cleanup'` can see the exe on disk. Use `customRemoveFiles` only if you need logic *inside* the default delete path; pre-delete cleanup belongs in `customUnInstall` as written.
+
+### Medium
+
+**M1 — Spec install path vs plan path (§11.2 / Appendix A vs Tasks 1 + 3)**  
+Spec §11.2 integration checks reference `%LOCALAPPDATA%\TallyMCP\`; plan + CHANGELOG (Task 12) move canonical install to `%LOCALAPPDATA%\Programs\TallyMCP\` (electron-builder user-mode default). Intentional and documented in-plan, but **spec text is stale** — update spec §6.1 Ollama path + §11.2 before Phase 4 CI asserts wrong directory.
+
+**M2 — Stale wire-path comments still say `mcp-server\main.js` (Tasks 3 + Phase 3 DoD)**  
+Task 6 correctly patches `ipc-handlers` + test to `mcp-server\dist\main.js` (L891–919), but Task 3 `electron-builder.yml` comment block (L357–360) and Phase 3 DoD bullet (L29) still cite `main.js`. Subagents copying the yml comment could regress the fix.
+
+**M3 — Task 1 packaged exe fixture name is misleading (not blocking)**  
+Test uses `TallyMCP Configurator.exe` (L99); smoke + NSIS use `TallyMCP.exe` (`productName: TallyMCP`, Task 3 L339, Task 4 L453). `dirname()` result is the same; rename fixture to `TallyMCP.exe` for clarity.
+
+**M4 — Task 3 commits before Task 4 creates `installer.nsh`**  
+`nsis.include: ../../installer/installer.nsh` (L384) does not exist until Task 4. Task 3 Step 3 only runs `--help` (no full build). First real parse is Task 8 — acceptable if order 1→14 is honored; note in orchestrator.
+
+**M5 — §11.2 headless install CI deferred; local smoke only**  
+Tasks 10–11 cover install/uninstall layout + config/firewall assertions locally. Spec §11.2 Windows CI is explicitly Phase 4 — not a plan gap for Phase 3 scope.
+
+### Nit
+
+**N1 — Placeholders / TDD:** No `TBD`, `TODO`, or “implement later” in task bodies. Every implementation step includes full code blocks. ✓
+
+**N2 — Symbol consistency (cross-task):**  
+| Chain | Status |
+|-------|--------|
+| `resolveInstallDir` → `index.ts` Step 5 (L186–195) | ✓ |
+| `runUninstallCleanup` / `UninstallCleanupContext` / `Result` → tests + NSIS (L454, L748, L1514) | ✓ (`--uninstall-cleanup` everywhere; spec Appendix D uses legacy `--uninstall-clients` / `configurator.exe`) |
+| `productName: TallyMCP` → `TallyMCP.exe` / `Uninstall TallyMCP.exe` | ✓ |
+| `extraFiles` staging paths ↔ Tasks 6–7 | ✓ |
+| Task 6 `ipc-handlers.test.ts` args assertion | ✓ present in plan (L909–919) |
+
+**N3 — Execution order:** Strict 1→14 is safe. No Phase-2-style “Task 21 before 20b” inversion. Task 6 Step 4 expects 76 tests only after Task 5 (+4) — order respected.
+
+**N4 — Phase 2 embedded patches:**  
+- **Task 1 install-dir:** Dev path moves `%LOCALAPPDATA%\TallyMCP` → `%LOCALAPPDATA%\Programs\TallyMCP`. Unit/E2E should stay green (E2E launches unpackaged `dist/main`; mocks unaffected). Manual re-wire note in Task 13 §7 is correct.  
+- **Task 6 wire path:** Plan includes handler + `ipc-handlers.test.ts` update; current tree still has `main.js` (pre-Phase-3) — patch is specified, not missing.
+
+**N5 — Test count math:** 69 + 3 (Task 1) + 4 (Task 5) = **76**. Stated consistently (L32, L182, L778, L1809). ✓
+
+**N6 — `/S` + `oneClick: false`:** electron-builder `un.onInit` parses `/S` (template); install-smoke comment (L1411–1412) is correct. Assisted installer silent install is supported.
+
+**N7 — Windows runtime assumptions:** `fetch-node.mjs` uses `Expand-Archive` on win32 + `unzip` fallback (L1027–1036); `pnpm package:install` requires `pwsh` (Task 8 L1167) — fine on Win10/11. Pin `NODE_VERSION` is explicit.
+
+**N8 — Deferred list (Q10):** Icons, EV cert, `latest.json`, CI pipeline are **not** Phase 3 spec blockers (§9 CI + §12 landing/updater are Phase 4/5). ✓
 
 ---
 
-## Round 2
+## Spec coverage (Phase 3 slice)
 
-**Range:** `83b19e4..c21a561` (`f808be9`, `c21a561`) — independent re-verification of H1 / M2 / N4 only.
+| Spec area | Plan coverage | Gap? |
+|-----------|---------------|------|
+| **§8** repo `installer/` + `electron-builder.yml` | Tasks 2–4, 3 | Icons deferred (nit) |
+| **§9** build/package/sign | Tasks 7–9, 8 (`pnpm package`); publish/`release.yml` → Phase 4 | CI automation deferred by design |
+| **§11.2** headless install/uninstall | Tasks 10–11 (local PS1); path uses `Programs\TallyMCP` not spec’s `TallyMCP` | M1 path drift; CI wiring Phase 4 |
+| **§12 DoD** (full v1.0) | Phase 3 DoD (L25–33) is subset; landing/`latest.json`/all §11 layers → later phases | Expected |
+| **Appendix D** uninstall hook | Task 4 `customUnInstall` + Task 5 cleanup (superset: clients + ini + firewall in one exe call) | Arg name differs from spec sample (`--uninstall-cleanup` vs `--uninstall-clients`) — internally consistent |
 
-### H1 — installDir IPC boundary
+---
 
-**✅ Fixed in production path.** `WireRequest` is `{ clientId }` only (`ipc-types.ts` L33–38). `handleWireMcp` builds paths from `ctx.installDir` only (`ipc-handlers.ts` L48–58). `registerIpcHandlers` injects `{ installDir: ctx.installDir }` from main boot (`L247–248`). Renderer calls `wireMcp({ clientId: modalFor })` (`App.tsx` L68). `ipc-handlers.test.ts` asserts `node.exe` under context `installDir`, not request field (L21–30).
+## Verdict
 
-**No bypass:** `grep` shows no `req.installDir` / `payload.installDir` in `src/`. Extra keys on the IPC payload would be ignored by `handleWireMcp` (defense in depth).
+**🟡 READY TO EXECUTE WITH FOLLOW-UPS** — Plan is thorough, placeholder-free, and test math checks out. Patch **H1** (`app.whenReady` for `--uninstall-cleanup`) in the plan before subagents start Task 5; fix **M2** stale `main.js` comments so Task 6's wire-path migration cannot be copied wrong. No deferred Phase 3 item is a spec blocker.
 
-**Nit (tests only):** `preload.test.ts` L11–15 and `ipc-types.test.ts` L27 still construct `wireMcp` / `WireRequest` with `installDir`; those files are outside `tsconfig.node` `include`, so excess-property drift is not typechecked. Runtime still passes 64/64. Update tests to `{ clientId }` only for contract parity — not a security hole.
+---
 
-### M2 — H10 hydration test
+## Round 1 resolutions (applied inline to the plan + spec, pre-execution)
 
-**✅ Exercises the real path.** Test overrides `healthCheck` → `configuredClients: ["claude-desktop"]` (`App.test.tsx` L97–105), which drives `useEffect` → `markClientConfigured` (`App.tsx` L49–51). `findByRole("button", { name: /Reconfigure/i })` (L110–112) waits for post-promise re-render — not a fixed `setTimeout`.
+| # | Severity | Resolution |
+|---|---|---|
+| **H1** | High | **Fixed in plan Task 5.** `--uninstall-cleanup` boot is now wrapped in `app.whenReady().then(async () => { ... app.exit(0); })` — matches Cursor's recommendation verbatim. Added inline comment explaining why `app.exit(0)` over `app.quit()` (NSIS `ExecWait` needs a deterministic exit; `app.quit()` can hang on pending event-loop work). |
+| **H2** | High | **No action — confirmation.** Cursor verified that `customUnInstall` runs before `RMDir /r $INSTDIR`, so the configurator exe is still on disk when invoked. |
+| **M1** | Medium | **Fixed in spec.** Updated all 7 occurrences of `%LOCALAPPDATA%\TallyMCP\` → `%LOCALAPPDATA%\Programs\TallyMCP\` (§4.1, §4.2 Decisions 1+5, §6.1, §11.2, Appendix A). Bumped spec to v1.0.2 with a revision-history entry pointing at this Cursor finding. Local-only file (gitignored). |
+| **M2** | Medium | **Fixed in plan.** Three stale `mcp-server\main.js` refs scrubbed: the Architecture header (L7), the Phase 3 DoD bullet (L29), and the electron-builder.yml comment block in Task 3 (L357–360). All now correctly say `mcp-server\dist\main.js` with a note explaining the `pnpm deploy --prod` layout. Task 6's "OLD code shown for the change-FROM instruction" + Task 6's explanatory prose + the CHANGELOG migration note were left intact (those are historical context, not stale references). |
+| **M3** | Medium | **Fixed in plan Task 1 test.** `TallyMCP Configurator.exe` fixture renamed to `TallyMCP.exe` (matches `productName: TallyMCP` from Task 3 + the NSIS exe + smoke scripts). `dirname()` result identical so the test still asserts the same thing, just with the correct name. |
+| **M4** | Medium | **No action — confirmation.** Task 3 commits before Task 4 creates `installer.nsh`, but Task 3 only does an `electron-builder --help` parse-check (no real build). First real `nsis.include` resolution is in Task 8's `pnpm package`, by which point Task 4 has landed. Strict 1→14 order honors this. |
+| **M5** | Medium | **No action — confirmation.** §11.2 CI on `windows-latest` is explicitly Phase 4; not a Phase 3 gap. |
+| **N1–N8** | Nit | **No action — all confirmations.** Placeholders ✓, symbol consistency ✓, execution order ✓, embedded Phase 2 patches ✓, test count math (76) ✓, `/S` + `oneClick:false` compat ✓, Windows runtime assumptions ✓, deferred list ✓. |
 
-**Robust enough:** Single configured tile ⇒ one Reconfigure + one “Connected”; `>= 1` on Connected is loose but stable (no other “Connected” copy in tree). Could tighten to `getByRole` scoped under “Claude Desktop” later; not flaky in practice.
+## Final post-resolution tip
 
-### N4 — SmartScreenGuide `>= 2`
+Plan file: `docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.md` (~1,895 lines after fixes).
+Spec file: `docs/superpowers/specs/2026-05-25-tallymcp-installer-design.md` v1.0.2 (path drift fixed).
+Both are local-only / gitignored — no commit needed before execution.
 
-**✅ Consistent with UI.** Component duplicates headlines in two mock panels (`SmartScreenGuide.tsx` L37 + L63) and repeats “More info” / “Run anyway” in step copy + mocks (L34/46/59, L57/59/69). Assertions `>= 2` match comments (`SmartScreenGuide.test.tsx` L16–19).
+**Verdict (post-resolution): ✅ READY TO EXECUTE.** H1 patched, M1/M2/M3 patched, M4/M5/H2/N1-N8 confirmations.
 
-### New from fix
+---
 
-- **Positive:** Removing renderer `installDir` also dropped the lazy `getConfig` race in `handleConfirmAdd` (`App.tsx` L62–65) — cleaner than Round 1’s `config ?? await getConfig()` approach.
-- **Nit only:** Stale `installDir` in two main-process unit tests (above); no new blockers. M1/M3 deferral unchanged and safe.
+## Round 2 (re-verification)
+
+**Scope:** Confirm Round 1 inline fixes in plan + spec v1.0.2 (local-only files).
+
+### H1 — `app.whenReady()` + `app.exit(0)`
+
+**✅ Resolved.** Task 5 (plan L758–772) uses `app.whenReady().then(async () => { … runUninstallCleanup(); app.exit(0); })` with inline rationale for NSIS `ExecWait` (deterministic exit vs `app.quit()` hang). Matches NSIS expectations.
+
+**Nit:** Add `.catch((err) => { console.error(err); app.exit(1); })` on the `whenReady` chain so a thrown `runUninstallCleanup` cannot leave the uninstaller waiting forever — not a plan blocker.
+
+### M2 — stale `mcp-server\main.js` grep
+
+**✅ Resolved for normative paths.** Active refs use `mcp-server\dist\main.js` (Architecture L7, DoD L29, Task 3 yml comments L361–363, smoke L1434, etc.). Remaining bare `main.js` hits are only: Task 6 OLD-code / Option A–B blocks (L883–906), CHANGELOG “was … main.js” (L1640), manual-smoke migration note (L1794), deploy-script `dist/main.js` paths — all allowed historical/explanatory context.
+
+### M3 — exe name `TallyMCP.exe`
+
+**✅ Test + runtime aligned.** Task 1 fixture (L100), Task 3 `productName: TallyMCP` (L340), Task 4 NSIS `TallyMCP.exe` (L456), install-smoke (L1422). **Nit:** Two prose lines still say `TallyMCP Configurator.exe` — `install-dir.ts` JSDoc (L149) and `installer/README.md` Layout bullet (L250); subagents should follow Task 4/3, not those comments.
+
+### M1 — spec install-dir paths
+
+**✅ `%LOCALAPPDATA%\TallyMCP\` scrubbed** (grep finds none outside revision-history “was” note, v1.0.2 L14). Normative paths use `%LOCALAPPDATA%\Programs\TallyMCP\` (§4.1 L85, §4.2 L111/115, §6.1 L160, §11.2 L330, Appendix A L383–384).
+
+**Nit (spec, non-blocking):** §6.2 sample JSON (L168–171) still shows `AppData\Local\TallyMCP\` + `mcp-server\main.js`; §4.1 diagram (L88–89, L103) still says `configurator.exe` / `mcp-server\main.js`. Plan is canonical for Phase 3; align spec snippet when convenient.
+
+### New from resolutions
+
+- Architecture header now invokes `TallyMCP.exe --uninstall-cleanup` (L7) — consistent with Task 4.
+- No regressions vs Round 1 verdict items.
 
 ### Round 2 verdict
 
-**✅ READY TO MERGE**
+**✅ READY TO EXECUTE** — Round 1 blockers closed. Optional nits: `whenReady` `.catch`, two `Configurator.exe` prose stragglers, spec §6.2 sample paths.
 
-### Round 2 nit resolution
+### Round 2 nit resolutions (applied inline)
 
-The two stale `installDir` constructions Cursor flagged (`preload.test.ts` L11/L13–15 and `ipc-types.test.ts` L27) were fixed in `8924c2b` — both files now use `{ clientId }` only, matching the post-H1 `WireRequest` contract. Configurator tests remain 64/64; full workspace build + lint + E2E still green.
+All three Round 2 nits were addressed since the work is contained and cheap:
 
-**Tip after round 2:** `8924c2b` (36 commits ahead of `main`).
+| # | Resolution |
+|---|---|
+| `whenReady` `.catch` | **Added in plan Task 5.** The `app.whenReady().then(...)` chain now has a `.catch((err) => { console.error("[uninstall-cleanup] fatal:", err); app.exit(1); })` tail. `runUninstallCleanup` is designed not to throw (its tests prove that), so this catches only catastrophic failures (dynamic `import()` error, Electron init issue). Exit code 1 keeps NSIS `ExecWait` moving — installer.nsh ignores the code per its own design but a clean exit is the contract. |
+| `Configurator.exe` stragglers | **Plan L149 (install-dir.ts JSDoc) + L250 (installer/README.md layout bullet)** both renamed `TallyMCP Configurator.exe` → `TallyMCP.exe`. Grep verifies zero remaining `TallyMCP Configurator.exe` in the plan. |
+| Spec §4.1 diagram + §4.2 Decision 2 | **Updated.** Diagram (§4.1 L88–89) now shows `mcp-server\dist\main.js` + `TallyMCP.exe` (was `mcp-server\main.js` + `configurator.exe`). Decision 2 prose (§4.2 L112) updated to `TallyMCP.exe` + `mcp-server\dist\main.js` with note that the server runs under bundled `node.exe`. Spec bumped to **v1.0.3** with a revision-history entry. Appendix D's NSIS sample at L445 intentionally preserved as the original design sketch — the v1.0.3 note explicitly states Phase 3's `customUnInstall` macro supersedes it. |
 
----
+Final tip after Round 2 nit cleanup:
+- Plan: `docs/superpowers/plans/2026-05-26-tallymcp-installer-v1.0-phase3.md` (~1,910 lines after Round 2 additions).
+- Spec: `docs/superpowers/specs/2026-05-25-tallymcp-installer-design.md` **v1.0.3**.
+- No live stragglers in either file (only Appendix D's documented historical sketch + revision-history "was" references remain).
 
-## Post-review polish — M1 + M3 landed
-
-After round 2 ✅, the two deferred Mediums were also addressed inline (user opted to land a fully-clean branch instead of carrying them as post-merge follow-ups):
-
-- **M1** — new `ErrorBanner` component (`src/renderer/components/ErrorBanner.tsx`) rendered between `StatusBanner` and the active screen when `useAppStore.lastError` is set. Dismissible via × button or via screen navigation (`navigateTo` now clears `lastError` — see `store.ts`).
-- **M3** — `handleFixAll`, `handleRestoreConfirmed`, `handleReCheck` all wrapped in `try/catch`; failures surface via `setLastError` (same plumbing as `handleConfirmAdd`). Success paths additionally call `clearLastError()` so a transient error gets wiped once the user retries successfully.
-
-New tests:
-- `ErrorBanner.test.tsx` — renders message, dismiss callback (+2).
-- `store.test.ts` — `navigateTo` clears `lastError` (+1).
-- `App.test.tsx` — `wireMcp` failure surfaces alert + dismiss removes it; `tallyFix` failure surfaces alert (+2).
-
-Configurator unit tests: **69/69** (+5 from M1+M3 work); E2E still 4/4; workspace build + lint clean.
+**Verdict (post-Round-2-nit-cleanup): ✅ READY TO EXECUTE — no remaining items.**
