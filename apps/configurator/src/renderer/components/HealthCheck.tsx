@@ -78,9 +78,11 @@ export function HealthCheck({ status, firewallSkipReason, onFixAll, onReCheck }:
             M-R3-1, 2026-05-26): if IT/the user adds the rule externally
             then clicks Re-check, the status line flips to "✓ Firewall
             rule present" — without this guard the yellow card would
-            remain and directly contradict the status. The
-            `firewallSkipReason` slice also gets cleared by `navigateTo`
-            (store.ts), so screen navigation is a second cleanup path.
+            remain and directly contradict the status. The guard IS the
+            in-screen cleanup; `firewallSkipReason` stays set until
+            screen change (`navigateTo` clears it via store.ts), but
+            that's a separate concern — Re-check itself doesn't navigate.
+            (Cursor N-R4-1 comment fix, 2026-05-26.)
           */}
           {firewallSkipReason === "non-admin" && !status.firewallRulePresent && (
             <div className="mt-4 p-3 bg-tm-amber-soft border border-tm-amber-border rounded-lg text-xs leading-relaxed">
