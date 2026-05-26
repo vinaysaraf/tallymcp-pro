@@ -49,4 +49,11 @@ describe("useAppStore", () => {
     useAppStore.getState().clearLastError();
     expect(useAppStore.getState().lastError).toBeUndefined();
   });
+
+  it("navigateTo clears lastError so stale errors don't follow the user (Cursor M1)", () => {
+    useAppStore.getState().setLastError("Multiple TallyPrime installs found");
+    useAppStore.getState().navigateTo("settings");
+    expect(useAppStore.getState().currentScreen).toBe("settings");
+    expect(useAppStore.getState().lastError).toBeUndefined();
+  });
 });

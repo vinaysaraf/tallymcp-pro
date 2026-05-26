@@ -83,4 +83,20 @@ These are tracked in `f808be9`'s commit body. Both are pure additions; neither a
 
 The two stale `installDir` constructions Cursor flagged (`preload.test.ts` L11/L13–15 and `ipc-types.test.ts` L27) were fixed in `8924c2b` — both files now use `{ clientId }` only, matching the post-H1 `WireRequest` contract. Configurator tests remain 64/64; full workspace build + lint + E2E still green.
 
-**Final tip after round 2:** `8924c2b` (36 commits ahead of `main`).
+**Tip after round 2:** `8924c2b` (36 commits ahead of `main`).
+
+---
+
+## Post-review polish — M1 + M3 landed
+
+After round 2 ✅, the two deferred Mediums were also addressed inline (user opted to land a fully-clean branch instead of carrying them as post-merge follow-ups):
+
+- **M1** — new `ErrorBanner` component (`src/renderer/components/ErrorBanner.tsx`) rendered between `StatusBanner` and the active screen when `useAppStore.lastError` is set. Dismissible via × button or via screen navigation (`navigateTo` now clears `lastError` — see `store.ts`).
+- **M3** — `handleFixAll`, `handleRestoreConfirmed`, `handleReCheck` all wrapped in `try/catch`; failures surface via `setLastError` (same plumbing as `handleConfirmAdd`). Success paths additionally call `clearLastError()` so a transient error gets wiped once the user retries successfully.
+
+New tests:
+- `ErrorBanner.test.tsx` — renders message, dismiss callback (+2).
+- `store.test.ts` — `navigateTo` clears `lastError` (+1).
+- `App.test.tsx` — `wireMcp` failure surfaces alert + dismiss removes it; `tallyFix` failure surfaces alert (+2).
+
+Configurator unit tests: **69/69** (+5 from M1+M3 work); E2E still 4/4; workspace build + lint clean.

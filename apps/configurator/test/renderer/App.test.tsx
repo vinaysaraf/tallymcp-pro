@@ -115,6 +115,47 @@ describe("App", () => {
     expect(screen.getAllByText(/Connected/i).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("surfaces wireMcp failures via ErrorBanner (Cursor M1)", async () => {
+    const api = buildFakeApi({
+      wireMcp: vi.fn().mockRejectedValue(new Error("disk full")),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    const tileButtons = screen.getAllByRole("button", { name: /Add MCP/i });
+    fireEvent.click(tileButtons[0]!);
+    fireEvent.click(screen.getByRole("button", { name: /^Add MCP$/i }));
+    expect(await screen.findByRole("alert")).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toContain("disk full");
+    // Dismiss clears the banner.
+    fireEvent.click(screen.getByRole("button", { name: /Dismiss error/i }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("surfaces tallyFix failures via ErrorBanner (Cursor M3)", async () => {
+    const api = buildFakeApi({
+      // needsFix === true requires xml OR firewall to be false so the
+      // "Fix both, continue" button actually renders.
+      healthCheck: vi.fn().mockResolvedValue({
+        tallyInstalled: true,
+        tallyInstallDir: "C:\\Tally",
+        tallyRunning: true,
+        xmlInterfaceEnabled: false,
+        firewallRulePresent: false,
+        configuredClients: [],
+      }),
+      tallyFix: vi.fn().mockRejectedValue(new Error("Multiple TallyPrime installs found")),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    // Wait for the initial healthCheck() in useEffect so HealthCheck screen
+    // has data when we navigate there.
+    await screen.findByText("Claude Desktop");
+    fireEvent.click(screen.getByRole("button", { name: /Health Check/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Fix both, continue/i }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Multiple TallyPrime installs found");
+  });
+
   it("opens DoneScreen after wireMcp succeeds", async () => {
     const api = buildFakeApi();
     globalThis.window.tallymcp = api;

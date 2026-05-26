@@ -23,7 +23,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   configuredClients: new Set<ClientId>(),
   lastError: undefined,
 
-  navigateTo: (screen) => set({ currentScreen: screen }),
+  // Clears lastError on screen change so stale errors don't follow the
+  // user across screens (Cursor review M1 — error auto-dismiss UX).
+  navigateTo: (screen) => set({ currentScreen: screen, lastError: undefined }),
   setTallyStatus: (status) => set({ tallyStatus: status }),
   markClientConfigured: (id) =>
     set((state) => ({

@@ -9,7 +9,13 @@ All notable changes to this project will be documented in this file.
 - Electron main process owns all Node.js access (`@tallymcp/client-wirer`, `@tallymcp/tally-autofix`); renderer talks to main exclusively through `contextBridge`-exposed `window.tallymcp` API with `contextIsolation: true` + `nodeIntegration: false` + `sandbox: true`.
 - Background Tally HTTP poller pushes live status to the renderer via `tally-status` IPC events (5 s interval, loopback-only).
 - `electron-updater` scaffolded with a stubbed update source — real `latest.json` integration in Phase 4.
-- 63 unit tests (main IPC handlers + Zustand store + React components, including `configuredClients` probing, `multipleTallyInstalls` detection, `RestoreConfirmModal`, `DoneScreen`) + 4 Playwright E2E tests (Electron driver launches the built app, exercises all screens).
+- 69 unit tests (main IPC handlers + Zustand store + React components, including `configuredClients` probing, `multipleTallyInstalls` detection, `RestoreConfirmModal`, `DoneScreen`, `ErrorBanner`, App-level error surfacing) + 4 Playwright E2E tests (Electron driver launches the built app, exercises all screens).
+
+### Security
+- `wireMcp` IPC handler no longer trusts a renderer-supplied `installDir`. Main resolves the canonical `%LOCALAPPDATA%\TallyMCP` at boot and injects it via `WireMcpContext` when registering the handler. A renderer (or DevTools) caller can no longer point the wire entry at an arbitrary folder. (Cursor review H1, addressed in `f808be9`.)
+
+### Error handling
+- All Tally IPC calls (`wireMcp`, `tallyFix`, `tallyRestore`, `healthCheck`) are now wrapped in try/catch in `App.tsx`. Failures surface via a dismissible red `ErrorBanner` rendered between the `StatusBanner` and the active screen. Errors auto-clear on screen navigation and on the next successful operation. (Cursor review M1 + M3.)
 
 ### Notes
 - Phase 2 ships the UI but NOT the installer packaging (Phase 3), code signing (Phase 3), or the GitHub Actions release pipeline (Phase 4).

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "./store.js";
 import { getApi } from "./api.js";
 import { StatusBanner } from "./components/StatusBanner.js";
+import { ErrorBanner } from "./components/ErrorBanner.js";
 import { TileGrid } from "./components/TileGrid.js";
 import { AddMcpModal } from "./components/AddMcpModal.js";
 import { HealthCheck } from "./components/HealthCheck.js";
@@ -32,6 +33,9 @@ export function App(): JSX.Element {
   const markClientConfigured = useAppStore((s) => s.markClientConfigured);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const unmarkClientConfigured = useAppStore((s) => s.unmarkClientConfigured);
+  const lastError = useAppStore((s) => s.lastError);
+  const setLastError = useAppStore((s) => s.setLastError);
+  const clearLastError = useAppStore((s) => s.clearLastError);
 
   const [config, setConfig] = useState<ConfigSnapshot | undefined>(undefined);
   const [health, setHealth] = useState<HealthCheckResponse | undefined>(undefined);
@@ -70,15 +74,25 @@ export function App(): JSX.Element {
       const wiredClient = modalFor;
       setModalFor(undefined);
       setShowDoneFor(wiredClient);  // show DoneScreen after success
+      clearLastError();  // success → wipe any prior error state (M1)
     } catch (err) {
-      useAppStore.getState().setLastError((err as Error).message);
+      setLastError((err as Error).message);
     }
   };
 
+  // M3: all Tally-* IPC calls can throw (e.g. "Multiple TallyPrime installs
+  // found" — see ipc-handlers.ts resolveSingleInstall). Wrap so failures
+  // surface via ErrorBanner instead of becoming unhandled rejections.
+
   const handleFixAll = async (): Promise<void> => {
     const api = getApi();
-    await api.tallyFix();
-    setHealth(await api.healthCheck());
+    try {
+      await api.tallyFix();
+      setHealth(await api.healthCheck());
+      clearLastError();
+    } catch (err) {
+      setLastError((err as Error).message);
+    }
   };
 
   // Opens the RestoreConfirmModal instead of restoring immediately.
@@ -87,12 +101,22 @@ export function App(): JSX.Element {
   const handleRestoreConfirmed = async (): Promise<void> => {
     const api = getApi();
     setShowRestoreConfirm(false);
-    await api.tallyRestore();
-    setHealth(await api.healthCheck());
+    try {
+      await api.tallyRestore();
+      setHealth(await api.healthCheck());
+      clearLastError();
+    } catch (err) {
+      setLastError((err as Error).message);
+    }
   };
 
   const handleReCheck = async (): Promise<void> => {
-    setHealth(await getApi().healthCheck());
+    try {
+      setHealth(await getApi().healthCheck());
+      clearLastError();
+    } catch (err) {
+      setLastError((err as Error).message);
+    }
   };
 
   return (
@@ -129,6 +153,10 @@ export function App(): JSX.Element {
         serverHealthy={tallyStatus.reachable}
         version={config?.version ?? ""}
       />
+
+      {lastError !== undefined && (
+        <ErrorBanner message={lastError} onDismiss={clearLastError} />
+      )}
 
       {currentScreen === "home" && (
         <TileGrid
