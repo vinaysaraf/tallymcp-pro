@@ -422,3 +422,146 @@ Runner returns GP stderr on `netsh add` → `addFirewallRule` → `GroupPolicyEr
 
 **✅ READY TO SHIP** — M-R3-1 and N-R3-3 fixes are correct; safe to push/PR immediately.
 
+---
+
+## Phase 4 — implementation review (2026-05-26)
+
+**Date:** 2026-05-26  
+**Branch:** `feat/v1.0-installer-phase4`  
+**Tip SHA:** `d2ad21a`  
+**Base:** `main` @ `26626a5` (13 commits)  
+**Scope:** Phase 4 release pipeline + electron-updater + UpdateBanner + `release.yml` + `generate-latest-json.mjs`
+
+**Re-run:** configurator **114/114** unit + **4/4** E2E ✓ · `generate-latest-json.test.mjs` **3/3** ✓ · tally-autofix **52/52** ✓ · cli **30/30** ✓ · `git status` clean ✓
+
+### Checklist (user focus areas)
+
+| # | Area | Result |
+|---|------|--------|
+| 1 | Type chain (`UpdateStatus`) | ✅ Single export in `ipc-types.ts`; imported everywhere — no narrower/wider redeclarations |
+| 2 | Update flow trace | ✅ End-to-end path complete; C1/H1 satisfied |
+| 3 | E2E regression fix (`d2ad21a`) | ✅ Core IPC before window; update IPC inline after updater bootstrap |
+| 4 | Dev-mode auto-updater catch | ✅ Bootstrap-only; production signing failures surface in CI, not swallowed here |
+| 5 | `release.yml` security | ✅ CSC secrets loud-fail; `fail_on_unmatched_files`; `tag_name` from `steps.ref` |
+| 6 | `generate-latest-json.mjs` | ✅ H2 guard; `join()` paths; artifact name from `version` only |
+| 7 | CHANGELOG accuracy | 🟡 Test counts ✓; **Changed** section stale vs `d2ad21a` (see N-P4-1) |
+| 8 | Cross-file `UpdateStatus` | ✅ Same shape via shared import |
+| 9 | Anti-patterns | ✅ No stray `TODO`/dead code; intentional swallows documented |
+| 10 | Working tree | ✅ Clean |
+
+### 1. Type chain
+
+`UpdateStatus` is defined once:
+
+```120:146:apps/configurator/src/shared/ipc-types.ts
+export interface UpdateStatus {
+  status:
+    | "up-to-date"
+    | "update-available"
+    | "downloading"
+    | "ready-to-install"
+    | "error";
+  currentVersion: string;
+  latestVersion?: string;
+  downloadProgress?: number;
+  releaseNotesUrl?: string;
+  error?: string;
+}
+```
+
+Consumed via import (not redeclared) in: `preload/index.ts` L13, `auto-update.ts` L36, `store.ts` L2, `UpdateBanner.tsx` L1, `App.tsx` (via store), tests. `TallymcpApi` methods in `ipc-types.ts` L163–178 align with preload L44–54. No Phase 3.1-style `firewallRule` drift.
+
+### 2. Update flow trace
+
+| Step | Location | Verified |
+|------|----------|----------|
+| "Update now" click | `App.tsx` L173–178 `handleUpdateClick` | ✅ |
+| IPC invoke | `preload` → `IPC_CHANNELS.DOWNLOAD_UPDATE` | ✅ |
+| Main handler | `index.ts` L154 → `updater.downloadUpdate()` | ✅ |
+| Download + progress | `auto-update.ts` L101–108 `download-progress`, L152–169 try/catch (H1) | ✅ |
+| Ready state | `update-downloaded` L110–116 → `setStatus(ready-to-install)` | ✅ |
+| Push to renderer | `index.ts` L143–146 `UPDATE_STATUS_EVENT` | ✅ |
+| Store + render | `App.tsx` L69 `subscribeUpdateStatus` → L229–236 `<UpdateBanner>` | ✅ |
+| "Restart now" | `handleRestartClick` L186–191 → `quit-and-install` L155 | ✅ |
+| Install guard | `auto-update.ts` L171–179 `status === "ready-to-install"` | ✅ |
+
+**C1 nuance:** `downloadUpdate()` `await`s `autoUpdater.downloadUpdate()` (IPC resolves when the download finishes), but it does **not** call `quitAndInstall` in the same call — progress/`ready-to-install` stream via the subscriber + `UPDATE_STATUS_EVENT`. Tests lock this at `auto-update.test.ts` L127–134.
+
+**Error UX:** `UpdateBanner` returns `null` for `status === "error"` (L28–29); mount-time `checkForUpdates` failure is swallowed (`App.tsx` L72–74). User-triggered download errors surface via `ErrorBanner` (`handleUpdateClick` L177). Matches plan.
+
+### 3. E2E regression fix (`d2ad21a`)
+
+```104:118:apps/configurator/src/main/index.ts
+    registerIpcHandlers(ipcMain, {
+      installDir,
+      version: app.getVersion(),
+    });
+
+    const mainWindow = await createWindow();
+```
+
+Update channels registered **after** updater bootstrap (L139–155), only inside the `try` that succeeds. `RegisterContext` no longer carries `autoUpdater`:
+
+```243:246:apps/configurator/src/main/ipc-handlers.ts
+export interface RegisterContext {
+  installDir: string;
+  version: string;
+}
+```
+
+Core 6 channels registered exactly once via `registerIpcHandlers`. Channel strings `"check-for-updates"`, `"download-update"`, `"quit-and-install"` match `IPC_CHANNELS` values in `ipc-types.ts` L19–21.
+
+### 4. Dev-mode / production error handling
+
+`main/index.ts` L139–168: `try/catch` wraps **dynamic import + `createAutoUpdater`**, not per-update operations. On failure: `console.warn` + update IPCs absent — core app still works (E2E/dev). This does **not** mask production signing failures: those occur in `release.yml` during `pnpm package` (unsigned build would fail the loud CSC secret checks L65–77, not silently publish). Initial check rejection is logged at L159–161.
+
+### 5. `release.yml`
+
+- `permissions: contents: write` L13–14  
+- Checkout `ref: ${{ steps.ref.outputs.tag }}` L33 — covers tag-push (`GITHUB_REF_NAME`) and `workflow_dispatch` (`inputs.tag`) via `steps.ref` L21–29  
+- `CSC_LINK_BASE64` + `CSC_KEY_PASSWORD` with `::error::` + `exit 1` on empty/missing L65–77  
+- `tag_name: ${{ steps.ref.outputs.tag }}` L102  
+- `fail_on_unmatched_files: true` L103  
+- Four artifact globs L104–108  
+
+### 6. `generate-latest-json.mjs`
+
+- Pure `generateLatestJson` throws on `tag !== \`v${version}\`` L49–53 (H2) — tested L37–47  
+- `artifactName = \`TallyMCP-Setup-v${version}.exe\`` — no path-separator injection; URLs use forward slashes  
+- CLI uses `join(repoRoot, …)` throughout L70–107 — Windows-safe  
+
+### 7. CHANGELOG
+
+- Configurator **91 → 114** (+23): arithmetic correct (114 current).  
+- +3 `generate-latest-json` tests outside workspace: confirmed.  
+- Phase 3.1 tally-autofix +8 called out in prior section only — not mis-attributed in Phase 4 Added list.  
+- **N-P4-1:** `CHANGELOG.md` L18–20 still describe the **pre-`d2ad21a`** H3 shape ("single post-updater `registerIpcHandlers`" + `RegisterContext.autoUpdater`). Code/docs in `index.ts` L104–114 and `ipc-handlers.ts` L254–258 contradict this. Doc-only; fix before first external release notes pass.
+
+### 9. Anti-patterns scan
+
+| Item | Verdict |
+|------|---------|
+| `console.log` in update path | Only uninstall-cleanup + bootstrap warn/error — acceptable |
+| `TODO` / `FIXME` | None in Phase 4 src |
+| `checkForUpdatesStub` | Removed; comment reference only in `auto-update.ts` L3 |
+| `downloadUpdate` swallow | Intentional H1 — tested L137–147 |
+| Bootstrap `console.warn` | Intentional dev/E2E — documented L134–138 |
+
+**N-P4-2 (nit):** `index.ts` L153–155 uses string literals instead of `IPC_CHANNELS.*` — values match today; refactor reduces drift risk.
+
+**N-P4-3 (nit):** When updater bootstrap fails (dev/E2E), mount `checkForUpdates()` rejects with no handler — silent by design (`App.tsx` L74). Acceptable; optional dev-only log if support burden rises.
+
+### Findings
+
+**N-P4-1 (Medium — docs)** — `CHANGELOG.md` L18–20: "Changed" bullets describe obsolete IPC registration. **Fix:** Replace with split-registration summary matching `index.ts` L104–114 / commit `d2ad21a`.
+
+**N-P4-2 (Nit)** — `apps/configurator/src/main/index.ts` L153–155: import `IPC_CHANNELS` and use constants for the three update handlers.
+
+**N-P4-3 (Nit)** — `error` status never renders in `UpdateBanner`; subscriber-driven errors are invisible until user retries. Matches plan; document in troubleshooting if CAs report "update vanished."
+
+No blockers found in runtime code, CI workflow, or type chain.
+
+### Verdict
+
+**🟡 READY WITH NITS** — implementation matches the ✅-approved Phase 4 plan (C1, H1, H2, H3/`d2ad21a`, M5). Safe to push and open PR. Fix **N-P4-1** (CHANGELOG stale H3) in the same PR or immediately after merge before tagging `v*.*.*`.
+

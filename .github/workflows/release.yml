@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (must already exist on a commit, e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write  # required to upload to the GitHub Release
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Determine ref
+        id: ref
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm -r build
+      - run: pnpm lint
+      - run: pnpm -r test
+      - run: pnpm --filter @tallymcp/configurator typecheck
+      - run: pnpm --filter @tallymcp/configurator e2e
+
+      # Decode the base64-encoded .pfx + write it to a temp file +
+      # set CSC_LINK to that path. electron-builder picks up CSC_LINK +
+      # CSC_KEY_PASSWORD automatically and passes them to signtool.
+      - name: Decode signing cert
+        shell: bash
+        env:
+          CSC_LINK_BASE64: ${{ secrets.CSC_LINK_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          # Both secrets must be present — silently building unsigned for a
+          # tagged release would publish a "Unknown publisher" .exe even
+          # though we have a cert configured. Fail loudly instead.
+          # (Cursor review M5, 2026-05-26.)
+          if [ -z "$CSC_LINK_BASE64" ]; then
+            echo "::error::CSC_LINK_BASE64 secret is empty or missing"
+            exit 1
+          fi
+          if [ -z "$CSC_KEY_PASSWORD" ]; then
+            echo "::error::CSC_KEY_PASSWORD secret is empty or missing"
+            exit 1
+          fi
+          PFX_PATH="${RUNNER_TEMP}/tallymcp-signing.pfx"
+          echo "$CSC_LINK_BASE64" | base64 --decode > "$PFX_PATH"
+          if [ ! -s "$PFX_PATH" ]; then
+            echo "::error::decoded .pfx is empty"
+            exit 1
+          fi
+          echo "CSC_LINK=$PFX_PATH" >> "$GITHUB_ENV"
+
+      # Build + sign + checksum. Phase 3's pnpm package script chains:
+      #   pnpm -r build → fetch-node → deploy-mcp-server →
+      #     electron-builder --win → checksum.
+      # With CSC_LINK + CSC_KEY_PASSWORD set, electron-builder signs the
+      # .exe via signtool.
+      - name: Build signed installer
+        env:
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: pnpm package
+
+      - name: Generate latest.json
+        run: node installer/scripts/generate-latest-json.mjs
+
+      - name: List release artifacts
+        shell: pwsh
+        run: |
+          Get-ChildItem apps/configurator/dist-installer | Format-Table Name, Length
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ref.outputs.tag }}
+          fail_on_unmatched_files: true
+          files: |
+            apps/configurator/dist-installer/TallyMCP-Setup-*.exe
+            apps/configurator/dist-installer/TallyMCP-Setup-*.exe.sha256
+            apps/configurator/dist-installer/latest.yml
+            apps/configurator/dist-installer/latest.json

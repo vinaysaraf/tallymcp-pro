@@ -247,7 +247,15 @@ export interface RegisterContext {
 
 /**
  * Registers IPC handlers on the supplied ipcMain. Called once at Electron
- * `app.ready`. Tests invoke the `handle*` functions directly.
+ * `app.ready` BEFORE `createWindow()` so the renderer's mount-time IPC
+ * calls (healthCheck, getConfig) find handlers waiting. Tests invoke the
+ * `handle*` functions directly.
+ *
+ * Phase 4's three update channels (check-for-updates, download-update,
+ * quit-and-install) are registered SEPARATELY inline in `main/index.ts`
+ * AFTER the auto-updater bootstraps. This split is intentional: the
+ * core IPCs must be ready before the renderer mounts, but the updater
+ * may not initialize in unpackaged dev / Playwright E2E preview mode.
  */
 export function registerIpcHandlers(
   ipcMain: { handle: (channel: string, handler: (event: unknown, payload: unknown) => unknown) => void },

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import {
   IPC_CHANNELS,
   TALLY_STATUS_EVENT,
+  UPDATE_STATUS_EVENT,
   type WireResponse,
   type UnwireResponse,
   type HealthCheckResponse,
@@ -9,6 +10,7 @@ import {
   type TallyRestoreResponse,
   type ConfigSnapshot,
   type TallyStatus,
+  type UpdateStatus,
   type TallymcpApi,
 } from "../shared/ipc-types.js";
 
@@ -38,6 +40,17 @@ export function buildTallymcpApi(bridge: IpcBridge): TallymcpApi {
       const handler = (_event: unknown, status: unknown) => cb(status as TallyStatus);
       bridge.on(TALLY_STATUS_EVENT, handler);
       return () => bridge.removeListener?.(TALLY_STATUS_EVENT, handler);
+    },
+    checkForUpdates: () =>
+      bridge.invoke(IPC_CHANNELS.CHECK_FOR_UPDATES) as Promise<UpdateStatus>,
+    downloadUpdate: () =>
+      bridge.invoke(IPC_CHANNELS.DOWNLOAD_UPDATE) as Promise<void>,
+    quitAndInstall: () =>
+      bridge.invoke(IPC_CHANNELS.QUIT_AND_INSTALL) as Promise<void>,
+    subscribeUpdateStatus: (cb) => {
+      const handler = (_event: unknown, status: unknown) => cb(status as UpdateStatus);
+      bridge.on(UPDATE_STATUS_EVENT, handler);
+      return () => bridge.removeListener?.(UPDATE_STATUS_EVENT, handler);
     },
   };
 }

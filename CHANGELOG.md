@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.0-phase4 — Release pipeline + auto-update (2026-05-26)
+
+### Added
+- **`.github/workflows/release.yml`** — tag-triggered (`v*.*.*`) release pipeline on `windows-latest`. Runs the full local gate (build/lint/test/typecheck/e2e), decodes `CSC_LINK_BASE64` to a temp `.pfx`, signs the `.exe` via electron-builder + signtool, generates `latest.json`, and uploads the 4 artifacts (`.exe`, `.sha256`, `latest.yml`, `latest.json`) to the GitHub Release via `softprops/action-gh-release@v2`.
+- **Real `electron-updater` integration** in `apps/configurator/src/main/auto-update.ts` (replaces Phase 2's `checkForUpdatesStub`). Wraps the `autoUpdater` singleton with a typed state-machine factory `createAutoUpdater`. State machine: `up-to-date` → `update-available` → `downloading` → `ready-to-install` (sticky `error` on any failure). `autoDownload = false` + `autoInstallOnAppQuit = false` enforce explicit user-clicks-Update consent. **Cursor C1 split**: `downloadUpdate` returns immediately + progress streams via the subscriber; `quitAndInstall` is a separate IPC the renderer invokes only when the banner is in `ready-to-install`. **Cursor H1**: `downloadUpdate` captures rejection into the error state instead of throwing.
+- **`UpdateBanner` React component** — calm blue banner above StatusBanner + ErrorBanner. Renders one of four shapes per `UpdateStatus.status`: available → progress bar → restart → null. Includes "What's new" link to the release notes URL.
+- **IPC schema**: `UpdateStatus` discriminated union, `UPDATE_STATUS_EVENT`, 3 new `IPC_CHANNELS` (`CHECK_FOR_UPDATES`, `DOWNLOAD_UPDATE`, `QUIT_AND_INSTALL`), 4 new `TallymcpApi` methods (`checkForUpdates`, `downloadUpdate`, `quitAndInstall`, `subscribeUpdateStatus`).
+- **Zustand `updateStatus` slice** + `updateDismissedThisSession` flag + `setUpdateStatus` + `dismissUpdate` actions.
+- **`installer/scripts/generate-latest-json.mjs`** — pure-function-cored Node script generating the spec Appendix C `latest.json` from version + sha256 + tag/repo env vars. **Cursor H2 guard**: rejects tag/version mismatch (`tag !== "v" + version`) so an out-of-sync tag-push can't produce a `latest.json` pointing at a non-existent artifact.
+- **+23 net new configurator unit tests** (2 IPC type + 4 preload + 9 auto-update + 5 UpdateBanner + 2 store + 1 App integration). Configurator: 91 → 114. Plus 3 generate-latest-json tests outside the workspace.
+- **Three new docs**: `docs/v1-installer-phase4-release-procedure.md`, `docs/v1-installer-phase4-secrets-setup.md`, `docs/v1-installer-phase4-troubleshooting.md`.
+
+### Changed
+- `apps/configurator/electron-builder.yml` — `publish: null` → `publish: { provider: github, owner: vinaysaraf, repo: tallymcp-pro, releaseType: release }` so electron-builder generates `latest.yml` and the release workflow can upload artifacts via `--publish always`.
+- `apps/configurator/src/main/index.ts` — IPC registration is split (Cursor H3 + E2E regression fix `d2ad21a`): the 6 core channels register via `registerIpcHandlers(...)` BEFORE `await createWindow()` so the renderer's mount-effect `healthCheck` + `getConfig` IPC calls find handlers waiting; the 3 update channels (`check-for-updates`, `download-update`, `quit-and-install`) register inline AFTER the `createAutoUpdater(...)` bootstrap succeeds. The auto-updater bootstrap itself is wrapped in `try/catch` so dev / Playwright E2E (unpackaged Electron, where `electron-updater` may not initialize) still gets the core app — only the update banner is missing.
+- `apps/configurator/src/main/ipc-handlers.ts` — `RegisterContext` is back to `{ installDir, version }`; the optional `autoUpdater?` field has been removed since the 3 update channels are now registered inline in `main/index.ts`.
+
+### Notes
+- The user manually opens the GitHub Release page to edit notes (Step 8 of the release procedure). The "What's new" link in the banner already points at the release page.
+- No silent background install: `autoDownload` + `autoInstallOnAppQuit` are both false. User explicitly clicks "Update now" then "Restart now" (spec §10).
+- SHA-256 verification is delegated to `electron-updater` (signed by electron-builder via signtool transparently).
+
 ## v1.0.0-phase3.1 — Admin/elevation UX hotfix (2026-05-26)
 
 ### Added

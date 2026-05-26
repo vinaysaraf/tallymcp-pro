@@ -76,4 +76,33 @@ describe("useAppStore", () => {
     expect(useAppStore.getState().firewallSkipReason).toBeUndefined();
     expect(useAppStore.getState().lastError).toBeUndefined();
   });
+
+  it("setUpdateStatus + dismissUpdate manage the update slice", () => {
+    useAppStore.getState().setUpdateStatus({
+      status: "update-available",
+      currentVersion: "1.0.0",
+      latestVersion: "1.1.0",
+    });
+    expect(useAppStore.getState().updateStatus?.status).toBe("update-available");
+    expect(useAppStore.getState().updateDismissedThisSession).toBe(false);
+
+    useAppStore.getState().dismissUpdate();
+    expect(useAppStore.getState().updateDismissedThisSession).toBe(true);
+  });
+
+  it("setUpdateStatus replaces the prior state object", () => {
+    useAppStore.getState().setUpdateStatus({
+      status: "update-available",
+      currentVersion: "1.0.0",
+      latestVersion: "1.1.0",
+    });
+    useAppStore.getState().setUpdateStatus({
+      status: "downloading",
+      currentVersion: "1.0.0",
+      latestVersion: "1.1.0",
+      downloadProgress: 0.5,
+    });
+    expect(useAppStore.getState().updateStatus?.status).toBe("downloading");
+    expect(useAppStore.getState().updateStatus?.downloadProgress).toBeCloseTo(0.5);
+  });
 });

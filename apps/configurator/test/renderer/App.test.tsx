@@ -50,6 +50,13 @@ function buildFakeApi(overrides: Partial<TallymcpApi> = {}): TallymcpApi {
       version: "v0.0.1",
     }),
     subscribeTallyStatus: vi.fn().mockReturnValue(() => {}),
+    checkForUpdates: vi.fn().mockResolvedValue({
+      status: "up-to-date",
+      currentVersion: "v0.0.1",
+    }),
+    downloadUpdate: vi.fn().mockResolvedValue(undefined),
+    quitAndInstall: vi.fn().mockResolvedValue(undefined),
+    subscribeUpdateStatus: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   };
 }
@@ -219,5 +226,18 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /Health Check/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Fix both/i }));
     expect(await screen.findByText(/Couldn't add the firewall rule/i)).toBeDefined();
+  });
+
+  it("shows the UpdateBanner when an update is available", async () => {
+    const api = buildFakeApi({
+      checkForUpdates: vi.fn().mockResolvedValue({
+        status: "update-available",
+        currentVersion: "1.0.0",
+        latestVersion: "1.1.0",
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    expect(await screen.findByText(/TallyMCP v1\.1\.0 is available/i)).toBeDefined();
   });
 });

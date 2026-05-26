@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ClientId, TallyStatus } from "../shared/ipc-types.js";
+import type { ClientId, TallyStatus, UpdateStatus } from "../shared/ipc-types.js";
 
 export type Screen = "home" | "health-check" | "settings" | "smartscreen-guide";
 
@@ -11,6 +11,8 @@ export interface AppStoreState {
   configuredClients: Set<ClientId>;
   lastError?: string;
   firewallSkipReason?: FirewallSkipReason;
+  updateStatus?: UpdateStatus;
+  updateDismissedThisSession: boolean;
   navigateTo: (screen: Screen) => void;
   setTallyStatus: (status: TallyStatus) => void;
   markClientConfigured: (id: ClientId) => void;
@@ -20,6 +22,8 @@ export interface AppStoreState {
   clearLastError: () => void;
   setFirewallSkipReason: (reason: FirewallSkipReason) => void;
   clearFirewallSkipReason: () => void;
+  setUpdateStatus: (status: UpdateStatus) => void;
+  dismissUpdate: () => void;
 }
 
 export const useAppStore = create<AppStoreState>((set, get) => ({
@@ -28,6 +32,8 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   configuredClients: new Set<ClientId>(),
   lastError: undefined,
   firewallSkipReason: undefined,
+  updateStatus: undefined,
+  updateDismissedThisSession: false,
 
   // Clears lastError and firewallSkipReason on screen change so stale errors
   // don't follow the user across screens (Cursor review M1 — error auto-dismiss UX,
@@ -49,4 +55,6 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   clearLastError: () => set({ lastError: undefined }),
   setFirewallSkipReason: (reason) => set({ firewallSkipReason: reason }),
   clearFirewallSkipReason: () => set({ firewallSkipReason: undefined }),
+  setUpdateStatus: (status) => set({ updateStatus: status }),
+  dismissUpdate: () => set({ updateDismissedThisSession: true }),
 }));
