@@ -16,10 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm version is taken from `packageManager` in package.json
-      # (Corepack convention). Don't also pass `with: version:` here —
-      # the action errors on a version mismatch.
-      - uses: pnpm/action-setup@v4
+      # Use Corepack (bundled with Node) to install the pnpm version
+      # pinned in `packageManager` in package.json. This avoids the
+      # `pnpm/action-setup` marketplace action, which hit persistent
+      # codeload.github.com fetch failures on the Ubuntu runner pool
+      # during Phase 3 CI (2026-05-26). Corepack reads packageManager
+      # at first pnpm invocation; zero codeload dependency.
+      - name: Enable Corepack
+        run: corepack enable
 
       - uses: actions/setup-node@v4
         with:
