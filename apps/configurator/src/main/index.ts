@@ -54,7 +54,44 @@ async function createWindow(): Promise<BrowserWindow> {
 }
 
 // Lifecycle wiring — guarded so tests can import the file without booting Electron.
-if (process.env.NODE_ENV !== "test") {
+
+// --uninstall-cleanup mode: no Electron window, no IPC; just run the
+// cleanup helper and exit. Invoked by the NSIS uninstaller via the
+// customUnInstall macro (see installer/installer.nsh).
+//
+// Wrapped in app.whenReady() so process.env + the app module are fully
+// initialized before cleanup runs (avoids a race that yields silent no-op
+// cleanup under NSIS ExecWait — see Cursor review H1). Use app.exit(0)
+// rather than app.quit() so the process terminates immediately and
+// deterministically; app.quit() can hang if there's any pending event
+// loop work, which would freeze the NSIS uninstaller indefinitely.
+if (process.argv.includes("--uninstall-cleanup")) {
+  app.whenReady()
+    .then(async () => {
+      // Lazy-import so the cleanup path doesn't pull Electron's full UI
+      // graph just to read it.
+      const { runUninstallCleanup } = await import("./uninstall-cleanup.js");
+      const result = await runUninstallCleanup();
+      for (const msg of result.messages) {
+        console.log(msg);
+      }
+      console.log(
+        `Done. clientsUnwired=${result.clientsUnwired.length}, ` +
+          `tallyIniRestored=${result.tallyIniRestored}, ` +
+          `firewallRule=${result.firewallRule}`,
+      );
+      app.exit(0);
+    })
+    .catch((err) => {
+      // runUninstallCleanup is designed not to throw (see its tests), so
+      // this catches only catastrophic failures (dynamic import error,
+      // Electron init issue, etc.). Exit non-zero so the NSIS uninstaller
+      // doesn't wait forever — it ignores the code per installer.nsh and
+      // still wipes the install dir, but a clean exit is the contract.
+      console.error("[uninstall-cleanup] fatal:", err);
+      app.exit(1);
+    });
+} else if (process.env.NODE_ENV !== "test") {
   app.whenReady().then(async () => {
     const { resolveInstallDir } = await import("./install-dir.js");
     const installDir = resolveInstallDir({
