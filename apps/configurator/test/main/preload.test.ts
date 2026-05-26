@@ -8,11 +8,10 @@ describe("buildTallymcpApi", () => {
     const on = vi.fn();
     const api = buildTallymcpApi({ invoke, on });
 
-    await api.wireMcp({ clientId: "claude-desktop", installDir: "X" });
+    await api.wireMcp({ clientId: "claude-desktop" });
 
     expect(invoke).toHaveBeenCalledWith(IPC_CHANNELS.WIRE_MCP, {
       clientId: "claude-desktop",
-      installDir: "X",
     });
   });
 

@@ -24,7 +24,7 @@ describe("IPC types", () => {
 
   it("compiles the request/response/status type imports", () => {
     const id: ClientId = "claude-desktop";
-    const req: WireRequest = { clientId: id, installDir: "C:\\TallyMCP" };
+    const req: WireRequest = { clientId: id };
     const res: WireResponse = {
       clientId: id,
       configPath: "C:\\…\\config.json",
