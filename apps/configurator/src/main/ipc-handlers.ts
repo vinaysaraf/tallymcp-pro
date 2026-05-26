@@ -1,11 +1,28 @@
 import { join } from "node:path";
-import { ClientWirer, type McpServerEntry } from "@tallymcp/client-wirer";
+import { readFile } from "node:fs/promises";
+import {
+  ClientWirer,
+  CLIENT_REGISTRY,
+  resolveClientConfigPath,
+  type McpServerEntry,
+  type ClientId,
+} from "@tallymcp/client-wirer";
+import {
+  detectTallyInstall,
+  detectTallyRunning,
+  firewallRuleExists,
+  parseTallyIni,
+  RealExecRunner,
+  type ExecRunner,
+  type TallyInstall,
+} from "@tallymcp/tally-autofix";
 import {
   IPC_CHANNELS,
   type WireRequest,
   type WireResponse,
   type UnwireRequest,
   type UnwireResponse,
+  type HealthCheckResponse,
 } from "../shared/ipc-types.js";
 
 /**
@@ -42,6 +59,99 @@ export async function handleUnwireMcp(
   return wirer.remove(req.clientId);
 }
 
+export interface HealthCheckContext {
+  /** Override scan roots (default: Program Files + Program Files (x86)). */
+  scanRoots?: string[];
+  /** Override the exec runner (default: RealExecRunner). */
+  runner?: ExecRunner;
+  /** Override the environment variables used to resolve client config paths (default: process.env). */
+  env?: Record<string, string | undefined>;
+}
+
+const ALL_CLIENT_IDS: ClientId[] = [
+  "claude-desktop",
+  "cursor",
+  "claude-code",
+  "lm-studio",
+  "ollama",
+];
+
+/**
+ * Returns the subset of client IDs whose config files contain a
+ * "tallymcp-pro" entry under the registry's serversKey. Missing files,
+ * unreadable JSON, and missing keys all count as "not configured".
+ * Strips a UTF-8 BOM before parse (matches client-wirer's behavior).
+ */
+async function detectConfiguredClients(
+  env: Record<string, string | undefined>,
+): Promise<ClientId[]> {
+  const configured: ClientId[] = [];
+  for (const id of ALL_CLIENT_IDS) {
+    try {
+      const configPath = resolveClientConfigPath(id, env);
+      let raw = await readFile(configPath, "utf8");
+      if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const serversKey = CLIENT_REGISTRY[id].serversKey;
+      const servers = parsed[serversKey] as Record<string, unknown> | undefined;
+      if (servers && typeof servers === "object" && "tallymcp-pro" in servers) {
+        configured.push(id);
+      }
+    } catch {
+      // ENOENT, malformed JSON, missing keys — all "not configured"
+    }
+  }
+  return configured;
+}
+
+export async function handleHealthCheck(
+  ctx: HealthCheckContext = {},
+): Promise<HealthCheckResponse> {
+  const runner = ctx.runner ?? new RealExecRunner();
+
+  // Tally install
+  const found = (await detectTallyInstall({
+    scanRoots: ctx.scanRoots,
+    returnAll: true,
+  })) as TallyInstall[];
+  const tallyInstall = found[0];
+  const tallyInstalled = found.length > 0;
+
+  // Tally running
+  const tallyRunning = tallyInstalled ? await detectTallyRunning(runner) : false;
+
+  // XML interface
+  let xmlInterfaceEnabled = false;
+  if (tallyInstall) {
+    try {
+      const text = await readFile(tallyInstall.iniPath, "utf8");
+      const ini = parseTallyIni(text);
+      xmlInterfaceEnabled =
+        ini.get("Client Server") === "Both" && ini.get("ServerPort") === "9000";
+    } catch {
+      // Unreadable ini → treat as not enabled
+    }
+  }
+
+  // Firewall
+  const firewallRulePresent = await firewallRuleExists(runner);
+
+  // Configured clients — probe each client config file for "tallymcp-pro"
+  const configuredClients = await detectConfiguredClients(
+    ctx.env ?? process.env,
+  );
+
+  return {
+    tallyInstalled,
+    tallyInstallDir: tallyInstall?.installDir,
+    tallyRunning,
+    xmlInterfaceEnabled,
+    firewallRulePresent,
+    configuredClients,
+    multipleTallyInstalls: found.length > 1 ? found.map((i) => i.installDir) : undefined,
+  };
+}
+
 /**
  * Registers IPC handlers on the supplied ipcMain. Called once at Electron
  * `app.ready`. Tests invoke the `handle*` functions directly.
@@ -51,4 +161,5 @@ export function registerIpcHandlers(
 ): void {
   ipcMain.handle(IPC_CHANNELS.WIRE_MCP, (_evt, payload) => handleWireMcp(payload as WireRequest));
   ipcMain.handle(IPC_CHANNELS.UNWIRE_MCP, (_evt, payload) => handleUnwireMcp(payload as UnwireRequest));
+  ipcMain.handle(IPC_CHANNELS.HEALTH_CHECK, () => handleHealthCheck());
 }
