@@ -368,3 +368,57 @@ program="${tallyExePath}" profile=private enable=yes`}
 
 **Status:** ✅ All actionable Round 3 findings resolved. Branch is **ready to push/PR** (15 commits ahead of main).
 
+---
+
+## Round 4 — Round 3 fix verification (2026-05-26)
+
+**Diff:** `6f59e39..HEAD` (`18155a9` fix + `9d3384b` docs)  
+**Re-run:** configurator **91/91** ✓ · cli **30/30** ✓ · tally-autofix **52/52** ✓
+
+### Checklist
+
+| # | Check | Result |
+|---|--------|--------|
+| 1 | Yellow-card guard requires **both** clauses | ✅ `HealthCheck.tsx` L85 |
+| 2 | Regression test: `non-admin` + `firewallRulePresent=true` → no card | ✅ `HealthCheck.test.tsx` L148–171 |
+| 3 | Task 6 test unchanged (`firewallRulePresent: false` → card shows) | ✅ L86–105 still asserts card + loopback |
+| 4 | CLI test traverses library GP path via `FakeExecRunner` | ✅ `tally-fix-cli.test.ts` L102–134 |
+| 5 | `"group-policy"` still Patch D only (no yellow-card staleness) | ✅ guard is `=== "non-admin"` only |
+
+### Evidence
+
+**M-R3-1 guard**
+
+```85:85:apps/configurator/src/renderer/components/HealthCheck.tsx
+{firewallSkipReason === "non-admin" && !status.firewallRulePresent && (
+```
+
+**M-R3-1 regression test**
+
+```148:171:apps/configurator/test/renderer/components/HealthCheck.test.tsx
+it("hides the yellow card after the firewall rule appears externally + Re-check (Cursor M-R3-1)", () => {
+  ...
+  firewallRulePresent: true,
+  firewallSkipReason="non-admin"
+  ...
+  expect(screen.queryByText(/Couldn't add the firewall rule/i)).toBeNull();
+});
+```
+
+**N-R3-3 CLI path (no library mock)**
+
+```127:133:apps/cli/test/tally-fix-cli.test.ts
+const result = await runTallyFixCommand({ tallyDir: installDir, runner, yes: true });
+expect(result.firewallRule).toBe("group-policy-blocked");
+```
+
+Runner returns GP stderr on `netsh add` → `addFirewallRule` → `GroupPolicyError` → `ensureFirewallRule` catch → `"group-policy-blocked"` (same fixture as `autofix.test.ts` L111–129).
+
+### Nit
+
+**N-R4-1** — `HealthCheck.tsx` L82–83 comment says `firewallSkipReason` is cleared by `navigateTo`; Re-check fix is the `!firewallRulePresent` guard, not navigation. Comment-only; no behavior impact.
+
+### Verdict
+
+**✅ READY TO SHIP** — M-R3-1 and N-R3-3 fixes are correct; safe to push/PR immediately.
+
