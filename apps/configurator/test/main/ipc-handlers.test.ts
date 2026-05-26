@@ -29,6 +29,9 @@ describe("handleWireMcp", () => {
     expect(written.mcpServers["tallymcp-pro"].command).toBe(
       join(installDir, "node.exe"),
     );
+    expect(written.mcpServers["tallymcp-pro"].args).toEqual([
+      join(installDir, "mcp-server", "dist", "main.js"),
+    ]);
   });
 });
 

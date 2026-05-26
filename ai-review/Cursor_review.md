@@ -1,102 +1,141 @@
-# Cursor review — Phase 2 Configurator (code)
+# Cursor review — Phase 3 Configurator + NSIS installer (code)
 
-**Date:** 2026-05-26
-**Branch:** `feat/v1.0-installer-phase2`
-**Range reviewed:** `14b9ac7..83b19e4` (33 commits) — verdict: 🟡 MERGE WITH FOLLOW-UPS
-**Fix commits:** `f808be9` (H1/M2/N4), `c21a561` (review doc)  
-**Tip SHA:** `c21a561` (35 commits ahead of `main`)
+**Date:** 2026-05-26  
+**Branch:** `feat/v1.0-installer-phase3`  
+**Range:** `a282e29..1593a83` (16 commits ahead of `main`)  
+**Tip SHA:** `1593a83` (fix bundle `7fb2979`, audit `1593a83`)  
+**Scope:** NSIS uninstall flow, install-dir + wire-path patches, `pnpm package` pipeline, smoke scripts, staging layout.
 
----
-
-## Resolutions
-
-| # | Severity | Finding | Resolution |
-|---|---|---|---|
-| **H1** | High | `wireMcp` trusts renderer-supplied `installDir` (IPC trust boundary gap) | **Fixed in `f808be9`.** `installDir` removed from `WireRequest`; main injects it via `WireMcpContext` inside `registerIpcHandlers` (mirrors `handleGetConfig`). Renderer now calls `wireMcp({ clientId })` only. Side benefit: `handleConfirmAdd` no longer needs the lazy `getConfig` fallback. |
-| **M1** | Medium | `lastError` written to store but never displayed | **Deferred to follow-up.** Cursor flagged this as not merge-blocking. Tracked in commit body. |
-| **M2** | Medium | H10 hydrate path has no App-level integration test | **Fixed in `f808be9`.** New test in `App.test.tsx`: mocks `configuredClients: ["claude-desktop"]`, asserts Claude Desktop tile renders with Reconfigure button. (H8 modal-gating test still deferred — `RestoreConfirmModal` unit tests cover the modal in isolation; the App-level gate is exercised manually via the smoke doc.) |
-| **M3** | Medium | Tally IPC error paths lack renderer handling | **Deferred to follow-up.** Cursor flagged this as not merge-blocking. Tracked in commit body. |
-| **M4** | Medium | `multipleTallyInstalls` backend-only (Phase 2.1) | **Already documented as deferred** per Deviation #5 in the plan. No change. |
-| **N1** | Nit | Security flags + preload boundary good | No action (confirmation). |
-| **N2** | Nit | H5–H10 wired end-to-end | No action (confirmation). |
-| **N3** | Nit | electron-vite v4 preload CJS workaround still required | No action (confirmation). |
-| **N4** | Nit | SmartScreenGuide test asserted `≥1` instead of `≥2` for parity | **Fixed in `f808be9`.** Tightened "More info" and "Run anyway" assertions to `≥2`. |
-| **N5** | Nit | Test-count drift in plan comments only, not in tests | No action (confirmation). |
-| **N6** | Nit | `unmarkClientConfigured` unused (Phase 2.1) | No action — eslint-disable comment is appropriate. |
+**Tests:** `pnpm --filter @tallymcp/configurator test` — **76/76** passed.
 
 ---
 
-## Verification after fix commit
+## Findings
 
-- `pnpm --filter @tallymcp/configurator typecheck`: ✅ clean
-- `pnpm --filter @tallymcp/configurator lint`: ✅ clean
-- `pnpm --filter @tallymcp/configurator test`: ✅ **64/64** (+1 from M2 hydration test)
-- `pnpm --filter @tallymcp/configurator build`: ✅ all three dist artifacts produced
-- `pnpm --filter @tallymcp/configurator e2e`: ✅ 4/4 Playwright Electron tests pass
-- `pnpm -r test`: ✅ Phase 1 (45+44+29) + v0.7 (22+22+17+62+36+24+8+44+8+14) + Phase 2 (64) — no regressions
+### Critical
 
-## Deferred for post-merge (Cursor M1, M3)
+_None._
 
-These are tracked in `f808be9`'s commit body. Both are pure additions; neither alters existing behavior.
+### High
 
-1. **M1** — surface `lastError` from Zustand in `StatusBanner` (or a toast/alert), clear on success/navigation. ~30 min.
-2. **M3** — wrap `handleFixAll` / `handleRestoreConfirmed` / `handleReCheck` in `try/catch`, surface failures via the same error-display added for M1. ~20 min.
+**H1 — `uninstall-smoke.ps1` firewall rule name mismatch (false negative)**  
+Production cleanup uses the em-dash name from `@tallymcp/tally-autofix`:
 
-## Verdict (post-fix)
+```3:3:packages/tally-autofix/src/firewall.ts
+export const FIREWALL_RULE_NAME = "TallyMCP — Tally XML port 9000" as const;
+```
 
-**✅ READY TO MERGE** — H1 merge-blocker resolved; M2 test gap closed; N4 tightened. M1/M3 are post-merge polish per Cursor's original classification.
+Smoke queries an ASCII hyphen:
+
+```91:91:installer/test/uninstall-smoke.ps1
+$fwQuery = netsh advfirewall firewall show rule name="TallyMCP - Tally XML port 9000" 2>&1
+```
+
+`netsh` name matching is exact — the assertion usually passes even when the real rule remains. **Fix:** use the same Unicode `—` string (or a shared constant) in the smoke script.
+
+### Medium
+
+**M1 — Running Configurator can block silent uninstall before cleanup**  
+electron-builder’s NSIS template runs `un.checkAppRunning` on silent uninstall. A still-open `TallyMCP.exe` (post-install auto-launch) can abort/stall uninstall before `customUnInstall` → `--uninstall-cleanup`. Hook code is fine; document “close Configurator first” in manual smoke or handle via single-instance forwarding later.
+
+**M2 — `uninstall-smoke.ps1` tally.ini path hard-coded**  
+```103:104:installer/test/uninstall-smoke.ps1
+$tallyDir = "C:\Program Files\TallyPrime"
+```
+Non-default Tally locations get a **false pass** on ini restore. Detect via scan roots or skip unless pre-snapshot exists.
+
+**M3 — Fresh-clone `pnpm package` needs network + Windows**  
+```16:16:package.json
+"package": "pnpm -r build && node installer/scripts/fetch-node.mjs && node installer/scripts/deploy-mcp-server.mjs && ..."
+```
+`fetch-node.mjs` hits nodejs.org on first run (cached after). `deploy-mcp-server.mjs` documents pnpm 9 relative deploy target (L44–46). Non-Windows CI cannot run the NSIS step without Wine — expected Phase 3 scope.
+
+### Nit
+
+**N1 — NSIS uninstall boot path: solid**  
+`installer.nsh` L25 → `index.ts` L68–93: `app.whenReady().then(… app.exit(0))` + `.catch(… app.exit(1))`. `runUninstallCleanup` swallows per-step errors (L54–136). NSIS ignores exit code (by design); no window/IPC in cleanup mode — no obvious hang/leak.
+
+**N2 — Phase 2 embedded patches: correct**  
+- **install-dir:** packaged → `dirname(exePath)`; dev → `%LOCALAPPDATA%\Programs\TallyMCP` (`install-dir.ts` L32–38); wired in `index.ts` L96–102; 3 unit tests.  
+- **wire-path:** `mcp-server/dist/main.js` in `ipc-handlers.ts` L58; asserted in `ipc-handlers.test.ts` L32–34.
+
+**N3 — Staging / fresh clone: safe**  
+`.gitignore` L34–35 excludes `installer/staging/` + `dist-installer/`. `electron-builder.yml` `extraFiles` L34–37; `pnpm package` repopulates staging every run.
+
+**N4 — `install-smoke.ps1` matches documented layout**  
+L60–65: `TallyMCP.exe`, `node.exe`, `mcp-server\dist\main.js`, SDK sample, Start Menu `TallyMCP.lnk`. Does not assert `Uninstall TallyMCP.exe` (uninstall smoke covers that).
 
 ---
 
-## Round 2
+## Verdict
 
-**Range:** `83b19e4..c21a561` (`f808be9`, `c21a561`) — independent re-verification of H1 / M2 / N4 only.
+**🟡 MERGE WITH FOLLOW-UPS** — Uninstall hook + Electron bootstrap are production-ready. Fix **H1** before trusting `pnpm package:uninstall` as a gate. **M1–M2** are smoke/QA hardening, not blockers for the NSIS/cleanup implementation.
 
-### H1 — installDir IPC boundary
+---
 
-**✅ Fixed in production path.** `WireRequest` is `{ clientId }` only (`ipc-types.ts` L33–38). `handleWireMcp` builds paths from `ctx.installDir` only (`ipc-handlers.ts` L48–58). `registerIpcHandlers` injects `{ installDir: ctx.installDir }` from main boot (`L247–248`). Renderer calls `wireMcp({ clientId: modalFor })` (`App.tsx` L68). `ipc-handlers.test.ts` asserts `node.exe` under context `installDir`, not request field (L21–30).
+## Round 1 resolutions (commit `7fb2979`)
 
-**No bypass:** `grep` shows no `req.installDir` / `payload.installDir` in `src/`. Extra keys on the IPC payload would be ignored by `handleWireMcp` (defense in depth).
+All three Cursor follow-ups landed inline since they're contained to two files:
 
-**Nit (tests only):** `preload.test.ts` L11–15 and `ipc-types.test.ts` L27 still construct `wireMcp` / `WireRequest` with `installDir`; those files are outside `tsconfig.node` `include`, so excess-property drift is not typechecked. Runtime still passes 64/64. Update tests to `{ clientId }` only for contract parity — not a security hole.
+| # | Severity | Resolution |
+|---|---|---|
+| **H1** | High | **Fixed.** `uninstall-smoke.ps1` now constructs the firewall rule name at runtime via `$emDash = [char]0x2014` so the netsh query matches `FIREWALL_RULE_NAME` from `packages/tally-autofix/src/firewall.ts` (em-dash U+2014). Source file stays pure ASCII for cross-PowerShell-version parsing (pwsh 7 reads UTF-8 by default; Windows PowerShell 5.1 reads Windows-1252 without BOM detection — both now parse identically). Inline comment cites this Cursor finding. |
+| **M1** | Medium | **Fixed.** `uninstall-smoke.ps1` now calls `Get-Process -Name "TallyMCP"` + `Stop-Process -Force` before invoking the uninstaller, defusing `un.checkAppRunning` stalls. Manual smoke doc updated with a "close Configurator first" callout for the Windows Settings UI path. |
+| **M2** | Medium | **Fixed.** `uninstall-smoke.ps1` now scans both `C:\Program Files` and `C:\Program Files (x86)` for `TallyPrime*` directories (matches `detectTallyInstall`'s scan-root convention in `@tallymcp/tally-autofix`). Asserts on each found `tally.ini` independently; if zero installs found, logs an explicit "skipping" note instead of false-passing. |
+| **M3** | Medium | **No action — confirmation.** Fresh-clone `pnpm package` needing network + Windows is expected Phase 3 scope (CI automation lands in Phase 4). |
+| **N1–N4** | Nit | **No action — all confirmations.** NSIS boot path solid, Phase 2 patches correct, staging safe, install-smoke assertions complete. |
 
-### M2 — H10 hydration test
+Configurator gates after fix: **76/76** unit tests, lint clean, typecheck clean, PS1 parses cleanly under both PowerShell 5.1 and pwsh 7.
 
-**✅ Exercises the real path.** Test overrides `healthCheck` → `configuredClients: ["claude-desktop"]` (`App.test.tsx` L97–105), which drives `useEffect` → `markClientConfigured` (`App.tsx` L49–51). `findByRole("button", { name: /Reconfigure/i })` (L110–112) waits for post-promise re-render — not a fixed `setTimeout`.
+**Verdict (post-resolution): ✅ READY TO MERGE.** Branch tip: `7fb2979` (15 commits ahead of `main`).
 
-**Robust enough:** Single configured tile ⇒ one Reconfigure + one “Connected”; `>= 1` on Connected is loose but stable (no other “Connected” copy in tree). Could tighten to `getByRole` scoped under “Claude Desktop” later; not flaky in practice.
+---
 
-### N4 — SmartScreenGuide `>= 2`
+## Round 2 (re-verification of `7fb2979`)
 
-**✅ Consistent with UI.** Component duplicates headlines in two mock panels (`SmartScreenGuide.tsx` L37 + L63) and repeats “More info” / “Run anyway” in step copy + mocks (L34/46/59, L57/59/69). Assertions `>= 2` match comments (`SmartScreenGuide.test.tsx` L16–19).
+**Scope:** Confirm H1 / M1 / M2 fixes in `uninstall-smoke.ps1` + manual smoke doc.
 
-### New from fix
+### H1 — em-dash firewall query
 
-- **Positive:** Removing renderer `installDir` also dropped the lazy `getConfig` race in `handleConfirmAdd` (`App.tsx` L62–65) — cleaner than Round 1’s `config ?? await getConfig()` approach.
-- **Nit only:** Stale `installDir` in two main-process unit tests (above); no new blockers. M1/M3 deferral unchanged and safe.
+**✅ Resolved.** Runtime construction matches `FIREWALL_RULE_NAME`:
+
+```115:117:installer/test/uninstall-smoke.ps1
+$emDash = [char]0x2014
+$fwRuleName = "TallyMCP $emDash Tally XML port 9000"
+$fwQuery = netsh advfirewall firewall show rule name="$fwRuleName" 2>&1
+```
+
+**ASCII-only confirmed:** byte scan of `installer/test/uninstall-smoke.ps1` — 6258 bytes, **0** bytes > 0x7F. Safe for pwsh 7 + Windows PowerShell 5.1.
+
+### M1 — Stop-Process + manual doc
+
+**✅ Resolved and consistent.** Script stops `TallyMCP` before uninstall (L57–62). Manual smoke §5 (L78) documents closing Configurator for Settings UI uninstall; notes smoke script handles it via `Stop-Process`.
+
+### M2 — Tally scan roots
+
+**✅ Resolved.** Scan roots match `DEFAULT_SCAN_ROOTS` in `tally-detect.ts` L19–21:
+
+```130:141:installer/test/uninstall-smoke.ps1
+$tallyScanRoots = @("C:\Program Files", "C:\Program Files (x86)")
+...
+  Write-Host "  ~ no TallyPrime install found in Program Files - skipping tally.ini check"
+```
+
+**Nit:** Smoke checks any `TallyPrime*` dir with `tally.ini`; `detectTallyInstall` also requires `tally.exe` (L39–47). Divergence is harmless for typical installs; optional tighten later.
+
+### New from fixes
+
+- Manual smoke L107 still embeds a literal em-dash in the example `netsh` one-liner (fine for human copy-paste; script path is the gate).
+- No regressions in NSIS/cleanup code paths.
 
 ### Round 2 verdict
 
-**✅ READY TO MERGE**
+**✅ READY TO MERGE** — Round 1 smoke/QA blockers closed. Residual items (M3 network/Windows, M2 `tally.exe` parity) unchanged and non-blocking.
 
-### Round 2 nit resolution
+### Round 2 nit resolution (commit `b7e683d`)
 
-The two stale `installDir` constructions Cursor flagged (`preload.test.ts` L11/L13–15 and `ipc-types.test.ts` L27) were fixed in `8924c2b` — both files now use `{ clientId }` only, matching the post-H1 `WireRequest` contract. Configurator tests remain 64/64; full workspace build + lint + E2E still green.
+The single non-blocking nit (smoke scan vs `detectTallyInstall` parity) was tightened inline since it's a 2-line change. `installer/test/uninstall-smoke.ps1` now requires BOTH `tally.exe` AND `tally.ini` to count a directory as a real TallyPrime install — matches `detectTallyInstall`'s `access` checks in `packages/tally-autofix/src/tally-detect.ts`. Configurator 76/76 still green; file remains pure ASCII.
 
-**Tip after round 2:** `8924c2b` (36 commits ahead of `main`).
+**Final tip after Round 2 nit cleanup:** `b7e683d` (17 commits ahead of `main`).
 
----
-
-## Post-review polish — M1 + M3 landed
-
-After round 2 ✅, the two deferred Mediums were also addressed inline (user opted to land a fully-clean branch instead of carrying them as post-merge follow-ups):
-
-- **M1** — new `ErrorBanner` component (`src/renderer/components/ErrorBanner.tsx`) rendered between `StatusBanner` and the active screen when `useAppStore.lastError` is set. Dismissible via × button or via screen navigation (`navigateTo` now clears `lastError` — see `store.ts`).
-- **M3** — `handleFixAll`, `handleRestoreConfirmed`, `handleReCheck` all wrapped in `try/catch`; failures surface via `setLastError` (same plumbing as `handleConfirmAdd`). Success paths additionally call `clearLastError()` so a transient error gets wiped once the user retries successfully.
-
-New tests:
-- `ErrorBanner.test.tsx` — renders message, dismiss callback (+2).
-- `store.test.ts` — `navigateTo` clears `lastError` (+1).
-- `App.test.tsx` — `wireMcp` failure surfaces alert + dismiss removes it; `tallyFix` failure surfaces alert (+2).
-
-Configurator unit tests: **69/69** (+5 from M1+M3 work); E2E still 4/4; workspace build + lint clean.
+**Verdict (post-Round-2-nit-cleanup): ✅ READY TO MERGE — no remaining items.**

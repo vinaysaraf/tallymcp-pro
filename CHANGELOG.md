@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.0-phase3 — NSIS Installer + uninstall hooks + signing (2026-05-26)
+
+### Added
+- **`installer/`** new directory with `installer.nsh` (custom NSIS macros — `customUnInstall` invokes the Configurator's no-UI cleanup), `scripts/` (Node helpers: `fetch-node.mjs` downloads pinned Node 20.18.1 portable runtime, `deploy-mcp-server.mjs` runs `pnpm deploy --prod` to stage the MCP server with flat node_modules, `checksum.mjs` writes a `.sha256` sidecar), and `test/` (Windows PowerShell smoke scripts for headless install/uninstall round-trip).
+- **`apps/configurator/electron-builder.yml`** — NSIS config: user-mode install (no admin), default install dir `%LOCALAPPDATA%\Programs\TallyMCP\`, `extraFiles` for bundled `node.exe` + staged `mcp-server/`, custom NSH include for the uninstall hook.
+- **`apps/configurator/src/main/uninstall-cleanup.ts`** + `--uninstall-cleanup` argv mode in `main/index.ts` — runs the no-UI cleanup before NSIS wipes the install dir: unwires all 5 AI client configs, restores `tally.ini` from `.tallymcp-bak`, removes the Windows Firewall rule (when admin). Wrapped in `app.whenReady().then(...).catch(...)` with `app.exit(0/1)` so NSIS `ExecWait` gets a deterministic exit.
+- **`apps/configurator/src/main/install-dir.ts`** — pure `resolveInstallDir()` helper used by `main/index.ts`. In packaged builds it derives the dir from `dirname(app.getPath("exe"))`; in dev it falls back to `%LOCALAPPDATA%\Programs\TallyMCP` (matches electron-builder's user-mode default so wire snippets generated in dev continue to work post-install).
+- **Root `pnpm package` script** — orchestrates `pnpm -r build` → `fetch-node` → `deploy-mcp-server` → `electron-builder --win` → `checksum`. Output: `apps/configurator/dist-installer/TallyMCP-Setup-v<version>.exe` + `.sha256`. Plus `pnpm package:install` + `pnpm package:uninstall` for the local smoke scripts.
+- **Self-signed code signing** via `electron-builder`'s standard `CSC_LINK` + `CSC_KEY_PASSWORD` env vars. Absent those, the build still produces an unsigned `.exe` with a console warning (useful for engineers without the cert). Setup guide: `docs/v1-installer-phase3-signing-setup.md`.
+- **76 unit tests** (existing 69 + 3 new `install-dir.ts` + 4 new `uninstall-cleanup.ts`) + the existing 4 Playwright E2E tests, all green.
+
+### Changed
+- `handleWireMcp` args path now points at `<installDir>\mcp-server\dist\main.js` (was `<installDir>\mcp-server\main.js`). This matches `pnpm deploy --prod` output layout — the deploy preserves `dist/main.js`. Existing wired AI clients from earlier dev builds remain functional via the Configurator's H10 hydration → Reconfigure path (just re-Add MCP to refresh).
+- Phase 2's `installDir` resolution moved from inline computation to the new `resolveInstallDir()` helper. Production install dir is now `%LOCALAPPDATA%\Programs\TallyMCP\` (was `%LOCALAPPDATA%\TallyMCP\`) — aligns with electron-builder's user-mode default + the `Programs\` convention used by VSCode and other user-mode Electron installers.
+
+### Notes
+- Phase 3 ships only the LOCAL installer build. GitHub Actions release pipeline (`release.yml` triggered by `v*.*.*` tag push, signs on `windows-latest`, uploads to GitHub Release, publishes `latest.json`) lands in Phase 4.
+- The Phase 2 `auto-update.ts` stub stays untouched; Phase 4 will swap it for real `electron-updater` against the hosted `latest.json`.
+- Real installer/app icons are intentionally deferred — Phase 3 uses electron-builder's default Electron logo as a placeholder. Pre-release polish item.
+- No EV cert — SmartScreen will still show "Unknown publisher" on first run. Phase 2's `SmartScreenGuide` popup walks users through "More info → Run anyway".
+
 ## v1.0.0-phase2 — Configurator UI (Electron) (2026-05-26)
 
 ### Added

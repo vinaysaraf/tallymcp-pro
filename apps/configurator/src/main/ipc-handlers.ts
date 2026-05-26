@@ -51,7 +51,11 @@ export async function handleWireMcp(
 ): Promise<WireResponse> {
   const entry: McpServerEntry = {
     command: join(ctx.installDir, "node.exe"),
-    args: [join(ctx.installDir, "mcp-server", "main.js")],
+    // pnpm deploy --prod stages mcp-server with dist/ kept (matches
+    // @tallymcp/mcp-server's package.json `main: "./dist/index.js"` /
+    // `bin: "./dist/main.js"`). The installer's extraFiles config copies
+    // installer/staging/mcp-server → <installDir>\mcp-server\.
+    args: [join(ctx.installDir, "mcp-server", "dist", "main.js")],
     env: { TALLYMCP_CONFIG: join(ctx.installDir, "config.json") },
   };
   const wirer = new ClientWirer({ env: ctx.env ?? process.env, entry });
