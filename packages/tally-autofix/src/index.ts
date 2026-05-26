@@ -31,3 +31,4 @@ export {
   FirewallElevationError,
   type AddFirewallRuleOptions,
 } from "./firewall.js";
+export { detectIsElevated } from "./elevation.js";
