@@ -50,6 +50,13 @@ function buildFakeApi(overrides: Partial<TallymcpApi> = {}): TallymcpApi {
       version: "v0.0.1",
     }),
     subscribeTallyStatus: vi.fn().mockReturnValue(() => {}),
+    checkForUpdates: vi.fn().mockResolvedValue({
+      status: "up-to-date",
+      currentVersion: "v0.0.1",
+    }),
+    downloadUpdate: vi.fn().mockResolvedValue(undefined),
+    quitAndInstall: vi.fn().mockResolvedValue(undefined),
+    subscribeUpdateStatus: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   };
 }
