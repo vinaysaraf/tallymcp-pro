@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { registerIpcHandlers } from "./ipc-handlers.js";
 import { createTallyPoller } from "./tally-poller.js";
-import { TALLY_STATUS_EVENT } from "../shared/ipc-types.js";
+import { TALLY_STATUS_EVENT, UPDATE_STATUS_EVENT } from "../shared/ipc-types.js";
 
 /** Where the preload bundle lives relative to the main bundle dir. */
 export const PRELOAD_RELATIVE_PATH = "../preload/index.js";
@@ -100,10 +100,6 @@ if (process.argv.includes("--uninstall-cleanup")) {
       env: process.env,
       homedirPath: homedir(),
     });
-    registerIpcHandlers(ipcMain, {
-      installDir,
-      version: app.getVersion(),
-    });
     const mainWindow = await createWindow();
     const poller = createTallyPoller({
       url: "http://127.0.0.1:9000",
@@ -117,6 +113,31 @@ if (process.argv.includes("--uninstall-cleanup")) {
     poller.start();
 
     app.on("before-quit", () => poller.stop());
+
+    // Auto-updater (Phase 4)
+    const { createAutoUpdater } = await import("./auto-update.js");
+    const updater = createAutoUpdater({ currentVersion: app.getVersion() });
+    const unsubUpdate = updater.subscribe((status) => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(UPDATE_STATUS_EVENT, status);
+      }
+    });
+    app.on("before-quit", () => unsubUpdate());
+
+    // IPC handlers (includes the new update channels via ctx.autoUpdater).
+    registerIpcHandlers(ipcMain, {
+      installDir,
+      version: app.getVersion(),
+      autoUpdater: updater,
+    });
+
+    // Initial update check 5 seconds after window opens.
+    setTimeout(() => {
+      void updater.checkForUpdates().catch((err) => {
+        console.error("[auto-update] initial check failed:", err);
+      });
+    }, 5_000);
+
     app.on("activate", async () => {
       if (BrowserWindow.getAllWindows().length === 0) await createWindow();
     });

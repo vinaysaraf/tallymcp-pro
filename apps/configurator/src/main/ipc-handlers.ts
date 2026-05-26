@@ -29,6 +29,7 @@ import {
   type TallyFixResponse,
   type TallyRestoreResponse,
 } from "../shared/ipc-types.js";
+import type { AutoUpdater } from "./auto-update.js";
 
 /**
  * Test injection point — production callers pass `installDir` (resolved
@@ -243,6 +244,8 @@ export async function handleGetConfig(
 export interface RegisterContext {
   installDir: string;
   version: string;
+  /** Optional — when provided, the check-for-updates + download IPCs are wired. */
+  autoUpdater?: AutoUpdater;
 }
 
 /**
@@ -263,4 +266,23 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.GET_CONFIG, () =>
     handleGetConfig({ installDir: ctx.installDir, version: ctx.version }),
   );
+
+  // Update handlers — only registered when the autoUpdater is provided
+  // (skipped in tests + during --uninstall-cleanup mode).
+  // Three channels per the C1 split: checkForUpdates returns a status
+  // snapshot, downloadUpdate kicks off the download (returns immediately;
+  // progress streams via the renderer's subscribeUpdateStatus), and
+  // quitAndInstall is the separate user-consent step invoked by the
+  // banner's "Restart now" button.
+  if (ctx.autoUpdater) {
+    const updater = ctx.autoUpdater;
+    ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, () => updater.checkForUpdates());
+    ipcMain.handle(IPC_CHANNELS.DOWNLOAD_UPDATE, () => updater.downloadUpdate());
+    ipcMain.handle(IPC_CHANNELS.QUIT_AND_INSTALL, () => {
+      // quitAndInstall is synchronous; wrap to return a Promise<void> per
+      // the IpcContract. The Electron process exits before the promise
+      // settles in the renderer — that's the contract.
+      updater.quitAndInstall();
+    });
+  }
 }
