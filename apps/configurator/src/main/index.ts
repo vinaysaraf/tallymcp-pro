@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { registerIpcHandlers } from "./ipc-handlers.js";
 
 /** Where the preload bundle lives relative to the main bundle dir. */
 export const PRELOAD_RELATIVE_PATH = "../preload/index.js";
@@ -52,6 +53,7 @@ async function createWindow(): Promise<BrowserWindow> {
 // Lifecycle wiring — guarded so tests can import the file without booting Electron.
 if (process.env.NODE_ENV !== "test") {
   app.whenReady().then(async () => {
+    registerIpcHandlers(ipcMain);
     await createWindow();
     app.on("activate", async () => {
       if (BrowserWindow.getAllWindows().length === 0) await createWindow();
