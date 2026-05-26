@@ -37,6 +37,8 @@ describe("wire CLI", () => {
     const appdata = join(dir, "appdata");
     const configPath = join(appdata, "Claude", "claude_desktop_config.json");
 
+    // Simulate a TTY so assertInteractiveOrYes passes, reaching confirmFn.
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     await expect(
       runWireCommand({
         clientId: "claude-desktop",
@@ -46,6 +48,7 @@ describe("wire CLI", () => {
         confirmFn: async () => false,
       }),
     ).rejects.toThrow(AbortError);
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
 
     // Verify no file was written
     await expect(readFile(configPath, "utf8")).rejects.toThrow();

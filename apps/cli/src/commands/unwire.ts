@@ -1,5 +1,5 @@
 import { ClientWirer, type ClientId, type UnwireResult, resolveClientConfigPath } from "@tallymcp/client-wirer";
-import { AbortError, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
+import { AbortError, assertInteractiveOrYes, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
 
 export interface RunUnwireOptions {
   clientId: ClientId;
@@ -22,6 +22,8 @@ export async function runUnwireCommand(opts: RunUnwireOptions): Promise<UnwireRe
 
   const preview = formatPreview("I will make 1 change to your PC:", [previewItem]);
   process.stdout.write(preview);
+
+  assertInteractiveOrYes({ yes: opts.yes });
 
   if (!(opts.yes ?? false)) {
     const confirmFn = opts.confirmFn ?? readStdinConfirm;

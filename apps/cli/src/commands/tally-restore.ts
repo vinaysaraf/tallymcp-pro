@@ -8,7 +8,7 @@ import {
   type ExecRunner,
   type TallyInstall,
 } from "@tallymcp/tally-autofix";
-import { AbortError, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
+import { AbortError, assertInteractiveOrYes, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
 
 export interface RunTallyRestoreOptions {
   scanRoots?: string[];
@@ -58,6 +58,8 @@ export async function runTallyRestoreCommand(
 
   const preview = formatPreview("I will make 2 changes to your PC:", [iniItem, fwItem]);
   process.stdout.write(preview);
+
+  assertInteractiveOrYes({ yes: opts.yes });
 
   if (!(opts.yes ?? false)) {
     const confirmFn = opts.confirmFn ?? readStdinConfirm;

@@ -86,6 +86,8 @@ describe("tally-fix CLI", () => {
       return { exitCode: 0, stdout: "Ok.", stderr: "" };
     });
 
+    // Simulate a TTY so assertInteractiveOrYes passes, reaching confirmFn.
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     await expect(
       runTallyFixCommand({
         tallyDir: installDir,
@@ -94,6 +96,7 @@ describe("tally-fix CLI", () => {
         confirmFn: async () => false,
       }),
     ).rejects.toThrow(AbortError);
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
 
     // Verify tally.ini was not modified
     expect(await readFile(iniPath, "utf8")).toBe(originalContent);

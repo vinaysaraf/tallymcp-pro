@@ -43,6 +43,8 @@ describe("unwire CLI", () => {
     const configPath = join(env.APPDATA, "Claude", "claude_desktop_config.json");
     const before = await readFile(configPath, "utf8");
 
+    // Simulate a TTY so assertInteractiveOrYes passes, reaching confirmFn.
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     await expect(
       runUnwireCommand({
         clientId: "claude-desktop",
@@ -51,6 +53,7 @@ describe("unwire CLI", () => {
         confirmFn: async () => false,
       }),
     ).rejects.toThrow(AbortError);
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
 
     // Verify config was not modified
     const after = await readFile(configPath, "utf8");

@@ -47,6 +47,8 @@ describe("tally-restore CLI", () => {
       return { exitCode: 0, stdout: "Deleted 1 rule(s).", stderr: "" };
     });
 
+    // Simulate a TTY so assertInteractiveOrYes passes, reaching confirmFn.
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     await expect(
       runTallyRestoreCommand({
         tallyDir: installDir,
@@ -55,6 +57,7 @@ describe("tally-restore CLI", () => {
         confirmFn: async () => false,
       }),
     ).rejects.toThrow(AbortError);
+    Object.defineProperty(process.stdin, "isTTY", { value: undefined, configurable: true });
 
     // Verify tally.ini was not restored (still has MODIFIED content)
     expect(await readFile(iniPath, "utf8")).toBe("MODIFIED");

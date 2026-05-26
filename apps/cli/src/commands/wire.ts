@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { ClientWirer, type ClientId, type McpServerEntry, type WireResult, CLIENT_REGISTRY, resolveClientConfigPath } from "@tallymcp/client-wirer";
-import { AbortError, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
+import { AbortError, assertInteractiveOrYes, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
 
 export interface RunWireOptions {
   clientId: ClientId;
@@ -44,6 +44,8 @@ export async function runWireCommand(opts: RunWireOptions): Promise<WireResult> 
   process.stdout.write(
     `This change is reversible with \`tallymcp-cli unwire ${opts.clientId}\`.\n\n`,
   );
+
+  assertInteractiveOrYes({ yes: opts.yes });
 
   if (!(opts.yes ?? false)) {
     const confirmFn = opts.confirmFn ?? readStdinConfirm;

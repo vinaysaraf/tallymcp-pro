@@ -8,7 +8,7 @@ import {
   RealExecRunner,
   type TallyInstall,
 } from "@tallymcp/tally-autofix";
-import { AbortError, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
+import { AbortError, assertInteractiveOrYes, formatPreview, readStdinConfirm, type ConfirmFn } from "../confirm.js";
 
 export interface RunTallyFixOptions {
   /** Override scan roots (defaults: Program Files / Program Files (x86)). */
@@ -84,6 +84,8 @@ export async function runTallyFixCommand(opts: RunTallyFixOptions = {}): Promise
   const preview = formatPreview("I will make 2 changes to your PC:", [iniItem, fwItem]);
   process.stdout.write(preview);
   process.stdout.write("Both changes are reversible with `tallymcp-cli tally-restore`.\n\n");
+
+  assertInteractiveOrYes({ yes: opts.yes });
 
   if (!(opts.yes ?? false)) {
     const confirmFn = opts.confirmFn ?? readStdinConfirm;

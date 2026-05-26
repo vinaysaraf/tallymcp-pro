@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { AbortError, formatPreview } from "../src/confirm.js";
+import { describe, it, expect, afterEach } from "vitest";
+import { AbortError, assertInteractiveOrYes, formatPreview } from "../src/confirm.js";
 
 describe("AbortError", () => {
   it("extends Error and has correct name", () => {
@@ -11,6 +11,30 @@ describe("AbortError", () => {
   it("accepts a custom message", () => {
     const err = new AbortError("Custom abort message");
     expect(err.message).toBe("Custom abort message");
+  });
+});
+
+describe("assertInteractiveOrYes", () => {
+  const originalIsTTY = process.stdin.isTTY;
+
+  afterEach(() => {
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: originalIsTTY,
+      configurable: true,
+    });
+  });
+
+  it("no-op when yes is true (regardless of TTY state)", () => {
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    // Should not throw
+    expect(() => assertInteractiveOrYes({ yes: true })).not.toThrow();
+  });
+
+  it("throws when yes is false AND stdin is not a TTY", () => {
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    expect(() => assertInteractiveOrYes({ yes: false })).toThrow(
+      "stdin is not a terminal. Re-run with --yes (-y) to apply changes without a prompt.",
+    );
   });
 });
 
