@@ -56,9 +56,13 @@ async function createWindow(): Promise<BrowserWindow> {
 // Lifecycle wiring — guarded so tests can import the file without booting Electron.
 if (process.env.NODE_ENV !== "test") {
   app.whenReady().then(async () => {
-    const installDir = process.env.LOCALAPPDATA
-      ? join(process.env.LOCALAPPDATA, "TallyMCP")
-      : join(homedir(), "AppData", "Local", "TallyMCP");
+    const { resolveInstallDir } = await import("./install-dir.js");
+    const installDir = resolveInstallDir({
+      isPackaged: app.isPackaged,
+      exePath: app.getPath("exe"),
+      env: process.env,
+      homedirPath: homedir(),
+    });
     registerIpcHandlers(ipcMain, {
       installDir,
       version: app.getVersion(),
