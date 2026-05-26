@@ -114,6 +114,14 @@ export class ClientWirer {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
       throw err;
     }
+    // Strip UTF-8 BOM if present. PowerShell's `Out-File` and `ConvertTo-Json`
+    // emit BOM-prefixed files by default, and many CAs have AI-client configs
+    // that originated from PowerShell scripts. `JSON.parse` is strict and
+    // rejects the leading U+FEFF; per RFC 8259 §8.1 implementations may
+    // ignore it. We strip it so legitimate BOM-prefixed configs parse cleanly.
+    if (raw.charCodeAt(0) === 0xfeff) {
+      raw = raw.slice(1);
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);

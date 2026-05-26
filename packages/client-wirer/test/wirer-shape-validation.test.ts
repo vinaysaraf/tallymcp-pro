@@ -53,4 +53,25 @@ describe("ClientWirer JSON shape validation", () => {
     const result = await wirer.add("claude-desktop");
     expect(result.action).toBe("added");
   });
+
+  it("accepts a UTF-8 BOM-prefixed config (PowerShell-generated files)", async () => {
+    // PowerShell's Out-File / ConvertTo-Json defaults to UTF-8 with BOM.
+    // Many CA-facing config files originate from PowerShell scripts and
+    // therefore have a leading U+FEFF. JSON.parse is strict and rejects it;
+    // readJsonOrEmpty must strip it before parsing.
+    const bomPlusJson =
+      "﻿" +
+      JSON.stringify({
+        mcpServers: { existing: { command: "x", args: [] } },
+      });
+    await writeFile(configPath(env), bomPlusJson, "utf8");
+    const wirer = new ClientWirer({ env, entry: ENTRY });
+    const result = await wirer.add("claude-desktop");
+    expect(result.action).toBe("added");
+    // Sibling preserved
+    const { readFile } = await import("node:fs/promises");
+    const written = JSON.parse(await readFile(configPath(env), "utf8"));
+    expect(written.mcpServers.existing).toEqual({ command: "x", args: [] });
+    expect(written.mcpServers["tallymcp-pro"]).toEqual(ENTRY);
+  });
 });
