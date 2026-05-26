@@ -16,8 +16,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - `apps/configurator/electron-builder.yml` — `publish: null` → `publish: { provider: github, owner: vinaysaraf, repo: tallymcp-pro, releaseType: release }` so electron-builder generates `latest.yml` and the release workflow can upload artifacts via `--publish always`.
-- `apps/configurator/src/main/index.ts` — Cursor H3 fix: pre-poller `registerIpcHandlers` call DELETED and replaced with a single post-updater call that wires the new IPC channels (avoids Electron `ipcMain.handle` overwriting earlier registrations).
-- `apps/configurator/src/main/ipc-handlers.ts` — `RegisterContext` gains optional `autoUpdater?: AutoUpdater`. When present, registers the 3 update channels.
+- `apps/configurator/src/main/index.ts` — IPC registration is split (Cursor H3 + E2E regression fix `d2ad21a`): the 6 core channels register via `registerIpcHandlers(...)` BEFORE `await createWindow()` so the renderer's mount-effect `healthCheck` + `getConfig` IPC calls find handlers waiting; the 3 update channels (`check-for-updates`, `download-update`, `quit-and-install`) register inline AFTER the `createAutoUpdater(...)` bootstrap succeeds. The auto-updater bootstrap itself is wrapped in `try/catch` so dev / Playwright E2E (unpackaged Electron, where `electron-updater` may not initialize) still gets the core app — only the update banner is missing.
+- `apps/configurator/src/main/ipc-handlers.ts` — `RegisterContext` is back to `{ installDir, version }`; the optional `autoUpdater?` field has been removed since the 3 update channels are now registered inline in `main/index.ts`.
 
 ### Notes
 - The user manually opens the GitHub Release page to edit notes (Step 8 of the release procedure). The "What's new" link in the banner already points at the release page.

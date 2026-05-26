@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { registerIpcHandlers } from "./ipc-handlers.js";
 import { createTallyPoller } from "./tally-poller.js";
-import { TALLY_STATUS_EVENT, UPDATE_STATUS_EVENT } from "../shared/ipc-types.js";
+import { IPC_CHANNELS, TALLY_STATUS_EVENT, UPDATE_STATUS_EVENT } from "../shared/ipc-types.js";
 
 /** Where the preload bundle lives relative to the main bundle dir. */
 export const PRELOAD_RELATIVE_PATH = "../preload/index.js";
@@ -149,10 +149,12 @@ if (process.argv.includes("--uninstall-cleanup")) {
 
       // Register the 3 update IPC channels. These are separate from the
       // core registerIpcHandlers call because they depend on the updater
-      // (which may not initialize in dev/E2E).
-      ipcMain.handle("check-for-updates", () => updater.checkForUpdates());
-      ipcMain.handle("download-update", () => updater.downloadUpdate());
-      ipcMain.handle("quit-and-install", () => { updater.quitAndInstall(); });
+      // (which may not initialize in dev/E2E). Use IPC_CHANNELS.* so a
+      // rename of the channel-string constant updates the handler too
+      // (Cursor N-P4-2).
+      ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, () => updater.checkForUpdates());
+      ipcMain.handle(IPC_CHANNELS.DOWNLOAD_UPDATE, () => updater.downloadUpdate());
+      ipcMain.handle(IPC_CHANNELS.QUIT_AND_INSTALL, () => { updater.quitAndInstall(); });
 
       // Initial update check 5 seconds after window opens.
       setTimeout(() => {
