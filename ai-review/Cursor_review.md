@@ -1,79 +1,78 @@
-# Cursor review — v1.0 installer Phase 1 (re-review after fix commits)
+# Cursor review — CLI preview-and-confirm UX (re-review after fixes)
 
 **Date:** 2026-05-25  
 **Branch:** `feat/v1.0-installer-phase1`  
-**Tip SHA:** `29813d7`  
-**Scope:** `packages/client-wirer`, `packages/tally-autofix`, `apps/cli`, `apps/mcp-server/src/client-config.ts`. **91** unit tests pass (`client-wirer` 44, `tally-autofix` 37, `cli` 10).
+**Tip SHA:** `0ee0eae`  
+**Scope:** `apps/cli` consent UX (`confirm.ts`, `commands/*`, `main.ts`, tests). Three fix commits since `79ab0df` (`e543e2f`, `878a2cd`, `0ee0eae`). **27** CLI tests pass.
 
-**Since last review (`453e2fb`):** Five fix commits address all prior High/Medium CA-safety and validation findings (`cb5810f` … `29813d7`).
+## Resolved since `79ab0df`
 
-## Resolved (previous review)
-
-| Finding | Fix |
-|--------|-----|
-| Non-atomic `tally.ini` writes | `autofix.ts:42,57` uses `writeAtomic`; dedicated `tally-autofix/src/atomic-write.ts` + test asserts no `.tmp` left (`autofix.test.ts:41-43`) |
-| `netsh program=` / `name=` without quotes | `firewall.ts:12,31,36,55` — quoted values; test for `TallyPrime (1)` path (`firewall.test.ts:50-56`) |
-| JSON shape not validated | `wirer.ts:127-152` guards top-level + `serversKey`; `wirer-shape-validation.test.ts` (4 tests) |
-| `remove()` without backup | `wirer.ts:98-99` + `wirer-remove.test.ts` (`.bak` on remove) |
-| Unchecked CLI `clientId` cast | `main.ts:10-17` `assertValidClient`; `client-validation.test.ts` (3 tests) |
+| Prior finding | Fix |
+|---------------|-----|
+| Non-TTY hang without `--yes` | `assertInteractiveOrYes()` in `confirm.ts:21-27`; called after preview in all four commands |
+| `unwire` hardcoded `mcpServers` | `unwire.ts:16-20` uses `CLIENT_REGISTRY[clientId].serversKey`; `unwire-cli.test.ts` Ollama preview test |
+| `wire` preview invalid JSON / unescaped paths | `wire.ts:28-31` uses `JSON.stringify`; `wire-cli.test.ts` parses snippet as JSON |
+| `tally-fix` backup path + close-Tally note | Full `install.iniPath.tallymcp-bak` + “TallyPrime must be closed…” (`tally-fix.ts:77-78`) |
+| No `readStdinConfirm` tests | `confirm.test.ts` — `y`, `YES`, empty, `n` with mocked stdin |
+| No `assertInteractiveOrYes` tests | `confirm.test.ts:18-39` — TTY false + `yes: false` throws; `yes: true` no-op |
 
 ## Findings (remaining)
 
+### Consent / UX
+
+**Good**
+
+- Preview → `assertInteractiveOrYes` → `[y/N]` → mutate; order is consistent on all commands.
+- Non-TTY fast-fail message is CA/script-friendly and mentions `--yes (-y)`.
+- Preview-after-TTY-check (not before) keeps audit trail in CI logs when operators forget `-y` — documented in `confirm.ts:17-19`.
+- Abort paths still prevent writes (`wire`/`unwire`/`tally-fix` tests with mocked TTY + `confirmFn: false`).
+- Ollama `servers` key correct in wire and unwire previews.
+
+**Low — Non-TTY error surfaces as uncaught `Error` in `main.ts`** (`main.ts:41-46`)  
+`assertInteractiveOrYes` throws generic `Error`; only `AbortError` gets `Aborted.` + exit 1. Script/CI without `-y` may print a Node stack after preview. Message itself is fine.  
+**Fix:** Catch that message (or a small `NonInteractiveError` subclass) and `console.error(err.message); process.exit(1)`.
+
+**Low — `tally-restore` preview still omits “close Tally first”** (`tally-restore.ts:51-53`)  
+`restoreTallyIni` also requires Tally closed (enforced after confirm). Same pattern as pre-fix `tally-fix`; optional parity bullet.
+
+**Low — SIGINT during `rl.question`** — still unhandled; Ctrl+C may exit without `Aborted.` (unchanged from prior review).
+
+### `confirm.ts` edge cases
+
+**Good**
+
+- Empty / `n` → false; `y` / `yes` → true (`confirm.ts:38`, tests).
+- `finally { rl.close() }` unchanged.
+
+**Low — No EOF-only test**  
+`readStdinConfirm` tests use `Readable.from([input])` with newline; closed stdin without data not covered. Behavior is likely empty → false → abort; acceptable.
+
+**Low — `assertInteractiveOrYes({ yes: false })` tested but not `yes: undefined`**  
+Commands pass `opts.yes` before `?? false` only for confirm branch; guard uses `if (opts.yes) return` so `undefined` correctly falls through to TTY check. OK.
+
 ### Test design
 
-**Low — CLI still has no subprocess test against built `dist/main.js`** (`apps/cli/test/`)  
-Coverage is strong on `run*Command` + `createProgram()` + `assertValidClient`. The `isEntryPoint` / `parseAsync(process.argv)` path and missing `--install-dir` are untested at the binary layer.  
-**Fix (Phase 2):** One `execa` test per command on `windows-latest`, or `node apps/cli/dist/main.js --version` in CI.
+**Good**
 
-### Windows edge cases
+- Command abort tests set `isTTY: true` so they reach `confirmFn` (not short-circuited by guard).
+- Wire JSON preview regression; Ollama unwire preview regression.
 
-**Medium — `main.ts` entry-point guard is still strict string equality** (`apps/cli/src/main.ts:77-79`)  
-`fileURLToPath(import.meta.url) === process.argv[1]` can fail on Windows when path casing, 8.3 short names, or bin-shim `argv[1]` differ. Symptom: module loads but CLI does nothing.  
-**Fix:** `path.resolve()` both sides (case-insensitive on win32) or compare basenames + `realpath`; add subprocess smoke in manual checklist / CI.
+**Low — No end-to-end test that `runWireCommand` throws non-TTY after printing preview**  
+Unit test on `assertInteractiveOrYes` is sufficient for logic; optional integration test with `isTTY: false`, `yes: false`.
 
-**Low — `tasklist` locale / output parsing** (`tally-process.ts:4-5`) — unchanged; acceptable for Phase 1 power-user CLI.
+**Low — Commander / `dist/main.js` subprocess** — still out of scope (Phase 2).
 
-**Low — `TallyIni.serialize()` may normalize CRLF → LF** (`tally-ini.ts:68`) — unchanged; Tally usually tolerates.
+### Libraries
 
-**Low — `writeAtomic` rename vs AV lock** (`atomic-write.ts:17` in both packages) — no retry if `rename` fails while target open; rare on config files.
-
-### TypeScript / API
-
-**Low — `deepEqual` still uses `JSON.stringify`** (`wirer.ts:157-159`)  
-Can spuriously report `updated` if `env` key order differs; paths built via `join()` are stable today.  
-**Fix:** Field-wise compare on `McpServerEntry` if this causes support noise.
-
-**Low — Parsed `tallymcp-pro` entries are not Zod-validated on read** (`wirer.ts`)  
-Container shape is guarded; a pre-existing malformed entry object could still flow through `deepEqual` / merge. Unlikely for CA configs.  
-**Fix:** `McpServerEntrySchema.safeParse(currentEntry)` before merge when entry present.
-
-**Low — `program="${path}"` breaks if `tallyExePath` contains `"`** (`firewall.ts:36`)  
-Absurd path edge case; document or escape embedded quotes.
-
-### Cross-package / hygiene
-
-**Low — Duplicate `atomic-write.ts`** in `client-wirer` and `tally-autofix` — identical 18-line modules; keeps DAG clean (no `tally-autofix` → `client-wirer`). Accept or extract shared util in Phase 2.
-
-**Low — `@tallymcp/shared-types` still unused** (`client-wirer/package.json:21`).
-
-**Low — `FakeExecRunner` exported from production API** (`tally-autofix/src/index.ts:17`).
-
-**Low — `detectTallyInstall` union + `as TallyInstall[]` in CLI** (`tally-fix.ts:47-50`) — works with `returnAll: true`; split API is cleaner later.
-
-### Security / coupling
-
-- **`spawn` with discrete argv** — no shell injection; firewall paths passed as single quoted args. Good.
-- **Allowlist paths** — `CLIENT_REGISTRY` only; no path traversal in resolver (templates fixed). Good.
-- **`claude-code` in `client-config.ts`** — aligned with installer JSON shape.
+`client-wirer` / `tally-autofix` unchanged since `29813d7` ✅ — no regression in this delta.
 
 ## Verdict
 
-**✅ READY TO MERGE** — Prior High/Medium blockers are fixed with tests. Remaining items are Phase 2 hardening (subprocess CLI smoke, robust entry-point detection) and low-priority hygiene. Run `docs/v1-installer-phase1-manual-smoke.md` on a real Windows + Tally box before declaring Phase 1 done for CAs.
+**✅ READY TO MERGE** — All blocking/follow-up items from the `79ab0df` review are addressed with tests. Consent design is sound for Phase 1 power users and Configurator reuse.
 
-### Phase 2 backlog (nits)
+### Optional polish (Phase 2 backlog)
 
-1. Subprocess / `windows-latest` smoke for `dist/main.js`
-2. Normalize `isEntryPoint` path comparison on Windows
-3. Deduplicate or share `writeAtomic`
-4. Remove unused `shared-types` dep or wire shared `ClientId`
-5. Stop exporting `FakeExecRunner` from package root
+1. Friendly exit in `main.ts` for non-TTY `Error` (no stack trace)
+2. “Close Tally first” in `tally-restore` preview
+3. SIGINT → `AbortError` + `rl.close()`
+4. Subprocess smoke: `node dist/main.js wire … -y`
