@@ -88,6 +88,21 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: pnpm package
 
+      # Assert latest.yml landed (Cursor v1.0.0 review hardening). It's
+      # required by electron-updater (Phase 4 spec §10); a missing file
+      # here would mean electron-builder regressed and silently dropped
+      # the update-feed file even with `publish: github` in YAML +
+      # `--publish never` on CLI.
+      - name: Verify latest.yml present
+        shell: pwsh
+        run: |
+          $f = "apps/configurator/dist-installer/latest.yml"
+          if (-not (Test-Path $f)) {
+            Write-Error "::error::latest.yml missing at $f — electron-updater feed will not work"
+            exit 1
+          }
+          Write-Host "latest.yml present ($((Get-Item $f).Length) bytes)"
+
       - name: Generate latest.json
         run: node installer/scripts/generate-latest-json.mjs
 

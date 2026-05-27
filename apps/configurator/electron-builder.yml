@@ -62,9 +62,15 @@ nsis:
 # GitHub Releases publish target. electron-builder uses this to:
 #   - generate latest.yml (for electron-updater).
 #   - upload artifacts to the release matching the current tag IF the
-#     build is invoked with `--publish always` (release workflow only).
-# Local `pnpm package` does NOT auto-publish (electron-builder defaults
-# to `--publish never` outside a CI tag context).
+#     build is invoked with `--publish always`.
+# The root `pnpm package` script passes `--publish never` explicitly so
+# electron-builder NEVER auto-uploads. This matters in CI: when a build
+# runs on a tag ref in GitHub Actions, electron-builder's default
+# publish policy becomes implicit `onTag` and it tries to upload via
+# its built-in GitHub publisher — which fails without GH_TOKEN. The
+# release.yml workflow uses softprops/action-gh-release@v2 for uploads
+# as a separate step. `--publish never` keeps that split clean.
+# (latest.yml generation is independent of publish policy and continues.)
 publish:
   provider: github
   owner: vinaysaraf
