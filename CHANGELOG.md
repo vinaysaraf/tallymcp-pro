@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.4 — CRITICAL: missing zod-to-json-schema in deployed mcp-server (2026-05-27)
+
+Critical hotfix shipped immediately after v1.0.3 surfaced a latent install-layout bug. The MCP server crashes on startup with `ERR_MODULE_NOT_FOUND: Cannot find package 'zod-to-json-schema'` because `@modelcontextprotocol/sdk@1.29.0` imports the package but pnpm's symlink-based layout for transitive deps doesn't survive electron-builder's NSIS extraFiles copy on Windows. The bug has been latent since v1.0.1 — users on hot-patched installs didn't hit it; v1.0.3 auto-update overwrites the hot-patch with the broken installer layout, so the bug surfaces on first Claude Desktop ↔ MCP server contact.
+
+### Fixed
+- **MCP server `ERR_MODULE_NOT_FOUND: zod-to-json-schema` on startup** (#152 CRITICAL). Added `zod-to-json-schema: ^3.25.1` as a direct dependency of `@tallymcp/mcp-server`. This forces pnpm deploy to hoist the package to the top-level `node_modules/zod-to-json-schema/` in the staging tree (verified locally: `installer/staging/mcp-server/node_modules/zod-to-json-schema/` now present). The package then ships at a stable, Windows-friendly location that doesn't rely on `.pnpm` symlinks surviving NSIS file extraction. Root cause: the SDK's transitive `zod-to-json-schema` dep lived only inside `.pnpm/@modelcontextprotocol+sdk@*/node_modules/` as a symlink — symlinks get flattened on Windows during NSIS extraction, leaving the SDK file unable to resolve its own import.
+
+### Changed
+- `apps/mcp-server/package.json` — added `"zod-to-json-schema": "^3.25.1"` to dependencies. No source code change required (the SDK pulls it in transitively at runtime).
+- `apps/configurator/package.json` version 1.0.3 → 1.0.4.
+- `pnpm-lock.yaml` regenerated to record the new direct-dep edge.
+
+### Notes
+- Users on auto-updated v1.0.3 with broken MCP need v1.0.4 to actually use TallyMCP. Auto-update via electron-updater will pick it up within ~5 sec of next Configurator launch.
+- No new tests added for v1.0.4 — this is a package-layout fix, not a code change. The bug is invisible to vitest (workspace runs from source). Detection mechanism added in v1.0.5+ should run the staged `installer/staging/mcp-server` through a smoke test that loads `dist/main.js` with the staged `node_modules` to catch this class of regression.
+- v1.0.3's UI changes (MSIX detection, Disconnect button, wire-time MSIX warning, DoneScreen tray-quit + caveat) all carry through unchanged.
+
 ## v1.0.3 — MSIX/Store Claude Desktop detection + restart toast + Disconnect (2026-05-27)
 
 Critical hotfix shipped same-day as v1.0.2 after a real-world remote-install via AnyDesk on a friend's Gold Tally machine surfaced that the Configurator wires Claude Desktop to the wrong path when the user installed Claude Desktop from the Microsoft Store. The Store version is AppContainer-sandboxed under `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\` instead of the standard `%APPDATA%\Claude\` — v1.0.2 only wrote to the standard path, so Store-version Claude Desktop never saw TallyMCP. Same hotfix surfaces a one-click Disconnect button on every configured client tile so non-technical users can cleanly remove TallyMCP from any AI tool without editing JSON.
