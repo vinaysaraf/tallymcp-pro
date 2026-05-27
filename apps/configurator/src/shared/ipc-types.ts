@@ -35,7 +35,15 @@ export type ClientId =
   | "lm-studio"
   | "ollama";
 
-/** Variant tag for Claude Desktop config paths (v1.0.3+ #140). Mirrors the type in @tallymcp/client-wirer to avoid cross-package import in the shared preload-bundled module. */
+/**
+ * Variant tag for Claude Desktop config paths (v1.0.3+ #140).
+ *
+ * Intentionally mirrors `ClientConfigVariant` in
+ * `packages/client-wirer/src/types.ts` — duplicated here (not imported)
+ * because this module is bundled into the preload script statically and
+ * cannot pull in cross-package imports (same precedent as `ClientId`).
+ * Keep the two declarations in sync.
+ */
 export type ClientConfigVariant = "standard" | "msix";
 
 export interface WireRequest {
