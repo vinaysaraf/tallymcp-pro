@@ -6,6 +6,7 @@ export const DiagnosticCodeSchema = z.enum([
   "XML_INTERFACE_OFF",
   "NO_COMPANY_LOADED",
   "UNEXPECTED_RESPONSE",
+  "REQUEST_TIMEOUT",
 ]);
 
 export type DiagnosticCode = z.infer<typeof DiagnosticCodeSchema>;
@@ -40,4 +41,6 @@ export const DIAGNOSTIC_HINTS: Record<DiagnosticCode, string> = {
   NO_COMPANY_LOADED: "Open a company in TallyPrime (Gateway → select company).",
   UNEXPECTED_RESPONSE:
     "Tally returned an error in the XML response. Check the message and fix the request or Tally state.",
+  REQUEST_TIMEOUT:
+    "Tally did not respond within the timeout period. If using a networked Tally setup (Tally Gateway Server in tally.ini), verify the gateway host is reachable. Raise the timeout via TALLYMCP_TIMEOUT env var or config.tally.requestTimeoutMs.",
 };

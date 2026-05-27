@@ -8,7 +8,7 @@ import {
   isConnectionRefused,
   isTimeoutError,
 } from "./connection-error.js";
-import { TallyHttpError } from "./errors.js";
+import { TallyHttpError, TallyRequestTimeoutError } from "./errors.js";
 import type { TallyHttpClient } from "./http-client.js";
 import { getListCompaniesEnvelope } from "./list-companies-envelope.js";
 
@@ -90,6 +90,14 @@ export function mapDiagnoseError(
   err: unknown,
   client: TallyHttpClient,
 ): DiagnosticResult {
+  if (err instanceof TallyRequestTimeoutError) {
+    return fail(
+      "REQUEST_TIMEOUT",
+      err.message,
+      err.message,
+    );
+  }
+
   if (isConnectionRefused(err)) {
     return fail(
       "PORT_REFUSED",
