@@ -64,7 +64,7 @@ export class ClientWirer {
     else action = "updated";
 
     if (action === "noop") {
-      return { clientId, configPath, backupCreated: false, action };
+      return { clientId, configPath, configPaths: [configPath], variants: ["standard"], backupCreated: false, action };
     }
 
     // 3. Backup if first time.
@@ -84,7 +84,7 @@ export class ClientWirer {
       throw new Error(`Verify failed after writing ${configPath}`);
     }
 
-    return { clientId, configPath, backupCreated, action };
+    return { clientId, configPath, configPaths: [configPath], variants: ["standard"], backupCreated, action };
   }
 
   async remove(clientId: ClientId): Promise<UnwireResult> {
@@ -93,14 +93,14 @@ export class ClientWirer {
     const existing = await this.readJsonOrEmpty(configPath, serversKey);
     const currentServers = existing[serversKey] as Record<string, McpServerEntry> | undefined;
     if (!currentServers?.[KEY]) {
-      return { clientId, configPath, action: "noop" };
+      return { clientId, configPath, configPaths: [configPath], action: "noop" };
     }
     // Backup before remove, matching "backup-before-write everywhere" spec.
     await backupIfMissing(configPath);
     const stripped = removeUnderKey(existing, serversKey);
     await mkdir(dirname(configPath), { recursive: true });
     await writeAtomic(configPath, JSON.stringify(stripped, null, 2) + "\n");
-    return { clientId, configPath, action: "removed" };
+    return { clientId, configPath, configPaths: [configPath], action: "removed" };
   }
 
   private async readJsonOrEmpty(

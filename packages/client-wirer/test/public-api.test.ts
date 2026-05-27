@@ -26,8 +26,20 @@ describe("public API", () => {
   it("compiles the public type imports", () => {
     const id: ClientId = "claude-desktop";
     const entry: McpServerEntry = { command: "x", args: [] };
-    const wire: WireResult = { clientId: id, configPath: "x", backupCreated: false, action: "added" };
-    const unwire: UnwireResult = { clientId: id, configPath: "x", action: "noop" };
+    const wire: WireResult = {
+      clientId: id,
+      configPath: "x",
+      configPaths: ["x"],
+      variants: ["standard"],
+      backupCreated: false,
+      action: "added",
+    };
+    const unwire: UnwireResult = {
+      clientId: id,
+      configPath: "x",
+      configPaths: ["x"],
+      action: "noop",
+    };
     expect(id && entry && wire && unwire).toBeTruthy();
   });
 });
