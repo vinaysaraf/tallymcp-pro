@@ -19,12 +19,15 @@ function buildFakeApi(overrides: Partial<TallymcpApi> = {}): TallymcpApi {
     wireMcp: vi.fn().mockResolvedValue({
       clientId: "claude-desktop",
       configPath: "X",
+      configPaths: ["X"],
+      variants: ["standard"],
       backupCreated: true,
       action: "added",
     }),
     unwireMcp: vi.fn().mockResolvedValue({
       clientId: "claude-desktop",
       configPath: "X",
+      configPaths: ["X"],
       action: "removed",
     }),
     healthCheck: vi.fn().mockResolvedValue({

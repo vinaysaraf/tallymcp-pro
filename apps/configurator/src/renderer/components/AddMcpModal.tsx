@@ -3,6 +3,15 @@ import type { ClientId } from "../../shared/ipc-types.js";
 export interface AddMcpModalProps {
   clientId: ClientId;
   displayName: string;
+  /**
+   * True when HealthCheck detected a Microsoft Store / MSIX-packaged Claude
+   * Desktop on this machine (v1.0.3+ #140). When true AND clientId is
+   * "claude-desktop", the modal renders an upfront warning card explaining
+   * the AppContainer caveat — so the user isn't sent to tray-quit only to
+   * discover the Store version can't launch the local MCP server.
+   * Ignored for non-Claude-Desktop clientIds.
+   */
+  msixDetected: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   onShowSmartScreenGuide: () => void;
@@ -11,6 +20,7 @@ export interface AddMcpModalProps {
 export function AddMcpModal({
   clientId,
   displayName,
+  msixDetected,
   onConfirm,
   onCancel,
   onShowSmartScreenGuide,
@@ -96,15 +106,43 @@ export function AddMcpModal({
               <div>• No data leaves your computer.</div>
             </div>
             <div className="border-t border-tm-border pt-3 text-xs text-tm-text-muted">
-              <div className="mb-1">Settings file I'll edit:</div>
-              <code className="text-xs font-mono">
-                {clientId === "claude-desktop" && "%APPDATA%\\Claude\\claude_desktop_config.json"}
+              <div className="mb-1">Settings file{clientId === "claude-desktop" && msixDetected ? "s" : ""} I'll edit:</div>
+              <code className="text-xs font-mono block whitespace-pre-line">
+                {clientId === "claude-desktop" && (
+                  msixDetected
+                    ? "%APPDATA%\\Claude\\claude_desktop_config.json\n%LOCALAPPDATA%\\Packages\\Claude_*\\LocalCache\\Roaming\\Claude\\claude_desktop_config.json"
+                    : "%APPDATA%\\Claude\\claude_desktop_config.json"
+                )}
                 {clientId === "cursor" && "%USERPROFILE%\\.cursor\\mcp.json"}
                 {clientId === "claude-code" && "%USERPROFILE%\\.claude.json"}
                 {clientId === "lm-studio" && "%USERPROFILE%\\.lmstudio\\mcp.json"}
                 {clientId === "ollama" && "%LOCALAPPDATA%\\TallyMCP\\ollama-bridge\\config.json"}
               </code>
             </div>
+            {clientId === "claude-desktop" && msixDetected && (
+              <div
+                data-testid="msix-wire-warning"
+                className="mt-3 p-3 bg-tm-amber-soft border border-tm-amber-border rounded text-xs leading-relaxed"
+              >
+                <div className="font-semibold mb-1 text-tm-blue-deep">
+                  ⚠ Microsoft Store version of Claude Desktop detected
+                </div>
+                <div>
+                  We'll wire the config into the Store sandbox at{" "}
+                  <code className="font-mono">%LOCALAPPDATA%\Packages\Claude_*\...</code>.
+                  The Store version runs in a Windows AppContainer and may not
+                  be able to launch local MCP servers like TallyMCP.
+                </div>
+                <div className="mt-2">
+                  <strong>If after restarting Claude Desktop the MCP tools
+                  don't appear</strong> — install the regular standalone
+                  version from{" "}
+                  <span className="font-mono">claude.ai/download</span> and
+                  click Reconfigure here. Standalone has fewer sandbox
+                  restrictions and Just Works.
+                </div>
+              </div>
+            )}
             <div className="mt-3 p-3 bg-tm-amber-soft border border-tm-amber-border rounded text-xs leading-relaxed">
               <div className="font-semibold mb-1">🛡️ If Windows says "Unknown publisher"</div>
               <div>

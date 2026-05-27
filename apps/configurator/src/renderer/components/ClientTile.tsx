@@ -6,6 +6,8 @@ export interface ClientTileProps {
   configured: boolean;
   onAdd: (clientId: ClientId) => void;
   onReconfigure: (clientId: ClientId) => void;
+  /** Opens the disconnect confirm modal for this client (#141). */
+  onDisconnect: (clientId: ClientId) => void;
 }
 
 export function ClientTile({
@@ -14,6 +16,7 @@ export function ClientTile({
   configured,
   onAdd,
   onReconfigure,
+  onDisconnect,
 }: ClientTileProps): JSX.Element {
   return (
     <div className="bg-tm-card border border-tm-border rounded-lg p-3 text-sm text-tm-text">
@@ -22,13 +25,24 @@ export function ClientTile({
         {configured ? "✓ Connected" : "Not added"}
       </div>
       {configured ? (
-        <button
-          type="button"
-          className="px-2 py-1 text-xs border border-tm-border rounded bg-tm-card hover:bg-tm-bg"
-          onClick={() => onReconfigure(clientId)}
-        >
-          Reconfigure
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            className="px-2 py-1 text-xs border border-tm-border rounded bg-tm-card hover:bg-tm-bg"
+            onClick={() => onReconfigure(clientId)}
+          >
+            Reconfigure
+          </button>
+          <button
+            type="button"
+            aria-label={`Disconnect TallyMCP from ${displayName}`}
+            data-testid={`disconnect-${clientId}`}
+            className="px-2 py-1 text-xs border border-red-700 text-red-700 rounded bg-tm-card hover:bg-red-50"
+            onClick={() => onDisconnect(clientId)}
+          >
+            Disconnect
+          </button>
+        </div>
       ) : (
         <button
           type="button"

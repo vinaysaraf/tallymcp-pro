@@ -35,6 +35,17 @@ export type ClientId =
   | "lm-studio"
   | "ollama";
 
+/**
+ * Variant tag for Claude Desktop config paths (v1.0.3+ #140).
+ *
+ * Intentionally mirrors `ClientConfigVariant` in
+ * `packages/client-wirer/src/types.ts` — duplicated here (not imported)
+ * because this module is bundled into the preload script statically and
+ * cannot pull in cross-package imports (same precedent as `ClientId`).
+ * Keep the two declarations in sync.
+ */
+export type ClientConfigVariant = "standard" | "msix";
+
 export interface WireRequest {
   clientId: ClientId;
   // NOTE: installDir is NOT renderer-supplied. Main resolves the canonical
@@ -45,7 +56,15 @@ export interface WireRequest {
 
 export interface WireResponse {
   clientId: ClientId;
+  /**
+   * The PRIMARY config path written (always === configPaths[0]). Kept for
+   * back-compat with v1.0.2 consumers.
+   */
   configPath: string;
+  /** All config paths written. Length > 1 only when MSIX + standard both present (v1.0.3+ #140). */
+  configPaths: string[];
+  /** Parallel array — `variants[i]` is the flavor of `configPaths[i]`. */
+  variants: ClientConfigVariant[];
   backupCreated: boolean;
   action: "added" | "updated" | "noop";
 }
@@ -56,7 +75,10 @@ export interface UnwireRequest {
 
 export interface UnwireResponse {
   clientId: ClientId;
+  /** Primary path (=== configPaths[0]). Kept for back-compat. */
   configPath: string;
+  /** All paths the unwire operation touched. */
+  configPaths: string[];
   action: "removed" | "noop";
 }
 
@@ -93,6 +115,17 @@ export interface HealthCheckResponse {
    * undefined = auto-probe (default).
    */
   tallyEdition?: "silver" | "gold" | "unknown";
+  /**
+   * Detected Claude Desktop install flavors on this machine (v1.0.3+ #140).
+   * Possible values per element: `"standard"` (standalone .exe from
+   * claude.ai/download — config at `%APPDATA%\Claude\`), or `"msix"`
+   * (Microsoft Store / AppContainer-sandboxed — config at
+   * `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`). When
+   * `"msix"` is present, the renderer's `AddMcpModal` shows a wire-time
+   * caveat that Store-version Claude Desktop may not be able to launch
+   * local MCP servers from its sandbox.
+   */
+  claudeDesktopVariants?: ClientConfigVariant[];
 }
 
 export interface TallyFixResponse {
