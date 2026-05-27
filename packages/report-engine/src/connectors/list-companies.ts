@@ -2,6 +2,7 @@ import { CompanySchema, type Company } from "@tallymcp/shared-types";
 import { findAll, findAllObjects, listCompaniesEnvelope, parseTallyResponse } from "@tallymcp/tally-xml";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
+import { normalizeTallyDate } from "./date-utils.js";
 
 /**
  * Reads the `List of Companies` report.
@@ -35,12 +36,18 @@ export async function listCompanies(client: TallyClient): Promise<Company[]> {
 
 function toCompany(node: Record<string, unknown>): Company {
   const idOrName = String(node["@_NAME"] ?? node.NAME ?? "");
-  const startingFrom = node.STARTINGFROM ? String(node.STARTINGFROM) : undefined;
+  // Tally returns STARTINGFROM + BOOKSFROM in either canonical YYYYMMDD
+  // (TallyPrime 4.x default) or display format like "1-Apr-2024" (Silver
+  // + some networked TallyPrime installs where the company's date
+  // display preference leaks into the XML response). normalizeTallyDate
+  // handles both; returns undefined for unparseable inputs so the
+  // optional schema field falls back gracefully — the company name still
+  // surfaces. (Phase 1.0.2 fix; see ai-review/v1.0.1-real-world-hang.md.)
   return CompanySchema.parse({
     id: idOrName,
     name: String(node.NAME ?? idOrName),
-    startingFrom,
-    booksFrom: node.BOOKSFROM ? String(node.BOOKSFROM) : undefined,
+    startingFrom: normalizeTallyDate(node.STARTINGFROM),
+    booksFrom: normalizeTallyDate(node.BOOKSFROM),
     baseCurrency: node.BASECURRENCY ? String(node.BASECURRENCY) : undefined,
     gstin: node.GSTIN ? String(node.GSTIN) : undefined,
   });

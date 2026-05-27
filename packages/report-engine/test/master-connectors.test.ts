@@ -152,6 +152,86 @@ describe("listCompanies", () => {
     expect(client.calls[0]).toContain("<ID>List of Companies</ID>");
     expect(client.calls[0]).toContain("<ENCODINGTYPE>UTF8</ENCODINGTYPE>");
   });
+
+  it("normalizes Silver/display-format STARTINGFROM dates to YYYYMMDD (v1.0.2 regression fix)", async () => {
+    // Real-world bug found 2026-05-27 on a TallyPrime install that returns
+    // STARTINGFROM as "1-Apr-2024" instead of "20240401". Before #133 the
+    // raw string was passed to CompanySchema.parse() which rejected it via
+    // TallyDateSchema's `/^\d{8}$/` regex, blocking tally_list_companies on
+    // that user's machine. Fix: route both STARTINGFROM and BOOKSFROM
+    // through normalizeTallyDate(), matching company-info.ts's pattern.
+    const SILVER_DISPLAY_DATE_XML = `<ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION NAME="List of Companies">
+            <COMPANY NAME="10000 - Display Format Co">
+              <NAME>10000 - Display Format Co</NAME>
+              <STARTINGFROM>1-Apr-2024</STARTINGFROM>
+              <BOOKSFROM>1-Apr-2024</BOOKSFROM>
+            </COMPANY>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>`;
+    const cos = await listCompanies(stubClient(SILVER_DISPLAY_DATE_XML));
+    expect(cos).toHaveLength(1);
+    expect(cos[0]?.startingFrom).toBe("20240401");
+    expect(cos[0]?.booksFrom).toBe("20240401");
+  });
+
+  it("handles mixed-format responses across companies", async () => {
+    // A single response can have one company with YYYYMMDD and another with
+    // display format — TallyPrime's edition mix on networked setups isn't
+    // uniform per-company. Both should normalize cleanly.
+    const MIXED_XML = `<ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION NAME="List of Companies">
+            <COMPANY NAME="A">
+              <NAME>A</NAME>
+              <STARTINGFROM>20240401</STARTINGFROM>
+            </COMPANY>
+            <COMPANY NAME="B">
+              <NAME>B</NAME>
+              <STARTINGFROM>15-Dec-2023</STARTINGFROM>
+            </COMPANY>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>`;
+    const cos = await listCompanies(stubClient(MIXED_XML));
+    expect(cos).toHaveLength(2);
+    expect(cos[0]?.startingFrom).toBe("20240401");
+    expect(cos[1]?.startingFrom).toBe("20231215");
+  });
+
+  it("leaves startingFrom undefined when the value is in an unrecognized format", async () => {
+    // normalizeTallyDate returns undefined for inputs it can't parse (e.g.
+    // ISO YYYY-MM-DD, US MM/DD/YYYY, or empty). TallyDateSchema is
+    // .optional() on CompanySchema so the company name still surfaces.
+    const WEIRD_FORMAT_XML = `<ENVELOPE>
+      <BODY>
+        <DATA>
+          <COLLECTION NAME="List of Companies">
+            <COMPANY NAME="C">
+              <NAME>C</NAME>
+              <STARTINGFROM>2024-04-01</STARTINGFROM>
+            </COMPANY>
+            <COMPANY NAME="D">
+              <NAME>D</NAME>
+              <STARTINGFROM></STARTINGFROM>
+            </COMPANY>
+          </COLLECTION>
+        </DATA>
+      </BODY>
+    </ENVELOPE>`;
+    const cos = await listCompanies(stubClient(WEIRD_FORMAT_XML));
+    expect(cos).toHaveLength(2);
+    expect(cos[0]?.name).toBe("C");
+    expect(cos[0]?.startingFrom).toBeUndefined();
+    expect(cos[1]?.name).toBe("D");
+    expect(cos[1]?.startingFrom).toBeUndefined();
+  });
 });
 
 describe("getCompanyInfo", () => {
