@@ -14,6 +14,7 @@ import { ITPolicyHelpModal } from "./components/ITPolicyHelpModal.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
 import type {
   ClientId,
+  ClientConfigVariant,
   ConfigSnapshot,
   HealthCheckResponse,
 } from "../shared/ipc-types.js";
@@ -51,6 +52,7 @@ export function App(): JSX.Element {
   const [modalFor, setModalFor] = useState<ClientId | undefined>(undefined);
   const [showSmartScreen, setShowSmartScreen] = useState(false);
   const [showDoneFor, setShowDoneFor] = useState<ClientId | undefined>(undefined);
+  const [doneVariants, setDoneVariants] = useState<ClientConfigVariant[]>(["standard"]);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showITPolicyModal, setShowITPolicyModal] = useState(false);
 
@@ -89,10 +91,11 @@ export function App(): JSX.Element {
     // the initial getConfig() promise settled.
     const api = getApi();
     try {
-      await api.wireMcp({ clientId: modalFor });
+      const result = await api.wireMcp({ clientId: modalFor });
       markClientConfigured(modalFor);
       const wiredClient = modalFor;
       setModalFor(undefined);
+      setDoneVariants(result.variants);
       setShowDoneFor(wiredClient);  // show DoneScreen after success
       clearLastError();  // success → wipe any prior error state (M1)
     } catch (err) {
@@ -273,6 +276,7 @@ export function App(): JSX.Element {
         <DoneScreen
           clientId={showDoneFor}
           clientDisplayName={CLIENT_DISPLAY_NAMES[showDoneFor]}
+          variants={doneVariants}
           onClose={() => setShowDoneFor(undefined)}
         />
       )}
