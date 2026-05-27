@@ -107,6 +107,14 @@ guide.
 
 ## 8. Known Phase 4 limitations
 
+- **Cancel button is grayed during file extraction** — this is normal NSIS
+  Modern UI 2 behavior on the `MUI_PAGE_INSTFILES` page. Back/Next are
+  disabled until extraction completes (then Next becomes "Finish"); Cancel
+  stays disabled until the next page transitions. If you need to abort
+  mid-install, close the wizard window (which triggers Tally's standard
+  "cancel?" dialog), or kill the `TallyMCP-Setup-vX.Y.Z.exe` process via
+  Task Manager.
+
 - **Self-signed cert SmartScreen warning** — same as Phase 3; users
   click "More info → Run anyway" on the first install. Phase 5
   upgrades to a real EV cert.
