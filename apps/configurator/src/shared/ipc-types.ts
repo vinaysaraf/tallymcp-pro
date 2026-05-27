@@ -48,7 +48,15 @@ export interface WireRequest {
 
 export interface WireResponse {
   clientId: ClientId;
+  /**
+   * The PRIMARY config path written (always === configPaths[0]). Kept for
+   * back-compat with v1.0.2 consumers.
+   */
   configPath: string;
+  /** All config paths written. Length > 1 only when MSIX + standard both present (v1.0.3+ #140). */
+  configPaths: string[];
+  /** Parallel array — `variants[i]` is the flavor of `configPaths[i]`. */
+  variants: ClientConfigVariant[];
   backupCreated: boolean;
   action: "added" | "updated" | "noop";
 }
@@ -59,7 +67,10 @@ export interface UnwireRequest {
 
 export interface UnwireResponse {
   clientId: ClientId;
+  /** Primary path (=== configPaths[0]). Kept for back-compat. */
   configPath: string;
+  /** All paths the unwire operation touched. */
+  configPaths: string[];
   action: "removed" | "noop";
 }
 
