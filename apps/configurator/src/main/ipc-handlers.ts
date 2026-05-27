@@ -136,16 +136,43 @@ export async function handleHealthCheck(
   // Tally running
   const tallyRunning = tallyInstalled ? await detectTallyRunning(runner) : false;
 
-  // XML interface
+  // XML interface + Tally Gateway Server (#129)
   let xmlInterfaceEnabled = false;
+  let tallyGatewayServer: string | undefined;
   if (tallyInstall) {
     try {
       const text = await readFile(tallyInstall.iniPath, "utf8");
       const ini = parseTallyIni(text);
       xmlInterfaceEnabled =
         ini.get("Client Server") === "Both" && ini.get("ServerPort") === "9000";
+      // Parse "Tally Gateway Server" — tolerates whitespace + case variations.
+      const gwMatch = /^\s*tally\s+gateway\s+server\s*=\s*(.+?)\s*$/im.exec(text);
+      if (gwMatch) {
+        tallyGatewayServer = gwMatch[1];
+      }
     } catch {
-      // Unreadable ini → treat as not enabled
+      // Unreadable ini — treat as not enabled
+    }
+  }
+
+  // tallyEdition — read from config.json if available (#129).
+  // Uses a simple try/catch + JSON.parse; config-store's full validation
+  // isn't needed for this read-only display purpose. In test environments
+  // TALLYMCP_CONFIG is not set, so tallyEdition will be undefined (expected
+  // behaviour — tests only assert on gateway, not edition).
+  let tallyEdition: "silver" | "gold" | "unknown" | undefined;
+  const configFilePath = (ctx.env ?? process.env)["TALLYMCP_CONFIG"];
+  if (configFilePath) {
+    try {
+      const raw = await readFile(configFilePath, "utf8");
+      const cfg = JSON.parse(raw) as Record<string, unknown>;
+      const tally = cfg["tally"] as Record<string, unknown> | undefined;
+      const assumed = tally?.["assumedEdition"];
+      if (assumed === "silver" || assumed === "gold" || assumed === "unknown") {
+        tallyEdition = assumed;
+      }
+    } catch {
+      // Missing or malformed config — leave tallyEdition undefined
     }
   }
 
@@ -169,6 +196,8 @@ export async function handleHealthCheck(
     configuredClients,
     multipleTallyInstalls: found.length > 1 ? found.map((i) => i.installDir) : undefined,
     isElevated,
+    tallyGatewayServer,
+    tallyEdition,
   };
 }
 

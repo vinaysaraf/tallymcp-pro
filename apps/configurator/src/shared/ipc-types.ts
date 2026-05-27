@@ -78,6 +78,21 @@ export interface HealthCheckResponse {
    * "unknown" and shows the Fix button without an admin hint).
    */
   isElevated?: boolean;
+  /**
+   * Value of "Tally Gateway Server" from tally.ini if set. Indicates a
+   * networked Tally client setup (this machine talks to a remote Tally
+   * over HTTP for actual data). When set, heavy XML queries forward to
+   * the remote host — if unreachable, Tally may hang. Surfaced in the
+   * Configurator's HealthCheck as a yellow info card (#129).
+   */
+  tallyGatewayServer?: string;
+  /**
+   * Forced edition from config.tally.assumedEdition, if set. Tells the
+   * Configurator's HealthCheck which edition row to display without
+   * having to round-trip through the MCP server's capability probe.
+   * undefined = auto-probe (default).
+   */
+  tallyEdition?: "silver" | "gold" | "unknown";
 }
 
 export interface TallyFixResponse {
