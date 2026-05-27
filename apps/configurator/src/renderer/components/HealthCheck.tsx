@@ -24,6 +24,9 @@ export function HealthCheck({ status, firewallSkipReason, onFixAll, onReCheck }:
   const firewallNeedsFix = status.tallyInstalled && !status.firewallRulePresent;
   const firewallIsKnownSkipped = firewallSkipReason !== undefined;
   const needsFix = xmlNeedsFix || (firewallNeedsFix && !firewallIsKnownSkipped);
+  // #137: Fix button is disabled when >1 TallyPrime install exists — handleTallyFix
+  // throws in that case, so preventing the click avoids a Fix that always fails.
+  const hasMultipleInstalls = (status.multipleTallyInstalls?.length ?? 0) > 1;
 
   return (
     <div className="bg-tm-card border border-tm-border rounded-lg p-5 text-sm text-tm-text">
@@ -65,6 +68,20 @@ export function HealthCheck({ status, firewallSkipReason, onFixAll, onReCheck }:
               ● Firewall rule {status.firewallRulePresent ? "present" : "missing"}
             </div>
           </div>
+
+          {/* #129 — Edition info row (only shown when explicitly configured) */}
+          {status.tallyEdition && (
+            <div className="mt-2 text-xs text-tm-text-muted">
+              Edition:{" "}
+              <strong>
+                {status.tallyEdition === "gold"
+                  ? "Gold — voucher queries enabled"
+                  : status.tallyEdition === "silver"
+                    ? "Silver — voucher tools disabled (use UI export, or override via config.tally.assumedEdition)"
+                    : "Unknown"}
+              </strong>
+            </div>
+          )}
           {/*
             Patch A yellow card is **deliberately scoped to "non-admin"** —
             the "group-policy" case is routed to ITPolicyHelpModal (Patch
@@ -99,6 +116,55 @@ export function HealthCheck({ status, firewallSkipReason, onFixAll, onReCheck }:
             </div>
           )}
 
+          {/* #129 — Tally Gateway Server info card */}
+          {status.tallyGatewayServer && (
+            <div className="mt-4 p-3 bg-tm-amber-soft border border-tm-amber-border rounded-lg text-xs leading-relaxed">
+              <div className="font-semibold mb-1">⚠ Tally Gateway Server: {status.tallyGatewayServer}</div>
+              <div>
+                Networked client mode — XML queries forward to{" "}
+                <code className="font-mono text-xs">{status.tallyGatewayServer}</code>.
+                If the gateway host is unreachable or slow, Tally may hang on heavy
+                operations (audit-lite, large Day Book queries). For best reliability,
+                use TallyMCP on the gateway host itself or ensure the host is on your
+                local network.
+              </div>
+            </div>
+          )}
+
+          {/* #131 — Dual-client warning */}
+          {status.configuredClients.length > 1 && (
+            <div className="mt-4 p-3 bg-tm-amber-soft border border-tm-amber-border rounded-lg text-xs leading-relaxed">
+              <div className="font-semibold mb-1">
+                ⚠ {status.configuredClients.length} AI clients configured ({status.configuredClients.join(", ")})
+              </div>
+              <div>
+                Each AI client spawns its own MCP server process. Tally's XML interface
+                is single-threaded — running queries from multiple clients simultaneously
+                can overload it and cause hangs. Use one client at a time during heavy
+                operations (audit-lite, large date-range Day Book).
+              </div>
+            </div>
+          )}
+
+          {/* #137 — Multiple TallyPrime installs warning */}
+          {status.multipleTallyInstalls && status.multipleTallyInstalls.length > 1 && (
+            <div className="mt-4 p-3 bg-tm-amber-soft border border-tm-amber-border rounded-lg text-xs leading-relaxed">
+              <div className="font-semibold mb-1">⚠ Multiple TallyPrime installs detected</div>
+              <ul className="list-disc list-inside mb-2">
+                {status.multipleTallyInstalls.map((p) => (
+                  <li key={p}>
+                    <code className="font-mono text-xs">{p}</code>
+                  </li>
+                ))}
+              </ul>
+              <div>
+                Tally Fix can only target one install. Either uninstall the unused
+                copy, or note which path Tally actually runs from. The Fix button is
+                disabled while multiple installs exist.
+              </div>
+            </div>
+          )}
+
           {needsFix && (
             <div className="mt-4">
               {status.isElevated === false && (
@@ -111,11 +177,19 @@ export function HealthCheck({ status, firewallSkipReason, onFixAll, onReCheck }:
                 <button
                   type="button"
                   onClick={onFixAll}
-                  className="bg-tm-blue text-white py-1.5 px-4 rounded font-medium text-sm hover:opacity-90"
+                  disabled={hasMultipleInstalls}
+                  aria-label={
+                    hasMultipleInstalls
+                      ? "Fix disabled — multiple TallyPrime installs detected. Uninstall the unused copy first."
+                      : undefined
+                  }
+                  className={`bg-tm-blue text-white py-1.5 px-4 rounded font-medium text-sm hover:opacity-90${hasMultipleInstalls ? " opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  {status.isElevated === false
-                    ? "Fix both (Admin needed) →"
-                    : "Fix both, continue →"}
+                  {hasMultipleInstalls
+                    ? "Fix both (disabled — multiple installs)"
+                    : status.isElevated === false
+                      ? "Fix both (Admin needed) →"
+                      : "Fix both, continue →"}
                 </button>
               </div>
             </div>

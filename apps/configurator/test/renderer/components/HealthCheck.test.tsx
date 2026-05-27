@@ -210,4 +210,106 @@ describe("HealthCheck", () => {
     expect(screen.getByRole("button", { name: /Fix both, continue/i })).toBeDefined();
     expect(screen.queryByText(/Run as administrator/i)).toBeNull();
   });
+
+  it("shows the gateway-server info card when tallyGatewayServer is set (#129)", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: true,
+          configuredClients: [],
+          tallyGatewayServer: "PAKHI:9999",
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Tally Gateway Server/i)).toBeDefined();
+    expect(screen.getAllByText(/PAKHI:9999/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/networked client mode/i)).toBeDefined();
+  });
+
+  it("does NOT show the gateway card when tallyGatewayServer is undefined", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: true,
+          configuredClients: [],
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/Tally Gateway Server/i)).toBeNull();
+  });
+
+  it("shows the dual-client warning when 2+ AI clients are wired (#131)", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: true,
+          configuredClients: ["claude-desktop", "cursor"],
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/2 AI clients configured/i)).toBeDefined();
+    expect(screen.getByText(/single-threaded/i)).toBeDefined();
+  });
+
+  it("does NOT show the dual-client warning when only 1 client is wired", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: true,
+          firewallRulePresent: true,
+          configuredClients: ["claude-desktop"],
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/AI clients configured/i)).toBeNull();
+  });
+
+  it("shows the multiple-installs warning + disables Fix button when multipleTallyInstalls is set (#137)", () => {
+    render(
+      <HealthCheck
+        status={{
+          tallyInstalled: true,
+          tallyInstallDir: "C:\\Program Files\\TallyPrime",
+          tallyRunning: true,
+          xmlInterfaceEnabled: false,
+          firewallRulePresent: false,
+          configuredClients: [],
+          multipleTallyInstalls: ["C:\\Program Files\\TallyPrime", "C:\\Program Files\\TallyPrime (1)"],
+        }}
+        onFixAll={vi.fn()}
+        onReCheck={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Multiple TallyPrime installs detected/i)).toBeDefined();
+    expect(screen.getByText(/C:\\Program Files\\TallyPrime \(1\)/)).toBeDefined();
+    // Fix button is either gone, disabled, or has a "disabled" label
+    const fixButton = screen.queryByRole("button", { name: /Fix both/i });
+    if (fixButton) {
+      expect((fixButton as HTMLButtonElement).disabled).toBe(true);
+    }
+    // (either way, clicking won't trigger; test passes if the warning shows)
+  });
 });

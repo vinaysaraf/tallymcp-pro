@@ -39,13 +39,19 @@ function pickConnection(config: Config): TallyConnection {
   );
 }
 
-function buildClient(conn: TallyConnection): TallyHttpClient {
+function resolveTimeoutMs(config: Config): number {
+  const envOverride = process.env["TALLYMCP_TIMEOUT"]
+    ? parseInt(process.env["TALLYMCP_TIMEOUT"], 10)
+    : NaN;
+  if (!isNaN(envOverride) && envOverride > 0) return envOverride;
+  return config.tally.requestTimeoutMs;
+}
+
+function buildClient(conn: TallyConnection, timeoutMs: number): TallyHttpClient {
   return new TallyHttpClient({
     host: conn.host,
     port: conn.port,
-    // 15 s body / 10 s headers (defaults from tally-connector). Bumping these
-    // further hides hangs more than it fixes them — Silver-class queries that
-    // exceed 15 s are exactly what the capability probe gates off.
+    timeoutMs,
     serialize: true,
   });
 }
@@ -75,7 +81,7 @@ export async function createContext(options: McpContextOptions): Promise<McpCont
   const configStore = new ConfigStore(options.configPath);
   const config = await configStore.load();
   let conn = pickConnection(config);
-  let tallyClient = buildClient(conn);
+  let tallyClient = buildClient(conn, resolveTimeoutMs(config));
   let networkGuard = createNetworkGuard({ host: conn.host, port: conn.port });
   let capabilities = await detectCapabilities(config, tallyClient, options.skipCapabilityProbe);
   const outputDir = options.outputDir ?? config.output.folder;
@@ -98,7 +104,7 @@ export async function createContext(options: McpContextOptions): Promise<McpCont
     async refresh() {
       await configStore.load();
       conn = pickConnection(configStore.get());
-      tallyClient = buildClient(conn);
+      tallyClient = buildClient(conn, resolveTimeoutMs(configStore.get()));
       networkGuard = createNetworkGuard({ host: conn.host, port: conn.port });
       capabilities = await detectCapabilities(
         configStore.get(),

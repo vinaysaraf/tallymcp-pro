@@ -1,4 +1,4 @@
-export { TallyHttpError } from "./errors.js";
+export { TallyHttpError, TallyRequestTimeoutError } from "./errors.js";
 export { TallyHttpClient, type TallyHttpClientOptions } from "./http-client.js";
 export { RequestSerializer } from "./serializer.js";
 export {

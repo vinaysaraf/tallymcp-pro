@@ -13,7 +13,7 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "package": "pnpm -r build && node installer/scripts/fetch-node.mjs && node installer/scripts/deploy-mcp-server.mjs && pnpm --filter @tallymcp/configurator exec electron-builder --config electron-builder.yml --win --publish never && node installer/scripts/checksum.mjs",
+    "package": "pnpm -r build && node installer/scripts/fetch-node.mjs && node installer/scripts/deploy-mcp-server.mjs && node installer/scripts/patch-installSection.mjs && pnpm --filter @tallymcp/configurator exec electron-builder --config electron-builder.yml --win --publish never && node installer/scripts/checksum.mjs",
     "package:install": "pwsh -NoProfile -File installer/test/install-smoke.ps1",
     "package:uninstall": "pwsh -NoProfile -File installer/test/uninstall-smoke.ps1",
     "dev:mcp": "pnpm --filter @tallymcp/mcp-server dev",

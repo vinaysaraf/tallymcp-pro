@@ -207,6 +207,49 @@ describe("handleHealthCheck", () => {
     const result = await handleHealthCheck({ scanRoots: [dir], runner });
     expect(result.isElevated).toBe(false);
   });
+
+  it("surfaces Tally Gateway Server when present in tally.ini (#129)", async () => {
+    const installDir = join(dir, "TallyPrime");
+    await mkdir(installDir);
+    await writeFile(join(installDir, "tally.exe"), "");
+    await writeFile(
+      join(installDir, "tally.ini"),
+      "[TALLY]\nDefault Companies=Yes\nTally Gateway Server=PAKHI:9999\nClient Server=Both\n",
+    );
+
+    const runner = new FakeExecRunner((cmd, _args): ExecResult => {
+      if (cmd === "tasklist") return { exitCode: 0, stdout: "INFO: No tasks", stderr: "" };
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    const result = await handleHealthCheck({ scanRoots: [dir], runner });
+    expect(result.tallyGatewayServer).toBe("PAKHI:9999");
+  });
+
+  it("leaves tallyGatewayServer undefined when not present in tally.ini", async () => {
+    const installDir = join(dir, "TallyPrime");
+    await mkdir(installDir);
+    await writeFile(join(installDir, "tally.exe"), "");
+    await writeFile(join(installDir, "tally.ini"), "[TALLY]\nClient Server=Both\n");
+
+    const runner = new FakeExecRunner(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+    const result = await handleHealthCheck({ scanRoots: [dir], runner });
+    expect(result.tallyGatewayServer).toBeUndefined();
+  });
+
+  it("tolerates whitespace + casing variations in Tally Gateway Server line", async () => {
+    const installDir = join(dir, "TallyPrime");
+    await mkdir(installDir);
+    await writeFile(join(installDir, "tally.exe"), "");
+    await writeFile(
+      join(installDir, "tally.ini"),
+      "[TALLY]\n  tally gateway server  =  somehost:1234  \n",
+    );
+
+    const runner = new FakeExecRunner(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+    const result = await handleHealthCheck({ scanRoots: [dir], runner });
+    expect(result.tallyGatewayServer).toBe("somehost:1234");
+  });
 });
 
 describe("handleTallyFix", () => {

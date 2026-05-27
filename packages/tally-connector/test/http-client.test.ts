@@ -1,10 +1,37 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MockAgent } from "undici";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TallyHttpError } from "../src/errors.js";
+import { TallyHttpError, TallyRequestTimeoutError } from "../src/errors.js";
 import { TallyHttpClient } from "../src/http-client.js";
+
+function createBlackHoleServer(): Promise<{ port: number; close: () => void }> {
+  return new Promise((resolve) => {
+    const server = createServer((_req, _res) => {
+      // Accept the connection but never write a response.
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as AddressInfo).port;
+      resolve({ port, close: () => server.close() });
+    });
+  });
+}
+
+function createFastResponseServer(body: string): Promise<{ port: number; close: () => void }> {
+  return new Promise((resolve) => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/xml" });
+      res.end(body);
+    });
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as AddressInfo).port;
+      resolve({ port, close: () => server.close() });
+    });
+  });
+}
 
 const samplesDir = join(dirname(fileURLToPath(import.meta.url)), "../../../samples");
 
@@ -132,5 +159,53 @@ describe("TallyHttpError", () => {
     });
     expect(err.name).toBe("TallyHttpError");
     expect(err.meta.statusCode).toBe(403);
+  });
+});
+
+describe("TallyRequestTimeoutError", () => {
+  it("has the correct name and message", () => {
+    const err = new TallyRequestTimeoutError("http://127.0.0.1:9000/", 150, 100);
+    expect(err.name).toBe("TallyRequestTimeoutError");
+    expect(err.message).toContain("http://127.0.0.1:9000/");
+    expect(err.message).toContain("150ms");
+    expect(err.message).toContain("100ms");
+  });
+});
+
+describe("TallyHttpClient timeout behaviour", () => {
+  it("throws TallyRequestTimeoutError when the server doesn't respond within timeoutMs", async () => {
+    const server = await createBlackHoleServer();
+    const c = new TallyHttpClient({ host: "127.0.0.1", port: server.port, timeoutMs: 100, serialize: false });
+    try {
+      await expect(c.post("<ENVELOPE/>")).rejects.toBeInstanceOf(TallyRequestTimeoutError);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("per-call timeoutMs overrides the instance default", async () => {
+    const server = await createBlackHoleServer();
+    try {
+      const c = new TallyHttpClient({ host: "127.0.0.1", port: server.port, timeoutMs: 10_000, serialize: false });
+      const start = Date.now();
+      await expect(c.post("<ENVELOPE/>", { timeoutMs: 100 })).rejects.toBeInstanceOf(
+        TallyRequestTimeoutError,
+      );
+      expect(Date.now() - start).toBeLessThan(5_000);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("does NOT timeout on a fast response (sanity)", async () => {
+    const responseBody = "<ENVELOPE><STATUS>1</STATUS></ENVELOPE>";
+    const server = await createFastResponseServer(responseBody);
+    try {
+      const c = new TallyHttpClient({ host: "127.0.0.1", port: server.port, timeoutMs: 5_000, charset: "utf-8", serialize: false });
+      const result = await c.post("<ENVELOPE/>");
+      expect(result).toContain("<STATUS>1</STATUS>");
+    } finally {
+      server.close();
+    }
   });
 });

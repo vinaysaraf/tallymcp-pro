@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.2 — Remote-install UX + connector hardening (2026-05-27)
+
+Patch release surfacing fixes from real-world v1.0.1 install on the user's networked TallyPrime setup (Tally Gateway Server=PAKHI:9999, 11 custom TDLs, dual Claude+Cursor MCP wire). Prepares the installer for a downstream remote install via AnyDesk on a friend's Gold Tally instance.
+
+### Fixed
+- **`tally_list_companies` no longer rejects display-format dates** (#133, already shipped on `main` via PR #8). `listCompanies` now routes `STARTINGFROM` + `BOOKSFROM` through `normalizeTallyDate()` (extracted to shared `connectors/date-utils.ts`), accepting both `20240401` (canonical) and `1-Apr-2024` (display format / Silver). 3 regression tests cover the matrix.
+- **NSIS installer's empty progress pane fixed** (#126). `installer/installer.nsh` gets a `!macro customHeader` block with `ShowInstDetails show` + `ShowUninstDetails show` — the only hook expanded AFTER electron-builder's `common.nsh` `nevershow`. Companion `installer/scripts/patch-installSection.mjs` (beforePack) replaces `SetDetailsPrint none` → `SetDetailsPrint both` in `node_modules/.../installSection.nsh` so the per-file extraction log actually prints. Without both, slow installs (Defender real-time scanning) feel frozen.
+- **MCP server prompts rephrased to avoid Claude's prompt-injection guardrail** (#132). All 6 prompts (`config`, `read`, `export`, `audit`, `dashboard`, `help`) rewritten from imperative ("Run X first. If it succeeds, call Y...") to descriptive prose ("Tools relevant for this task: X verifies Y. A typical sequence uses these in order."). New `apps/mcp-server/test/prompts-guardrail.test.ts` asserts no prompt content matches the imperative-pattern regex. Prompt `name` / `arguments` schemas preserved — existing user configs continue to work.
+
+### Added
+- **Connector request timeout** (#128). New `TallyRequestTimeoutError` class (exported from `@tallymcp/tally-connector`). `client.post(xml, { timeoutMs })` accepts a per-call override; instance-level default via constructor; global default via new `config.tally.requestTimeoutMs` field (defaults 30000); env var `TALLYMCP_TIMEOUT` overrides everything. Replaces the previous 60s body / 30s headers undici split — single 30s total now, fail-fast instead of hanging indefinitely. `pnpm diagnose-tally` maps to a new `REQUEST_TIMEOUT` diagnostic code with the gateway-reachability hint. Critical safety net for networked Tally setups where `Ignore Tcp Timeout=Yes` in tally.ini would otherwise let Tally wait forever for an unreachable gateway.
+- **HealthCheck: Tally Gateway Server info** (#129). `HealthCheckResponse.tallyGatewayServer?: string` populated from tally.ini parse (case + whitespace tolerant regex). Renders a yellow ⚠ card in the Configurator: "Tally Gateway Server: HOST:PORT — networked client mode. If gateway is unreachable, Tally may hang on heavy queries." Also adds `HealthCheckResponse.tallyEdition?: "silver" | "gold" | "unknown"` (read from `config.tally.assumedEdition` if set) with an info row above the Patch A card.
+- **HealthCheck: Dual-client warning** (#131). When `configuredClients.length > 1`, renders a yellow ⚠ card: "N AI clients configured. Each runs its own MCP server. Tally's XML interface is single-threaded — use one client at a time during heavy operations." Catches the dual Claude+Cursor wire pattern that overloads Tally during audit-lite (Cursor's deep-analysis finding 2026-05-27).
+- **HealthCheck: Multiple-installs warning + disabled Fix button** (#137). `multipleTallyInstalls` was already returned by `handleHealthCheck` but never rendered. Now shows a yellow ⚠ card listing all detected install paths + disables the Fix button with explanatory label ("Fix both (disabled — multiple installs)") since `handleTallyFix` throws on `>1` installs. Prevents the bad UX of a button that always fails.
+- **Docs**: new `docs/v1-installer-defender-exclusion.md` — folder-scoped AV exclusion guide for 7 major antivirus products (Defender, Bitdefender, Norton, McAfee, Kaspersky, Sophos, Quick Heal) + managed-Windows IT-approval section + diagnostic PowerShell snippet. Cancel-button-during-install note added to `docs/v1-installer-phase4-manual-smoke.md` (Known Phase 4 limitations).
+- **Tests**: configurator 114 → 122 (+8 for the 3 HealthCheck additions). tally-connector 23 → 26 (+3 for timeout). mcp-server 14 → 16 (+2 for prompt guardrail). report-engine 44 → 47 (+3 for #133 date format, already on main). Total v1.0.2 adds +16 tests across 4 packages.
+
+### Changed
+- `apps/configurator/package.json` version 1.0.1 → 1.0.2.
+- Root `package.json` `package` script: inserts `node installer/scripts/patch-installSection.mjs` before the electron-builder invocation.
+
+### Notes
+- Per the v1.0.2 plan (`ai-review/v1.0.2-plan-for-remote-gold-install.md`), the following are deferred to v1.0.3+: edition heuristic refinement (#134), Silver over-gating fix for TB/P&L/BS (#136), audit-lite sequential + progress streaming (#130), TDL `$$Walk:Voucher` workaround for Silver users (#135).
+- v1.0.2 was reviewed by Cursor on `ai-review/v1.0.2-plan-for-remote-gold-install.md` with verdict ✅ APPROVED TO EXECUTE.
+
 ## v1.0.0-phase4 — Release pipeline + auto-update (2026-05-26)
 
 ### Added

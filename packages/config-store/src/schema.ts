@@ -45,6 +45,17 @@ export const ConfigSchema = z
          * "silver" disables voucher tools without probing.
          */
         assumedEdition: z.enum(["auto", "silver", "gold"]).default("auto"),
+        /**
+         * Per-request timeout for XML POSTs to Tally (milliseconds). On
+         * timeout, the connector throws TallyRequestTimeoutError instead
+         * of hanging indefinitely — important for networked Tally setups
+         * where the gateway forwards to a remote host that may be slow or
+         * unreachable. Default 30000 (30s); raise to 60000+ for large
+         * voucher queries on slow Tally installs. Env var
+         * TALLYMCP_TIMEOUT overrides this at process start.
+         * (v1.0.2 #128)
+         */
+        requestTimeoutMs: z.number().int().positive().default(30_000),
       })
       .default({}),
     output: z
