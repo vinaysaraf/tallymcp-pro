@@ -88,3 +88,80 @@ describe("ClientWirer.add", () => {
     await expect(wirer.add("claude-desktop")).rejects.toThrow(/parse/i);
   });
 });
+
+describe("ClientWirer.add — MSIX/Store path (v1.0.3 #140)", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "wirer-msix-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("writes Claude Desktop config to BOTH standard + MSIX paths when both exist", async () => {
+    const appData = join(dir, "Roaming");
+    const localAppData = join(dir, "Local");
+    // Pre-create both folders so the resolver picks both up.
+    await (await import("node:fs/promises")).mkdir(join(appData, "Claude"), { recursive: true });
+    await (await import("node:fs/promises")).mkdir(
+      join(localAppData, "Packages", "Claude_test12345", "LocalCache", "Roaming", "Claude"),
+      { recursive: true },
+    );
+
+    const env = { APPDATA: appData, LOCALAPPDATA: localAppData };
+    const wirer = makeWirer(env);
+    const result = await wirer.add("claude-desktop");
+
+    expect(result.configPaths).toHaveLength(2);
+    expect([...result.variants].sort()).toEqual(["msix", "standard"]);
+
+    // Verify BOTH files were written with our entry
+    for (const path of result.configPaths) {
+      const written = JSON.parse(await readFile(path, "utf8"));
+      expect(written.mcpServers["tallymcp-pro"]).toEqual(ENTRY);
+    }
+  });
+
+  it("writes only to MSIX path when standard Claude folder is absent", async () => {
+    const appData = join(dir, "Roaming");
+    const localAppData = join(dir, "Local");
+    await (await import("node:fs/promises")).mkdir(
+      join(localAppData, "Packages", "Claude_test12345", "LocalCache", "Roaming", "Claude"),
+      { recursive: true },
+    );
+
+    const env = { APPDATA: appData, LOCALAPPDATA: localAppData };
+    const wirer = makeWirer(env);
+    const result = await wirer.add("claude-desktop");
+
+    expect(result.configPaths).toHaveLength(1);
+    expect(result.variants).toEqual(["msix"]);
+    const written = JSON.parse(await readFile(result.configPaths[0]!, "utf8"));
+    expect(written.mcpServers["tallymcp-pro"]).toEqual(ENTRY);
+  });
+
+  it("falls back to creating standard path when NEITHER directory pre-exists", async () => {
+    const appData = join(dir, "Roaming");
+    const localAppData = join(dir, "Local");
+    const env = { APPDATA: appData, LOCALAPPDATA: localAppData };
+    const wirer = makeWirer(env);
+    const result = await wirer.add("claude-desktop");
+
+    expect(result.configPaths).toHaveLength(1);
+    expect(result.variants).toEqual(["standard"]);
+    expect(result.configPaths[0]).toContain(`${join("Roaming", "Claude")}`);
+  });
+
+  it("non-Claude-Desktop clients still return single-path result", async () => {
+    const env = {
+      APPDATA: join(dir, "Roaming"),
+      LOCALAPPDATA: join(dir, "Local"),
+      USERPROFILE: join(dir, "userprofile"),
+    };
+    const wirer = makeWirer(env);
+    const result = await wirer.add("cursor");
+    expect(result.configPaths).toHaveLength(1);
+    expect(result.variants).toEqual(["standard"]);
+    expect(result.configPath).toBe(result.configPaths[0]);
+  });
+});
