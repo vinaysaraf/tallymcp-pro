@@ -266,6 +266,7 @@ export function App(): JSX.Element {
         <AddMcpModal
           clientId={modalFor}
           displayName={CLIENT_DISPLAY_NAMES[modalFor]}
+          msixDetected={health?.claudeDesktopVariants?.includes("msix") ?? false}
           onConfirm={handleConfirmAdd}
           onCancel={() => setModalFor(undefined)}
           onShowSmartScreenGuide={() => setShowSmartScreen(true)}

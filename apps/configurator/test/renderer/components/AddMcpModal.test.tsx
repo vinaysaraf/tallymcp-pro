@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
 import { AddMcpModal } from "../../../src/renderer/components/AddMcpModal.js";
 
 describe("AddMcpModal", () => {
@@ -9,6 +10,7 @@ describe("AddMcpModal", () => {
   const baseProps = {
     clientId: "claude-desktop" as const,
     displayName: "Claude Desktop",
+    msixDetected: false,
     onConfirm: vi.fn(),
     onCancel: vi.fn(),
     onShowSmartScreenGuide: vi.fn(),
@@ -48,5 +50,52 @@ describe("AddMcpModal", () => {
     render(<AddMcpModal {...baseProps} onShowSmartScreenGuide={onShowSmartScreenGuide} />);
     fireEvent.click(screen.getByText(/Show me what to click/i));
     expect(onShowSmartScreenGuide).toHaveBeenCalled();
+  });
+});
+
+describe("AddMcpModal — wire-time MSIX warning (#140 Cursor rec #2)", () => {
+  afterEach(cleanup);
+
+  it("renders MSIX wire-time warning card when claude-desktop AND msixDetected=true", () => {
+    render(
+      <AddMcpModal
+        clientId="claude-desktop"
+        displayName="Claude Desktop"
+        msixDetected={true}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+        onShowSmartScreenGuide={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("msix-wire-warning")).toBeInTheDocument();
+    expect(screen.getByText(/claude\.ai\/download/i)).toBeInTheDocument();
+  });
+
+  it("does NOT render MSIX warning when msixDetected=false", () => {
+    render(
+      <AddMcpModal
+        clientId="claude-desktop"
+        displayName="Claude Desktop"
+        msixDetected={false}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+        onShowSmartScreenGuide={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("msix-wire-warning")).not.toBeInTheDocument();
+  });
+
+  it("does NOT render MSIX warning for non-Claude-Desktop clients even if msixDetected=true", () => {
+    render(
+      <AddMcpModal
+        clientId="cursor"
+        displayName="Cursor"
+        msixDetected={true}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+        onShowSmartScreenGuide={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("msix-wire-warning")).not.toBeInTheDocument();
   });
 });
