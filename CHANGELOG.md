@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.3 — MSIX/Store Claude Desktop detection + restart toast + Disconnect (2026-05-27)
+
+Critical hotfix shipped same-day as v1.0.2 after a real-world remote-install via AnyDesk on a friend's Gold Tally machine surfaced that the Configurator wires Claude Desktop to the wrong path when the user installed Claude Desktop from the Microsoft Store. The Store version is AppContainer-sandboxed under `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\` instead of the standard `%APPDATA%\Claude\` — v1.0.2 only wrote to the standard path, so Store-version Claude Desktop never saw TallyMCP. Same hotfix surfaces a one-click Disconnect button on every configured client tile so non-technical users can cleanly remove TallyMCP from any AI tool without editing JSON.
+
+### Fixed
+- **MSIX/Store Claude Desktop config detection** (#140 CRITICAL). New `resolveClaudeDesktopConfigPaths(env, fs)` helper in `@tallymcp/client-wirer` (6 unit tests) scans `%LOCALAPPDATA%\Packages\` for `Claude_*` entries. `ClientWirer.add()` now writes to ALL applicable Claude Desktop config paths — both standard and MSIX sandbox if both exist. `ClientWirer.remove()` strips from the same path set so disconnect cleans every flavor in one click. `detectConfiguredClients` in `handleHealthCheck` probes the same path set, so the HealthCheck tile reflects reality regardless of which Claude Desktop flavor the user has. `WireResult` / `WireResponse` extended with `configPaths: string[]` + `variants: ("standard"|"msix")[]` to carry the multi-path info through to the renderer.
+
+### Added
+- **Post-wire restart toast with MSIX caveat** (#139, #140). `DoneScreen.tsx` rewritten — for Claude Desktop, renders explicit "right-click the Claude Desktop icon in the system tray → Quit, then reopen" instructions (closing the window doesn't reload the config). When `variants` includes `"msix"`, an amber caveat card surfaces the Store-version AppContainer limitation and recommends installing the standalone version from `claude.ai/download` if the wire-up doesn't take effect. For non–Claude-Desktop clients (Cursor, Claude Code, LM Studio, Ollama), the existing generic restart copy is preserved.
+- **Wire-time MSIX warning in `AddMcpModal`** (#140, Cursor plan-review rec #2). When the user clicks "+ Add MCP" on the Claude Desktop tile AND `HealthCheckResponse.claudeDesktopVariants` includes `"msix"`, the modal renders an amber warning card BEFORE the Add MCP button. Users learn about the AppContainer caveat (and the `claude.ai/download` standalone alternative) upfront — no wasted tray-quit cycle. The path-display block in the modal also shows both `%APPDATA%\Claude\…` and `%LOCALAPPDATA%\Packages\Claude_*\…` when MSIX is detected.
+- **One-click Disconnect button on configured tiles** (#141). Every connected client tile (`✓ Connected`) now shows a red **Disconnect** button next to **Reconfigure**. Click → small confirm modal ("Disconnect TallyMCP from <Client>? We'll surgically remove only the `tallymcp-pro` entry — your other MCP servers, data, and <Client>'s own settings are unaffected.") → click Disconnect → tile flips back to `+ Add MCP`. Backend wiring (`ClientWirer.remove`, `handleUnwireMcp`, UNWIRE_MCP IPC, `unmarkClientConfigured` store) was already in place from v1.0.2; v1.0.3 adds the UI surface (Disconnect button on `ClientTile.tsx`, new `DisconnectConfirmModal.tsx` component, `handleDisconnect` + `handleConfirmDisconnect` in `App.tsx`).
+
+### Changed
+- `apps/configurator/package.json` version 1.0.2 → 1.0.3.
+- `packages/client-wirer/src/wirer.ts` — `add()` and `remove()` iterate all resolved config paths; combined action is `added` if any path was added, `updated` if any was updated, `noop` only when all paths were already correct.
+- `packages/client-wirer/src/types.ts` + `apps/configurator/src/shared/ipc-types.ts` — `WireResult` / `WireResponse` / `UnwireResult` / `UnwireResponse` extended with `configPaths` + `variants`. `configPath` (singular) retained as `=== configPaths[0]` for back-compat with v1.0.2 consumers.
+- `apps/configurator/src/renderer/components/TileGrid.tsx` + `ClientTile.tsx` — added `onDisconnect` prop threaded from `App.tsx`.
+
+### Notes
+- The MSIX detection helper uses a generic `existsSync` + `readdirSync` probe interface so v1.0.4+ can extend it to detect other future Claude Desktop install variants without changing the wirer's API.
+- Disconnect is destructive but reversible — the confirm modal mirrors the existing `RestoreConfirmModal` pattern (Cancel + red destructive action). The pre-existing `.bak` backup created at first wire is preserved through disconnect, so users could even manually restore the prior config state if needed.
+- Test count: client-wirer +12 (paths helper 6 + types 2 + wirer-add MSIX 4); configurator +18 (DoneScreen variants 4 + ipc-handlers MSIX 4 + AddMcpModal MSIX 3 + ClientTile disconnect 3 + DisconnectConfirmModal 4). Total v1.0.3 adds **+30 tests** across the workspace (client-wirer 45→57, configurator 122→140).
+- Cursor plan-review verdict was ⚠ NEEDS REVISION; all 3 blocking issues (tm-yellow/tm-red Tailwind, public-api.test.ts) and 6 recommendations (wire-time MSIX warning, data-testid, FakeExecRunner, code comments) folded into the plan before execution.
+- Open follow-ups deferred to v1.0.4: #138 (Restart Tally modal after autofix), #134 (edition heuristic refinement), #136 (TB/P&L/BS over-gating fix), aria-describedby on modals, optional success/Already-disconnected toasts.
+- v1.0.3 is a same-day hotfix; v1.0.2's defender-exclusion docs, timeout, gateway visibility, and prompt rewrites all carry through unchanged.
+
 ## v1.0.2 — Remote-install UX + connector hardening (2026-05-27)
 
 Patch release surfacing fixes from real-world v1.0.1 install on the user's networked TallyPrime setup (Tally Gateway Server=PAKHI:9999, 11 custom TDLs, dual Claude+Cursor MCP wire). Prepares the installer for a downstream remote install via AnyDesk on a friend's Gold Tally instance.
