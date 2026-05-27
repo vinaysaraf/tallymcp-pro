@@ -10,6 +10,7 @@ import { Settings } from "./components/Settings.js";
 import { SmartScreenGuide } from "./components/SmartScreenGuide.js";
 import { DoneScreen } from "./components/DoneScreen.js";
 import { RestoreConfirmModal } from "./components/RestoreConfirmModal.js";
+import { DisconnectConfirmModal } from "./components/DisconnectConfirmModal.js";
 import { ITPolicyHelpModal } from "./components/ITPolicyHelpModal.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
 import type {
@@ -34,7 +35,6 @@ export function App(): JSX.Element {
   const setTallyStatus = useAppStore((s) => s.setTallyStatus);
   const configuredClients = useAppStore((s) => s.configuredClients);
   const markClientConfigured = useAppStore((s) => s.markClientConfigured);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const unmarkClientConfigured = useAppStore((s) => s.unmarkClientConfigured);
   const lastError = useAppStore((s) => s.lastError);
   const setLastError = useAppStore((s) => s.setLastError);
@@ -55,6 +55,7 @@ export function App(): JSX.Element {
   const [doneVariants, setDoneVariants] = useState<ClientConfigVariant[]>(["standard"]);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showITPolicyModal, setShowITPolicyModal] = useState(false);
+  const [disconnectFor, setDisconnectFor] = useState<ClientId | undefined>(undefined);
 
   // Initial load
   useEffect(() => {
@@ -98,6 +99,27 @@ export function App(): JSX.Element {
       setDoneVariants(result.variants);
       setShowDoneFor(wiredClient);  // show DoneScreen after success
       clearLastError();  // success → wipe any prior error state (M1)
+    } catch (err) {
+      setLastError((err as Error).message);
+    }
+  };
+
+  const handleDisconnect = (clientId: ClientId): void => setDisconnectFor(clientId);
+
+  const handleConfirmDisconnect = async (): Promise<void> => {
+    if (!disconnectFor) return;
+    const api = getApi();
+    const clientId = disconnectFor;
+    setDisconnectFor(undefined);
+    try {
+      // api.unwireMcp() uses writeAtomic in client-wirer (fsync + rename),
+      // so the disk state is durable before this promise resolves. The
+      // mount-time healthCheck on next launch re-hydrates configuredClients
+      // from disk — no race between optimistic local state and persisted
+      // state. (Cursor v1.0.3 plan-review answer #4.)
+      await api.unwireMcp({ clientId });
+      unmarkClientConfigured(clientId);
+      clearLastError();
     } catch (err) {
       setLastError((err as Error).message);
     }
@@ -248,6 +270,7 @@ export function App(): JSX.Element {
           configuredClients={configuredClients}
           onAdd={handleAdd}
           onReconfigure={handleReconfigure}
+          onDisconnect={handleDisconnect}
         />
       )}
       {currentScreen === "health-check" && health && (
@@ -285,6 +308,13 @@ export function App(): JSX.Element {
         <RestoreConfirmModal
           onConfirm={handleRestoreConfirmed}
           onCancel={() => setShowRestoreConfirm(false)}
+        />
+      )}
+      {disconnectFor !== undefined && (
+        <DisconnectConfirmModal
+          clientDisplayName={CLIENT_DISPLAY_NAMES[disconnectFor]}
+          onConfirm={handleConfirmDisconnect}
+          onCancel={() => setDisconnectFor(undefined)}
         />
       )}
       {showITPolicyModal && (

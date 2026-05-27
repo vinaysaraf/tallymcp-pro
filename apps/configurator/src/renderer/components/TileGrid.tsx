@@ -13,12 +13,14 @@ export interface TileGridProps {
   configuredClients: Set<ClientId>;
   onAdd: (clientId: ClientId) => void;
   onReconfigure: (clientId: ClientId) => void;
+  onDisconnect: (clientId: ClientId) => void;
 }
 
 export function TileGrid({
   configuredClients,
   onAdd,
   onReconfigure,
+  onDisconnect,
 }: TileGridProps): JSX.Element {
   return (
     <div className="grid grid-cols-3 gap-2">
@@ -30,6 +32,7 @@ export function TileGrid({
           configured={configuredClients.has(id)}
           onAdd={onAdd}
           onReconfigure={onReconfigure}
+          onDisconnect={onDisconnect}
         />
       ))}
     </div>
