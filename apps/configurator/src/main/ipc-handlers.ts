@@ -8,6 +8,7 @@ import {
   resolveClaudeDesktopConfigPaths,
   type McpServerEntry,
   type ClientId,
+  type ClientConfigVariant,
 } from "@tallymcp/client-wirer";
 import {
   detectTallyInstall,
@@ -216,10 +217,21 @@ export async function handleHealthCheck(
   // wire-time warning before the user clicks "Add MCP". If a Store-version
   // Claude Desktop is detected, we surface the AppContainer caveat upfront
   // instead of waiting for DoneScreen.
-  const claudeDesktopVariants = resolveClaudeDesktopConfigPaths(
-    ctx.env ?? process.env,
-    { existsSync, readdirSync },
-  ).map((p) => p.variant);
+  //
+  // The resolver throws when APPDATA is missing from the environment. That's
+  // expected on Linux CI (and possible in unusual Windows launch contexts).
+  // We treat any throw here as "no Claude Desktop detected" — the variant
+  // array stays empty, AddMcpModal's MSIX warning won't render, and the
+  // wire path (which gets its own env at IPC time) is unaffected.
+  let claudeDesktopVariants: ClientConfigVariant[] = [];
+  try {
+    claudeDesktopVariants = resolveClaudeDesktopConfigPaths(
+      ctx.env ?? process.env,
+      { existsSync, readdirSync },
+    ).map((p) => p.variant);
+  } catch {
+    // APPDATA missing or another resolver-side failure — leave as [].
+  }
 
   return {
     tallyInstalled,
