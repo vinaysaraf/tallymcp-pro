@@ -1,9 +1,11 @@
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
+import { existsSync, readdirSync } from "node:fs";
 import {
   ClientWirer,
   CLIENT_REGISTRY,
   resolveClientConfigPath,
+  resolveClaudeDesktopConfigPaths,
   type McpServerEntry,
   type ClientId,
 } from "@tallymcp/client-wirer";
@@ -97,25 +99,48 @@ const ALL_CLIENT_IDS: ClientId[] = [
  * "tallymcp-pro" entry under the registry's serversKey. Missing files,
  * unreadable JSON, and missing keys all count as "not configured".
  * Strips a UTF-8 BOM before parse (matches client-wirer's behavior).
+ *
+ * For claude-desktop, ALL applicable paths (standard + MSIX) are probed —
+ * any match counts as configured (#140).
  */
 async function detectConfiguredClients(
   env: Record<string, string | undefined>,
 ): Promise<ClientId[]> {
   const configured: ClientId[] = [];
   for (const id of ALL_CLIENT_IDS) {
+    // For claude-desktop, probe ALL applicable paths (standard + MSIX).
+    // For other clients, the single-path resolver from clients.ts applies.
+    // resolveClientConfigPath may throw if a required env var is absent
+    // (e.g. USERPROFILE) — treat that the same as "not configured".
+    let probePaths: string[];
     try {
-      const configPath = resolveClientConfigPath(id, env);
-      let raw = await readFile(configPath, "utf8");
-      if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const serversKey = CLIENT_REGISTRY[id].serversKey;
-      const servers = parsed[serversKey] as Record<string, unknown> | undefined;
-      if (servers && typeof servers === "object" && "tallymcp-pro" in servers) {
-        configured.push(id);
-      }
+      probePaths =
+        id === "claude-desktop"
+          ? resolveClaudeDesktopConfigPaths(env, { existsSync, readdirSync }).map(
+              (p) => p.path,
+            )
+          : [resolveClientConfigPath(id, env)];
     } catch {
-      // ENOENT, malformed JSON, missing keys — all "not configured"
+      // Missing env var — skip this client
+      continue;
     }
+    const serversKey = CLIENT_REGISTRY[id].serversKey;
+    let found = false;
+    for (const configPath of probePaths) {
+      try {
+        let raw = await readFile(configPath, "utf8");
+        if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const servers = parsed[serversKey] as Record<string, unknown> | undefined;
+        if (servers && typeof servers === "object" && "tallymcp-pro" in servers) {
+          found = true;
+          break;
+        }
+      } catch {
+        // ENOENT, malformed JSON, missing keys — try next probe path
+      }
+    }
+    if (found) configured.push(id);
   }
   return configured;
 }
@@ -187,6 +212,15 @@ export async function handleHealthCheck(
     ctx.env ?? process.env,
   );
 
+  // claudeDesktopVariants — used by AddMcpModal (Task 7) to show an MSIX
+  // wire-time warning before the user clicks "Add MCP". If a Store-version
+  // Claude Desktop is detected, we surface the AppContainer caveat upfront
+  // instead of waiting for DoneScreen.
+  const claudeDesktopVariants = resolveClaudeDesktopConfigPaths(
+    ctx.env ?? process.env,
+    { existsSync, readdirSync },
+  ).map((p) => p.variant);
+
   return {
     tallyInstalled,
     tallyInstallDir: tallyInstall?.installDir,
@@ -198,6 +232,7 @@ export async function handleHealthCheck(
     isElevated,
     tallyGatewayServer,
     tallyEdition,
+    claudeDesktopVariants,
   };
 }
 

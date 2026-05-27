@@ -35,6 +35,9 @@ export type ClientId =
   | "lm-studio"
   | "ollama";
 
+/** Variant tag for Claude Desktop config paths (v1.0.3+ #140). Mirrors the type in @tallymcp/client-wirer to avoid cross-package import in the shared preload-bundled module. */
+export type ClientConfigVariant = "standard" | "msix";
+
 export interface WireRequest {
   clientId: ClientId;
   // NOTE: installDir is NOT renderer-supplied. Main resolves the canonical
@@ -93,6 +96,17 @@ export interface HealthCheckResponse {
    * undefined = auto-probe (default).
    */
   tallyEdition?: "silver" | "gold" | "unknown";
+  /**
+   * Detected Claude Desktop install flavors on this machine (v1.0.3+ #140).
+   * Possible values per element: `"standard"` (standalone .exe from
+   * claude.ai/download — config at `%APPDATA%\Claude\`), or `"msix"`
+   * (Microsoft Store / AppContainer-sandboxed — config at
+   * `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`). When
+   * `"msix"` is present, the renderer's `AddMcpModal` shows a wire-time
+   * caveat that Store-version Claude Desktop may not be able to launch
+   * local MCP servers from its sandbox.
+   */
+  claudeDesktopVariants?: ClientConfigVariant[];
 }
 
 export interface TallyFixResponse {
