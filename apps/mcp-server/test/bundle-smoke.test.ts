@@ -1,5 +1,5 @@
 // apps/mcp-server/test/bundle-smoke.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, it } from "vitest";
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { join, dirname } from "node:path";
