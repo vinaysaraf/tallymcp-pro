@@ -73,8 +73,12 @@ packages/
 
 ## Wiring to an AI client
 
-After `pnpm build`, the MCP server entry is `apps/mcp-server/dist/main.js`. To
-connect from **Claude Desktop** or **Cursor**, add an entry like:
+After `pnpm build`, the MCP server entry (for local dev) is
+`apps/mcp-server/dist/main.js`. In an **installed** TallyMCP (from the NSIS
+`.exe`), the entry is the bundled `<installDir>\mcp-server\main.bundle.js`
+(single esbuild bundle, no node_modules — v1.0.5+); the Configurator wires
+that path for you. To connect manually from **Claude Desktop** or **Cursor**
+in a dev checkout, add an entry like:
 
 ```json
 {

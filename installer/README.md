@@ -14,8 +14,9 @@ CSC env vars are set.
 - `scripts/fetch-node.mjs` — downloads a pinned portable Node 20 LTS
   and caches it at `installer/staging/node.exe`.
 - `scripts/deploy-mcp-server.mjs` — builds the esbuild bundle and copies
-  3 files to `installer/staging/mcp-server/`: `main.bundle.js`, `package.json`,
-  and `README.md`. Single-file bundle; no node_modules tree (v1.0.5+).
+  3 files to `installer/staging/mcp-server/`: `main.bundle.js`,
+  `main.bundle.js.map`, and a minimal `package.json`. Single-file bundle;
+  no node_modules tree (v1.0.5+).
 - `scripts/checksum.mjs` — writes a `.sha256` sidecar next to the
   built installer.
 - `test/install-smoke.ps1` — runs the built installer headlessly and
