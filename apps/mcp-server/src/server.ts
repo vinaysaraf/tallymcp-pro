@@ -447,11 +447,18 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     "Emit a copy-pasteable MCP client config snippet for Claude Desktop, Cursor, LM Studio, or Ollama.",
     {
       client: z.enum(["cursor", "claude-desktop", "lm-studio", "ollama"]),
-      serverEntry: z.string().optional().describe("Override the path to dist/main.js."),
+      serverEntry: z.string().optional().describe("Override the MCP server entry path. Defaults to the running server's own path — main.bundle.js when installed, dist/main.js in a dev checkout."),
     },
     async ({ client, serverEntry }) => {
       try {
-        const entry = serverEntry ?? process.env.TALLYMCP_SERVER_ENTRY ?? "dist/main.js";
+        // Default to the server's OWN running entry (process.argv[1]) so the
+        // emitted snippet points at wherever this server actually lives:
+        // <installDir>\mcp-server\main.bundle.js when installed, or the dev
+        // dist/main.js in a checkout. The old hardcoded "dist/main.js" default
+        // generated a broken path for installed v1.0.5 users (no dist/ subdir;
+        // Cursor PR #12 review). The final literal is a last-resort fallback.
+        const entry =
+          serverEntry ?? process.env.TALLYMCP_SERVER_ENTRY ?? process.argv[1] ?? "main.bundle.js";
         return jsonResult(
           exportMcpClientConfig({
             client,

@@ -8,7 +8,7 @@ export type SupportedClient = "cursor" | "claude-desktop" | "claude-code" | "lm-
 
 export interface McpClientConfigOptions {
   client: SupportedClient;
-  /** Absolute path to the built `dist/main.js`. */
+  /** Absolute path to the MCP server entry — `dist/main.js` in a dev checkout, `main.bundle.js` when installed (v1.0.5+). */
   serverEntry: string;
   /** Path to the user's config.json. */
   configPath: string;
