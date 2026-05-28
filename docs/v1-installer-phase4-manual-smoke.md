@@ -126,3 +126,40 @@ guide.
 - **No telemetry on update acceptance rate** — we don't know how
   many users click "Update now" vs "Later" vs dismiss. Spec §10
   defers this; opt-in telemetry is a v1.1+ item.
+
+## Upgrade flow (v1.0.4 → v1.0.5+)
+
+**TL;DR — three steps after an upgrade:**
+1. Launch the Configurator (auto-updates via electron-updater within ~5 sec, OR install the new `.exe` manually)
+2. Click **Reconfigure** on each `✓ Connected` tile (rewrites the wire path)
+3. Quit each AI client from the system tray, then reopen
+
+### Why Reconfigure is required after v1.0.5
+
+The v1.0.5 installer changes the MCP server entry path inside `<installDir>\mcp-server\` from `dist\main.js` to `main.bundle.js` (single-file esbuild bundle, no node_modules). The Configurator does NOT automatically rewrite previously-wired AI client config files when it upgrades — those JSON files live outside the install dir (`%APPDATA%\Claude\claude_desktop_config.json` etc.) and are user state, not install state. Clicking Reconfigure on each tile writes the new bundle path into the AI client config.
+
+### Why in-place upgrade DOES work (no manual uninstall needed)
+
+NSIS detects the existing install at the same `<installDir>` and prompts: "TallyMCP v1.0.x is already installed. Click Next to overwrite the previous installation." This is normal Windows installer UX — it's NOT asking you to uninstall first. Just click Next through the wizard. Your `config.json`, AI client wirings (after Reconfigure — see above), and tally.ini backup are preserved.
+
+### Auto-update via electron-updater
+
+1. Launch the Configurator on any v1.0.3+ install
+2. Within ~5 seconds, the blue update banner appears at top
+3. Click **Update now** — Configurator downloads the new `.exe` in background, shows progress bar
+4. When download completes, click **Restart** — Configurator quits, the new installer runs silently, the app relaunches at the new version
+5. Click **Reconfigure** on each connected tile (Step 2 above)
+6. Restart your AI clients (Step 3 above)
+
+### Manual upgrade (if auto-update fails)
+
+1. Download `TallyMCP-Setup-v1.0.5.exe` from the GitHub Release page
+2. Close the Configurator if open
+3. Run the `.exe` — click Next through the overwrite prompt
+4. Open the Configurator — verify version 1.0.5 in the status bar
+5. Click **Reconfigure** on each connected tile
+6. Restart your AI clients
+
+### Verification
+
+After upgrade + Reconfigure, ask Claude Desktop / Cursor: *"Call the test_connection tool from tallymcp-pro and show me the result."* If it returns a structured response with Tally version info, you're good. If you see `ERR_MODULE_NOT_FOUND` or `Cannot find package` in the AI client's MCP logs, you forgot to Reconfigure — go back to Step 2.
