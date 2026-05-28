@@ -13,9 +13,10 @@ CSC env vars are set.
   `TallyMCP.exe --uninstall-cleanup` before file removal.
 - `scripts/fetch-node.mjs` — downloads a pinned portable Node 20 LTS
   and caches it at `installer/staging/node.exe`.
-- `scripts/deploy-mcp-server.mjs` — runs `pnpm deploy --filter
-  @tallymcp/mcp-server --prod installer/staging/mcp-server` so the
-  installer has a self-contained mcp-server tree with flat node_modules.
+- `scripts/deploy-mcp-server.mjs` — builds the esbuild bundle and copies
+  3 files to `installer/staging/mcp-server/`: `main.bundle.js`,
+  `main.bundle.js.map`, and a minimal `package.json`. Single-file bundle;
+  no node_modules tree (v1.0.5+).
 - `scripts/checksum.mjs` — writes a `.sha256` sidecar next to the
   built installer.
 - `test/install-smoke.ps1` — runs the built installer headlessly and

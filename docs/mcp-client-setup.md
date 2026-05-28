@@ -11,11 +11,21 @@ MCP support today.
 
 ## Where the server lives
 
-The compiled entry is at:
+**Development / workspace:** the compiled entry is at:
 
 ```
 <repo>/apps/mcp-server/dist/main.js
 ```
+
+**Installed (v1.0.5+):** the server ships as a single esbuild bundle at:
+
+```
+<installDir>\mcp-server\main.bundle.js
+```
+
+where `<installDir>` is `%LOCALAPPDATA%\Programs\TallyMCP` (the default
+NSIS user-mode install dir). No `dist/` subdirectory and no `node_modules`
+tree exist under the installed `mcp-server\` folder as of v1.0.5.
 
 It expects `TALLYMCP_CONFIG` in the environment pointing at a writable JSON
 file. If the file does not exist the server creates it with safe defaults

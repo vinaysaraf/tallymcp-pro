@@ -25,11 +25,13 @@ files:
   - "!node_modules/**"
 
 # extraFiles land at the NSIS install dir ROOT (not inside `resources/`),
-# which is what the (Phase 3 migrated) wire snippet expects:
+# which is what the wire snippet expects:
 #   command: <installDir>\node.exe
-#   args:    <installDir>\mcp-server\dist\main.js
-# (See Task 6 — Phase 2's original mcp-server\main.js was patched to align
-# with pnpm deploy --prod's output layout, which preserves dist/.)
+#   args:    <installDir>\mcp-server\main.bundle.js
+# v1.0.5+ (#152): mcp-server ships as a single esbuild bundle (main.bundle.js)
+# directly under mcp-server/. No dist/ subdir, no node_modules tree.
+# (Previously "mcp-server\dist\main.js" via pnpm deploy --prod; that layout
+# broke on Windows NSIS extraction due to deep node_modules paths.)
 extraFiles:
   - from: ../../installer/staging/node.exe
     to: ./node.exe

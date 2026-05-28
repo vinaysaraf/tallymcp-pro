@@ -7,8 +7,7 @@
   runs it with /S (silent) flag, then asserts the expected install layout:
     - TallyMCP.exe present at install dir root
     - node.exe present at install dir root
-    - mcp-server/dist/main.js present
-    - mcp-server/node_modules/ populated (sample: @modelcontextprotocol/sdk)
+    - mcp-server/main.bundle.js present (v1.0.5+ single esbuild bundle; no node_modules)
     - Start Menu shortcut present
   Exits 0 on success, 1 on any assertion failure. Does NOT uninstall;
   pair with uninstall-smoke.ps1 for the full round-trip.
@@ -57,11 +56,12 @@ if ($proc.ExitCode -ne 0) {
 }
 
 # Assert the expected files exist.
+# v1.0.5+: mcp-server ships as a single esbuild bundle (main.bundle.js).
+# No dist/ subdir and no node_modules tree under mcp-server/.
 $mustExist = @(
   (Join-Path $InstallDir "TallyMCP.exe"),
   (Join-Path $InstallDir "node.exe"),
-  (Join-Path $InstallDir "mcp-server\dist\main.js"),
-  (Join-Path $InstallDir "mcp-server\node_modules\@modelcontextprotocol\sdk\package.json"),
+  (Join-Path $InstallDir "mcp-server\main.bundle.js"),
   (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\TallyMCP.lnk")
 )
 

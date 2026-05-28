@@ -20,7 +20,7 @@ export async function runWireCommand(opts: RunWireOptions): Promise<WireResult> 
 
   const entry: McpServerEntry = {
     command: join(opts.installDir, "node.exe"),
-    args: [join(opts.installDir, "mcp-server", "main.js")],
+    args: [join(opts.installDir, "mcp-server", "main.bundle.js")],
     env: { TALLYMCP_CONFIG: join(opts.installDir, "config.json") },
   };
 

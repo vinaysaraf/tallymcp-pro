@@ -27,7 +27,7 @@ describe("wire CLI", () => {
     const written = JSON.parse(await readFile(result.configPath, "utf8"));
     expect(written.mcpServers["tallymcp-pro"]).toEqual({
       command: join(installDir, "node.exe"),
-      args: [join(installDir, "mcp-server", "main.js")],
+      args: [join(installDir, "mcp-server", "main.bundle.js")],
       env: { TALLYMCP_CONFIG: join(installDir, "config.json") },
     });
   });
