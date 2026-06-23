@@ -28,6 +28,8 @@ import {
   type WireResponse,
   type UnwireRequest,
   type UnwireResponse,
+  type RestoreRequest,
+  type RestoreResponse,
   type HealthCheckResponse,
   type TallyFixResponse,
   type TallyRestoreResponse,
@@ -76,6 +78,46 @@ export async function handleUnwireMcp(
     entry: { command: "(unused-for-remove)", args: [] },
   });
   return wirer.remove(req.clientId);
+}
+
+export async function handleRestoreMcp(
+  req: RestoreRequest,
+  ctx: HandlerContext = {},
+): Promise<RestoreResponse> {
+  // restore() doesn't need a real entry — pass a stub.
+  const wirer = new ClientWirer({
+    env: ctx.env ?? process.env,
+    entry: { command: "(unused-for-restore)", args: [] },
+  });
+  const result = await wirer.restore(req.clientId);
+  return {
+    clientId: result.clientId,
+    configPath: result.configPath,
+    configPaths: result.configPaths,
+    action: result.action,
+    restoredFromISO: result.restoredFromISO,
+  };
+}
+
+/**
+ * Returns the clients that have at least one restorable backup on disk. Used by
+ * the home screen to offer "Reset config" even when a client's live config was
+ * wiped/corrupted (so it isn't in `configuredClients`).
+ */
+async function detectRestorableClients(
+  env: Record<string, string | undefined>,
+): Promise<ClientId[]> {
+  // entry is unused by hasBackups() — pass a stub (same pattern as unwire/restore).
+  const wirer = new ClientWirer({ env, entry: { command: "(unused-for-probe)", args: [] } });
+  const out: ClientId[] = [];
+  for (const id of ALL_CLIENT_IDS) {
+    try {
+      if (await wirer.hasBackups(id)) out.push(id);
+    } catch {
+      // Missing env var (e.g. USERPROFILE) — treat as "no backups".
+    }
+  }
+  return out;
 }
 
 export interface HealthCheckContext {
@@ -213,6 +255,11 @@ export async function handleHealthCheck(
     ctx.env ?? process.env,
   );
 
+  // Restorable clients — those with a backup on disk, even if the live config
+  // was wiped/corrupted (so they're NOT in configuredClients). Lets the home
+  // screen still offer "Reset config" in the recovery case.
+  const restorableClients = await detectRestorableClients(ctx.env ?? process.env);
+
   // claudeDesktopVariants — used by AddMcpModal (Task 7) to show an MSIX
   // wire-time warning before the user clicks "Add MCP". If a Store-version
   // Claude Desktop is detected, we surface the AppContainer caveat upfront
@@ -240,6 +287,7 @@ export async function handleHealthCheck(
     xmlInterfaceEnabled,
     firewallRulePresent,
     configuredClients,
+    restorableClients,
     multipleTallyInstalls: found.length > 1 ? found.map((i) => i.installDir) : undefined,
     isElevated,
     tallyGatewayServer,
@@ -341,6 +389,7 @@ export function registerIpcHandlers(
     handleWireMcp(payload as WireRequest, { installDir: ctx.installDir }),
   );
   ipcMain.handle(IPC_CHANNELS.UNWIRE_MCP, (_evt, payload) => handleUnwireMcp(payload as UnwireRequest));
+  ipcMain.handle(IPC_CHANNELS.RESTORE_CONFIG, (_evt, payload) => handleRestoreMcp(payload as RestoreRequest));
   ipcMain.handle(IPC_CHANNELS.HEALTH_CHECK, () => handleHealthCheck());
   ipcMain.handle(IPC_CHANNELS.TALLY_FIX, () => handleTallyFix());
   ipcMain.handle(IPC_CHANNELS.TALLY_RESTORE, () => handleTallyRestore());

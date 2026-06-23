@@ -11,6 +11,7 @@ import { SmartScreenGuide } from "./components/SmartScreenGuide.js";
 import { DoneScreen } from "./components/DoneScreen.js";
 import { RestoreConfirmModal } from "./components/RestoreConfirmModal.js";
 import { DisconnectConfirmModal } from "./components/DisconnectConfirmModal.js";
+import { ResetConfigModal } from "./components/ResetConfigModal.js";
 import { ITPolicyHelpModal } from "./components/ITPolicyHelpModal.js";
 import { UpdateBanner } from "./components/UpdateBanner.js";
 import type {
@@ -56,6 +57,9 @@ export function App(): JSX.Element {
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [showITPolicyModal, setShowITPolicyModal] = useState(false);
   const [disconnectFor, setDisconnectFor] = useState<ClientId | undefined>(undefined);
+  const [resetFor, setResetFor] = useState<ClientId | undefined>(undefined);
+  const [resetNotice, setResetNotice] = useState<string | undefined>(undefined);
+  const [restorableClients, setRestorableClients] = useState<Set<ClientId>>(new Set());
 
   // Initial load
   useEffect(() => {
@@ -66,6 +70,7 @@ export function App(): JSX.Element {
     void api.healthCheck().then((h) => {
       setHealth(h);
       h.configuredClients.forEach((id) => markClientConfigured(id));
+      setRestorableClients(new Set(h.restorableClients ?? []));
     });
     const unsub = api.subscribeTallyStatus(setTallyStatus);
     // Phase 4: update-status subscription.
@@ -120,6 +125,44 @@ export function App(): JSX.Element {
       await api.unwireMcp({ clientId });
       unmarkClientConfigured(clientId);
       clearLastError();
+    } catch (err) {
+      setLastError((err as Error).message);
+    }
+  };
+
+  const handleReset = (clientId: ClientId): void => setResetFor(clientId);
+
+  const handleConfirmReset = async (): Promise<void> => {
+    if (!resetFor) return;
+    const api = getApi();
+    const clientId = resetFor;
+    setResetFor(undefined);
+    try {
+      const res = await api.restoreMcp({ clientId });
+      if (res.action === "restored" && res.restoredFromISO) {
+        setResetNotice(
+          `Restored ${CLIENT_DISPLAY_NAMES[clientId]} from the backup dated ` +
+            `${new Date(res.restoredFromISO).toLocaleString()}. ` +
+            `Fully quit ${CLIENT_DISPLAY_NAMES[clientId]} from the system tray, then reopen it.`,
+        );
+      } else {
+        setResetNotice(`No earlier backup found for ${CLIENT_DISPLAY_NAMES[clientId]}.`);
+      }
+      clearLastError();
+      // Re-probe disk so tile state reflects the restored config — a restore can
+      // add OR remove our entry (rewinding the last wire), so don't leave a stale
+      // "Connected"/Reset state. Mirrors the disconnect path's state hygiene.
+      try {
+        const h = await api.healthCheck();
+        setHealth(h);
+        (Object.keys(CLIENT_DISPLAY_NAMES) as ClientId[]).forEach((id) => {
+          if (h.configuredClients.includes(id)) markClientConfigured(id);
+          else unmarkClientConfigured(id);
+        });
+        setRestorableClients(new Set(h.restorableClients ?? []));
+      } catch {
+        // Best-effort refresh; the dated notice is already shown.
+      }
     } catch (err) {
       setLastError((err as Error).message);
     }
@@ -265,12 +308,32 @@ export function App(): JSX.Element {
         <ErrorBanner message={lastError} onDismiss={clearLastError} />
       )}
 
+      {resetNotice !== undefined && (
+        <div
+          role="status"
+          data-testid="reset-notice"
+          className="bg-tm-green-soft border border-tm-green-deep/30 text-tm-green-deep text-sm rounded p-3 mb-3 flex items-start justify-between gap-3"
+        >
+          <span>{resetNotice}</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            className="text-tm-green-deep/70 hover:text-tm-green-deep"
+            onClick={() => setResetNotice(undefined)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {currentScreen === "home" && (
         <TileGrid
           configuredClients={configuredClients}
+          restorableClients={restorableClients}
           onAdd={handleAdd}
           onReconfigure={handleReconfigure}
           onDisconnect={handleDisconnect}
+          onReset={handleReset}
         />
       )}
       {currentScreen === "health-check" && health && (
@@ -315,6 +378,13 @@ export function App(): JSX.Element {
           clientDisplayName={CLIENT_DISPLAY_NAMES[disconnectFor]}
           onConfirm={handleConfirmDisconnect}
           onCancel={() => setDisconnectFor(undefined)}
+        />
+      )}
+      {resetFor !== undefined && (
+        <ResetConfigModal
+          clientDisplayName={CLIENT_DISPLAY_NAMES[resetFor]}
+          onConfirm={handleConfirmReset}
+          onCancel={() => setResetFor(undefined)}
         />
       )}
       {showITPolicyModal && (

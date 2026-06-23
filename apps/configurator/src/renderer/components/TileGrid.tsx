@@ -11,16 +11,21 @@ const CLIENT_DISPLAY: Array<{ id: ClientId; name: string }> = [
 
 export interface TileGridProps {
   configuredClients: Set<ClientId>;
+  /** Clients with a restorable backup — used to show "Reset config" on un-configured tiles. */
+  restorableClients?: Set<ClientId>;
   onAdd: (clientId: ClientId) => void;
   onReconfigure: (clientId: ClientId) => void;
   onDisconnect: (clientId: ClientId) => void;
+  onReset: (clientId: ClientId) => void;
 }
 
 export function TileGrid({
   configuredClients,
+  restorableClients,
   onAdd,
   onReconfigure,
   onDisconnect,
+  onReset,
 }: TileGridProps): JSX.Element {
   return (
     <div className="grid grid-cols-3 gap-2">
@@ -30,9 +35,11 @@ export function TileGrid({
           clientId={id}
           displayName={name}
           configured={configuredClients.has(id)}
+          restorable={restorableClients?.has(id) ?? false}
           onAdd={onAdd}
           onReconfigure={onReconfigure}
           onDisconnect={onDisconnect}
+          onReset={onReset}
         />
       ))}
     </div>

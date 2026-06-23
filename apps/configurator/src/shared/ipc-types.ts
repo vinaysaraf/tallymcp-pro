@@ -12,6 +12,7 @@
 export const IPC_CHANNELS = {
   WIRE_MCP: "wire-mcp",
   UNWIRE_MCP: "unwire-mcp",
+  RESTORE_CONFIG: "restore-config",
   HEALTH_CHECK: "health-check",
   TALLY_FIX: "tally-fix",
   TALLY_RESTORE: "tally-restore",
@@ -82,6 +83,22 @@ export interface UnwireResponse {
   action: "removed" | "noop";
 }
 
+export interface RestoreRequest {
+  clientId: ClientId;
+}
+
+export interface RestoreResponse {
+  clientId: ClientId;
+  /** Primary path (=== configPaths[0]). Kept for symmetry with Wire/Unwire responses. */
+  configPath: string;
+  /** All config paths the restore touched (standard + MSIX). */
+  configPaths: string[];
+  /** "restored" when a backup was applied; "noop" when no backup existed. */
+  action: "restored" | "noop";
+  /** ISO timestamp of the restored backup (newest across paths); undefined when "noop". */
+  restoredFromISO?: string;
+}
+
 export interface HealthCheckResponse {
   tallyInstalled: boolean;
   tallyInstallDir?: string;
@@ -90,6 +107,13 @@ export interface HealthCheckResponse {
   firewallRulePresent: boolean;
   /** True when client-wirer entries point at a real install dir we created. */
   configuredClients: ClientId[];
+  /**
+   * Clients that have at least one restorable config backup on disk, regardless
+   * of whether the live config currently parses as "configured". Lets the UI
+   * offer "Reset config" even after Claude Desktop wiped/corrupted the config
+   * (the recovery case this feature targets).
+   */
+  restorableClients?: ClientId[];
   /** Populated when >1 TallyPrime install was detected. UI should ask user. */
   multipleTallyInstalls?: string[];
   /**
@@ -203,6 +227,7 @@ export interface UpdateStatus {
 export interface TallymcpApi {
   wireMcp: (req: WireRequest) => Promise<WireResponse>;
   unwireMcp: (req: UnwireRequest) => Promise<UnwireResponse>;
+  restoreMcp: (req: RestoreRequest) => Promise<RestoreResponse>;
   healthCheck: () => Promise<HealthCheckResponse>;
   tallyFix: () => Promise<TallyFixResponse>;
   tallyRestore: () => Promise<TallyRestoreResponse>;
@@ -229,6 +254,7 @@ export interface TallymcpApi {
 export interface IpcContract {
   [IPC_CHANNELS.WIRE_MCP]: { req: WireRequest; res: WireResponse };
   [IPC_CHANNELS.UNWIRE_MCP]: { req: UnwireRequest; res: UnwireResponse };
+  [IPC_CHANNELS.RESTORE_CONFIG]: { req: RestoreRequest; res: RestoreResponse };
   [IPC_CHANNELS.HEALTH_CHECK]: { req: void; res: HealthCheckResponse };
   [IPC_CHANNELS.TALLY_FIX]: { req: void; res: TallyFixResponse };
   [IPC_CHANNELS.TALLY_RESTORE]: { req: void; res: TallyRestoreResponse };

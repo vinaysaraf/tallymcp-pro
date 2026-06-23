@@ -14,6 +14,7 @@ describe("TileGrid", () => {
         onAdd={vi.fn()}
         onReconfigure={vi.fn()}
         onDisconnect={vi.fn()}
+        onReset={vi.fn()}
       />,
     );
     expect(screen.getByText("Claude Desktop")).toBeDefined();
@@ -31,6 +32,7 @@ describe("TileGrid", () => {
         onAdd={onAdd}
         onReconfigure={vi.fn()}
         onDisconnect={vi.fn()}
+        onReset={vi.fn()}
       />,
     );
     // Click Cursor's Add MCP button (second tile)

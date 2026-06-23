@@ -6,6 +6,7 @@ import type {
   McpServerEntry,
   WireResult,
   UnwireResult,
+  RestoreResult,
   ClientConfigVariant,
 } from "./types.js";
 import { CLIENT_REGISTRY, resolveClientConfigPath } from "./clients.js";
@@ -14,6 +15,7 @@ import {
   type ClaudeDesktopConfigPath,
 } from "./claude-desktop-paths.js";
 import { backupIfMissing } from "./backup.js";
+import { backupTimestamped, restoreLatest, listBackups, type Clock } from "./backups.js";
 import { writeAtomic } from "./atomic-write.js";
 import { mergeUnderKey, removeUnderKey } from "./merge.js";
 
@@ -22,6 +24,8 @@ export interface ClientWirerOptions {
   env: Record<string, string | undefined>;
   /** The MCP server entry we wire under the `tallymcp-pro` key. */
   entry: McpServerEntry;
+  /** Injectable clock for deterministic backup timestamps in tests. */
+  now?: Clock;
 }
 
 const KEY = "tallymcp-pro" as const;
@@ -111,6 +115,9 @@ export class ClientWirer {
 
       const { created } = await backupIfMissing(configPath);
       if (created) backupCreated = true;
+      // Timestamped snapshot of the CURRENT file before we overwrite it, so a
+      // later "Reset" can rewind this exact change (no-op if file is absent).
+      await backupTimestamped(configPath, this.opts.now);
 
       const merged = mergeUnderKey(existing, serversKey, this.opts.entry);
       await mkdir(dirname(configPath), { recursive: true });
@@ -154,6 +161,7 @@ export class ClientWirer {
         continue; // noop for this path
       }
       await backupIfMissing(configPath);
+      await backupTimestamped(configPath, this.opts.now);
       const stripped = removeUnderKey(existing, serversKey);
       await mkdir(dirname(configPath), { recursive: true });
       await writeAtomic(configPath, JSON.stringify(stripped, null, 2) + "\n");
@@ -166,6 +174,52 @@ export class ClientWirer {
       configPaths: touchedPaths,
       action: anyRemoved ? "removed" : "noop",
     };
+  }
+
+  /**
+   * Restore the most recent backup for `clientId` across every resolved config
+   * path (standard + MSIX). The current (possibly-broken) file is itself
+   * snapshotted first, so Reset is reversible. Returns `action:"noop"` when no
+   * backup exists for any path.
+   */
+  async restore(clientId: ClientId): Promise<RestoreResult> {
+    const paths = resolvePathsForClient(clientId, this.opts.env);
+    const touchedPaths: string[] = [];
+    let newest: Date | undefined;
+    let anyRestored = false;
+
+    for (const { path: configPath } of paths) {
+      touchedPaths.push(configPath);
+      const outcome = await restoreLatest(configPath, this.opts.now);
+      if (outcome) {
+        anyRestored = true;
+        if (!newest || outcome.takenAt.getTime() > newest.getTime()) {
+          newest = outcome.takenAt;
+        }
+      }
+    }
+
+    return {
+      clientId,
+      configPath: touchedPaths[0]!,
+      configPaths: touchedPaths,
+      action: anyRestored ? "restored" : "noop",
+      restoredFromISO: newest?.toISOString(),
+    };
+  }
+
+  /**
+   * True if at least one resolved config path for `clientId` has a backup we
+   * could restore. Lets the UI offer "Reset config" even when the live config
+   * was wiped/corrupted (so it no longer parses as "configured") — the exact
+   * recovery case this feature targets.
+   */
+  async hasBackups(clientId: ClientId): Promise<boolean> {
+    const paths = resolvePathsForClient(clientId, this.opts.env);
+    for (const { path: configPath } of paths) {
+      if ((await listBackups(configPath)).length > 0) return true;
+    }
+    return false;
   }
 
   private async readJsonOrEmpty(

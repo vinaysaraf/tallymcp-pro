@@ -8,6 +8,14 @@ export interface ClientTileProps {
   onReconfigure: (clientId: ClientId) => void;
   /** Opens the disconnect confirm modal for this client (#141). */
   onDisconnect: (clientId: ClientId) => void;
+  /** Opens the reset-config confirm modal for this client. */
+  onReset: (clientId: ClientId) => void;
+  /**
+   * True when a restorable backup exists for this client. When the client is
+   * NOT configured (e.g. its config was wiped/corrupted) but a backup exists,
+   * we still surface "Reset config" so the user can recover.
+   */
+  restorable?: boolean;
 }
 
 export function ClientTile({
@@ -17,6 +25,8 @@ export function ClientTile({
   onAdd,
   onReconfigure,
   onDisconnect,
+  onReset,
+  restorable = false,
 }: ClientTileProps): JSX.Element {
   return (
     <div className="bg-tm-card border border-tm-border rounded-lg p-3 text-sm text-tm-text">
@@ -35,6 +45,15 @@ export function ClientTile({
           </button>
           <button
             type="button"
+            aria-label={`Reset ${displayName} configuration from backup`}
+            data-testid={`reset-${clientId}`}
+            className="px-2 py-1 text-xs border border-tm-border rounded bg-tm-card hover:bg-tm-bg"
+            onClick={() => onReset(clientId)}
+          >
+            Reset config
+          </button>
+          <button
+            type="button"
             aria-label={`Disconnect TallyMCP from ${displayName}`}
             data-testid={`disconnect-${clientId}`}
             className="px-2 py-1 text-xs border border-red-700 text-red-700 rounded bg-tm-card hover:bg-red-50"
@@ -44,13 +63,26 @@ export function ClientTile({
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          className="px-2 py-1 text-xs bg-tm-blue text-white rounded hover:opacity-90"
-          onClick={() => onAdd(clientId)}
-        >
-          + Add MCP
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            className="px-2 py-1 text-xs bg-tm-blue text-white rounded hover:opacity-90"
+            onClick={() => onAdd(clientId)}
+          >
+            + Add MCP
+          </button>
+          {restorable && (
+            <button
+              type="button"
+              aria-label={`Reset ${displayName} configuration from backup`}
+              data-testid={`reset-${clientId}`}
+              className="px-2 py-1 text-xs border border-tm-border rounded bg-tm-card hover:bg-tm-bg"
+              onClick={() => onReset(clientId)}
+            >
+              Reset config
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

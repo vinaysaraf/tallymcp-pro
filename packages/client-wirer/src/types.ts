@@ -56,3 +56,16 @@ export interface UnwireResult {
   /** "removed" when our key was present in at least one path, "noop" otherwise. */
   action: "removed" | "noop";
 }
+
+/** Result of restoring the most recent backup of a client's config. */
+export interface RestoreResult {
+  clientId: ClientId;
+  /** Primary path (=== configPaths[0]). */
+  configPath: string;
+  /** All paths the restore operation touched (standard + MSIX). */
+  configPaths: string[];
+  /** "restored" when a backup was applied to at least one path, "noop" when none existed. */
+  action: "restored" | "noop";
+  /** ISO timestamp of the newest restored backup across paths; undefined when "noop". */
+  restoredFromISO?: string;
+}
