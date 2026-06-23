@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.6 — Config backup/restore + shorter output paths (2026-06-23)
+
+### Added
+- **Per-AI-client config backup + one-click Reset.** Every write to a client config is now preceded by a timestamped backup, and the Configurator offers a **Reset config** button that restores the most recent backup (stating its date) — recoverable even when the live config was wiped or corrupted. (`@tallymcp/client-wirer`: `backupTimestamped` / `listBackups` / `restoreLatest` / `ClientWirer.restore` / `hasBackups`; Configurator: `RESTORE_CONFIG` IPC, `ResetConfigModal`, `restorableClients` surfaced from the health check.) (#13)
+
+### Fixed
+- **Generated file paths no longer exceed Windows' 259-character limit** ("Cannot open the file because the file path is more than 259 characters"). A relative `output.folder` (default `./tallymcp-output`) is now resolved against the user's HOME directory instead of the AI-client-chosen working directory, and the filename timestamp is shortened to `YYYYMMDD-HHMMSS`. (#14)
+
+### Changed
+- Repo hygiene: stopped tracking `.cursor/rules` and `ai-review` artifacts, hardened `.gitignore`, and de-branded the README to a personal-project attribution.
+
 ## v1.0.5 — Bundle MCP server (eliminates the ERR_MODULE_NOT_FOUND class of bugs) (2026-05-28)
 
 Architecture-level hotfix that resolves the systemic failure mode behind v1.0.3 / v1.0.4 missing-module crashes (`zod-to-json-schema`, then `undici`, then `ajv` in sequence after each one-off hotfix). Root cause is pnpm's symlink-based runtime dependency layout not surviving Windows NSIS extraction; the surface area is ~50 transitive dependencies, so individual-package hotfixes don't scale. Solution: bundle the entire MCP server into a single self-contained JavaScript file with esbuild. The deployed `mcp-server/` ships exactly three files (`main.bundle.js`, `main.bundle.js.map`, `package.json`) — no `node_modules` directory at all.
