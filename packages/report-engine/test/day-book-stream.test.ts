@@ -98,11 +98,20 @@ describe("getDayBookStream (period-safe)", () => {
     ).rejects.toThrow(/currently-loaded period/);
   });
 
-  it("fails loudly when the loaded period is unknown and all served vouchers are out of range", async () => {
-    // Probe returns no period (null) → fall back to the in-loop guard: Tally
-    // returned vouchers but none fall in the requested historical range.
+  it("fails CLOSED when the loaded period cannot be determined (null probe)", async () => {
+    // Probe returns no period → coverage can't be proven → refuse rather than
+    // risk a silent partial set.
     await expect(
       collect("Acme", "20200401", "20200414", tallyStub(null, VOUCHERS_XML)),
-    ).rejects.toThrow(/currently-loaded period/);
+    ).rejects.toThrow(/Could not confirm TallyPrime's currently-loaded period/);
+  });
+
+  it("fails CLOSED on a null probe even when the served data overlaps the request", async () => {
+    // Null probe + a voucher (20260405) that DOES fall in the requested range
+    // 20260401-20260430. Without fail-closed this would have completed with the
+    // overlapping sub-set; it must instead refuse (the partial-overlap case).
+    await expect(
+      collect("Acme", "20260401", "20260430", tallyStub(null, VOUCHERS_XML)),
+    ).rejects.toThrow(/Could not confirm TallyPrime's currently-loaded period/);
   });
 });

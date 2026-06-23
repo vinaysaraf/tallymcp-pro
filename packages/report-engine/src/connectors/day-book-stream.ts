@@ -18,23 +18,27 @@ export async function* getDayBookStream(
   options: GetDayBookOptions,
 ): AsyncGenerator<Voucher[], void, undefined> {
   const chunkDays = options.chunkDays ?? 7;
-  // A bare `Voucher` collection ignores SVFROMDATE/SVTODATE — Tally serves the
-  // company's CURRENT period for every request. Across chunked requests that
-  // both returns out-of-range vouchers and repeats the same vouchers in every
-  // chunk. Guard client-side: keep only vouchers in the requested range,
-  // de-duplicate by a content fingerprint, and fail loudly if the live
-  // collection can't cover the requested period (rather than silently returning
-  // empty/partial data, which would understate the books).
   const seen = new Set<string>();
   const { fromDate, toDate } = options;
 
-  // Gate on Tally's loaded period. A bare Voucher collection only ever serves
-  // the loaded period, so a request that extends BEYOND it cannot be satisfied
-  // live — completing would silently return a partial set (the wider-request
-  // case). Refuse up front when the request isn't fully covered. (A null probe
-  // result falls back to the in-loop "no in-range vouchers" guard below.)
+  // A bare `Voucher` collection ignores SVFROMDATE/SVTODATE — Tally serves the
+  // company's currently-loaded period for EVERY request. So the only way to
+  // guarantee the requested range is fully covered is to prove the loaded
+  // period contains it. Gate up front and FAIL CLOSED: refuse unless coverage
+  // is proven. (Refusing rather than returning a partial set keeps the
+  // "exact period, never silently understated" guarantee.) A request that fits
+  // inside the loaded period is then date-filtered to exactly the range; an
+  // empty in-range result is valid (that period simply has no vouchers).
   const loaded = await getLoadedPeriod(client, options.company);
-  if (loaded && (fromDate < loaded.from || toDate > loaded.to)) {
+  if (!loaded) {
+    throw new TallyReportError("DayBook", [
+      `Could not confirm TallyPrime's currently-loaded period, so live voucher streaming cannot ` +
+        `prove it covers ${fromDate}–${toDate} and might silently return a partial set. Set the period ` +
+        `in TallyPrime (Gateway of Tally → F2: Date) to cover that range, or use ` +
+        `tally_import_vouchers_from_file.`,
+    ]);
+  }
+  if (fromDate < loaded.from || toDate > loaded.to) {
     throw new TallyReportError("DayBook", [
       `Live voucher streaming can read only TallyPrime's currently-loaded period ` +
         `(${loaded.from}–${loaded.to}); the requested range ${fromDate}–${toDate} extends beyond it, so ` +
@@ -43,7 +47,6 @@ export async function* getDayBookStream(
     ]);
   }
 
-  let totalInRange = 0;
   for (const window of chunkDateRange(options.fromDate, options.toDate, chunkDays)) {
     const xml = await client.post(
       dayBookEnvelope({
@@ -55,12 +58,11 @@ export async function* getDayBookStream(
     );
     const { raw, lineErrors } = parseTallyResponse(xml);
     if (lineErrors.length) throw new TallyReportError("DayBook", lineErrors);
-    const nodes = findAllObjects(raw, "VOUCHER");
     const batch: Voucher[] = [];
-    for (const node of nodes) {
+    for (const node of findAllObjects(raw, "VOUCHER")) {
       const v = toVoucher(node);
+      // Keep only the requested range; Tally returns the whole loaded period.
       if (v.date < fromDate || v.date > toDate) continue;
-      totalInRange++;
       // Fingerprint covers every distinguishing field — date, type, number,
       // party, reference, narration, and each posting (ledger/amount/Dr-Cr) — so
       // byte-identical chunk repeats collapse while two genuinely different
@@ -81,16 +83,6 @@ export async function* getDayBookStream(
       batch.push(v);
     }
     if (batch.length) yield batch;
-    // Tally returned vouchers but none in the requested range, and we have never
-    // seen an in-range voucher → the loaded period doesn't cover this request.
-    if (nodes.length > 0 && totalInRange === 0) {
-      throw new TallyReportError("DayBook", [
-        `TallyPrime returned vouchers only from its currently-loaded period, none of which fall in ` +
-          `the requested range ${fromDate}–${toDate}. Live voucher streaming can read only the period ` +
-          `currently loaded in Tally. Set that period in TallyPrime (Gateway of Tally → F2: Date), or ` +
-          `use tally_import_vouchers_from_file for an out-of-period range.`,
-      ]);
-    }
   }
 }
 
