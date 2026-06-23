@@ -99,6 +99,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        await ctx.assertCompany(target);
         return jsonResult(await getCompanyInfo(ctx.tallyClient, { company: target }));
       } catch (err) {
         return errorResult(err);
@@ -142,11 +143,13 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
     async (input) => {
       try {
+        const target = input.company ?? ctx.config.tally.defaultCompany;
+        if (input.reportId !== "ListOfCompanies" && target) await ctx.assertCompany(target);
         const result = await runReport(
           ctx.tallyClient,
           {
             reportId: input.reportId,
-            company: input.company ?? ctx.config.tally.defaultCompany,
+            company: target,
             fromDate: input.fromDate,
             toDate: input.toDate,
           },
@@ -172,11 +175,13 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
     async (input) => {
       try {
+        const target = input.company ?? ctx.config.tally.defaultCompany;
+        if (input.reportId !== "ListOfCompanies" && target) await ctx.assertCompany(target);
         const result = await runReport(
           ctx.tallyClient,
           {
             reportId: input.reportId,
-            company: input.company ?? ctx.config.tally.defaultCompany,
+            company: target,
             fromDate: input.fromDate,
             toDate: input.toDate,
           },
@@ -201,11 +206,13 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
     async (input) => {
       try {
+        const target = input.company ?? ctx.config.tally.defaultCompany;
+        if (input.reportId !== "ListOfCompanies" && target) await ctx.assertCompany(target);
         const result = await runReport(
           ctx.tallyClient,
           {
             reportId: input.reportId,
-            company: input.company ?? ctx.config.tally.defaultCompany,
+            company: target,
             fromDate: input.fromDate,
             toDate: input.toDate,
           },
@@ -230,6 +237,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        await ctx.assertCompany(target);
         return jsonResult(
           await exportMasters(ctx.tallyClient, { company: target, outputDir: ctx.outputDir }),
         );
@@ -254,6 +262,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        await ctx.assertCompany(target);
         const file = await exportVouchers(ctx.tallyClient, {
           company: target,
           fromDate,
@@ -282,6 +291,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        await ctx.assertCompany(target);
         const period = resolvePeriod(undefined, {
           fromDate,
           toDate,
@@ -318,6 +328,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        await ctx.assertCompany(target);
         const period = resolvePeriod(undefined, {
           fromDate,
           toDate,
@@ -350,6 +361,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        await ctx.assertCompany(target);
         const { runAuditLiteForCompany } = await import("./audit.js");
         return jsonResult(
           await runAuditLiteForCompany(ctx, { company: target, fromDate, toDate }),
@@ -375,6 +387,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
+        await ctx.assertCompany(target);
         const { exportDashboardForCompany } = await import("./dashboards.js");
         return jsonResult(
           await exportDashboardForCompany(ctx, { kind, company: target, fromDate, toDate }),

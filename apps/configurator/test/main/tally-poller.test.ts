@@ -2,16 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 import { probeTallyOnce, createTallyPoller } from "../../src/main/tally-poller.js";
 
 describe("probeTallyOnce", () => {
-  it("returns reachable:true + companyName when XML returns OM JAI JAGDISH", async () => {
+  it("returns reachable:true + companyName when XML returns Acme Industries Pvt Ltd", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
-        '<ENVELOPE><BODY><DATA><COLLECTION><COMPANY NAME="OM JAI JAGDISH" /></COLLECTION></DATA></BODY></ENVELOPE>',
+        '<ENVELOPE><BODY><DATA><COLLECTION><COMPANY NAME="Acme Industries Pvt Ltd" /></COLLECTION></DATA></BODY></ENVELOPE>',
         { status: 200 },
       ),
     );
     const result = await probeTallyOnce({ url: "http://127.0.0.1:9000", fetcher });
     expect(result.reachable).toBe(true);
-    expect(result.companyName).toBe("OM JAI JAGDISH");
+    expect(result.companyName).toBe("Acme Industries Pvt Ltd");
   });
 
   it("returns reachable:false when fetch throws", async () => {

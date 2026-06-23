@@ -13,7 +13,7 @@
  *
  * Usage:
  *   pnpm tsx scripts/run-all-features.ts                       # auto-pick first company
- *   pnpm tsx scripts/run-all-features.ts --company "OM JAI JAGDISH" --from 20220401 --to 20230331
+ *   pnpm tsx scripts/run-all-features.ts --company "Acme Industries Pvt Ltd" --from 20220401 --to 20230331
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";

@@ -5,7 +5,7 @@
  *
  * Usage:
  *   pnpm verify-all-reports
- *   pnpm verify-all-reports --company "OM JAI JAGDISH" --from 20220401 --to 20230331
+ *   pnpm verify-all-reports --company "Acme Industries Pvt Ltd" --from 20220401 --to 20230331
  */
 import { TallyHttpClient } from "@tallymcp/tally-connector";
 import {
@@ -51,7 +51,7 @@ async function timed<T>(label: string, fn: () => Promise<T>): Promise<{ label: s
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const company = args.company ?? "OM JAI JAGDISH";
+  const company = args.company ?? "Acme Industries Pvt Ltd";
   const fromDate = args.from ?? "20220401";
   const toDate = args.to ?? "20230331";
   const host = args.host ?? process.env.TALLY_HOST ?? "127.0.0.1";

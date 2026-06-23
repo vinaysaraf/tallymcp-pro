@@ -271,6 +271,27 @@ describe("getCompanyInfo", () => {
     ).rejects.toBeInstanceOf(TallyReportError);
   });
 
+  it("returns the REQUESTED company when the Company collection lists many (not the first)", async () => {
+    // Tally's Company collection returns every loaded company; matching by name
+    // (not picking [0]) prevents silently returning a different company's data.
+    const MULTI = `<ENVELOPE><BODY><DATA>
+      <COMPANY NAME="10000 - Acme Trading"><NAME>10000 - Acme Trading</NAME><STARTINGFROM>20240401</STARTINGFROM></COMPANY>
+      <COMPANY NAME="20000 - Beta Industries"><NAME>20000 - Beta Industries</NAME><STARTINGFROM>20250401</STARTINGFROM><GSTIN>27BETAA0001Z</GSTIN></COMPANY>
+    </DATA></BODY></ENVELOPE>`;
+    const co = await getCompanyInfo(stubClient(MULTI), { company: "20000 - Beta Industries" });
+    expect(co.name).toBe("20000 - Beta Industries");
+    expect(co.gstin).toBe("27BETAA0001Z");
+  });
+
+  it("throws a clear error when the requested company is not loaded", async () => {
+    const MULTI = `<ENVELOPE><BODY><DATA>
+      <COMPANY NAME="10000 - Acme Trading"><NAME>10000 - Acme Trading</NAME></COMPANY>
+    </DATA></BODY></ENVELOPE>`;
+    await expect(
+      getCompanyInfo(stubClient(MULTI), { company: "99999 - Not Loaded" }),
+    ).rejects.toThrow(/not found among the companies loaded/);
+  });
+
   it("sends Company Info envelope with SVCURRENTCOMPANY set", async () => {
     const client = stubClient(COMPANY_INFO_XML);
     await getCompanyInfo(client, { company: "10000 - Acme Trading" });

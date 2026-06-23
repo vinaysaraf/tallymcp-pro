@@ -38,7 +38,7 @@ describe("IPC types", () => {
     };
     const status: TallyStatus = {
       reachable: true,
-      companyName: "OM JAI JAGDISH",
+      companyName: "Acme Industries Pvt Ltd",
       probedAt: Date.now(),
     };
     expect(id && req && res && status).toBeTruthy();

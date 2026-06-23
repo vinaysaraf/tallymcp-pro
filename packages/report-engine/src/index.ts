@@ -5,6 +5,7 @@ export type { ResolvePeriodOptions, ResolvedPeriod } from "./resolve-period.js";
 export {
   getBalanceSheet,
   getCompanyInfo,
+  getCurrentCompany,
   getDayBook,
   getDayBookStream,
   getGroupClosingBalances,

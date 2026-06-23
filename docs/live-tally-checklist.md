@@ -9,7 +9,7 @@ them live here so the evidence is in-repo, not only in commit messages.
 ## v0.7.0 — TDL engine kill-switch (TB proof)
 
 **Spec §2 success metric:** Trial Balance latency <5 s on the
-`OM JAI JAGDISH` book (3,689 ledgers) on TallyPrime Silver. Tally instance
+`Acme Industries Pvt Ltd` book (3,689 ledgers) on TallyPrime Silver. Tally instance
 stays responsive afterwards.
 
 **Run:**
@@ -37,7 +37,7 @@ pnpm v070-tb-proof --charset utf-8
 | Operator notes | — | Sample sign convention (`dr`/`cr` columns) is inverted relative to typical TB display because the TDL formula uses `-$$Number:$DebitTotals`. Calibration of display semantics deferred to v0.7.1 when downstream consumers (B5/B6 closing-balance tools) land. Performance proof unaffected. | — |
 
 **Decision: ✅ PROCEED to v0.7.1.** The TDL engine + UTF-16 transport pipeline
-returns the full 3,689-row Trial Balance against `OM JAI JAGDISH` in 330 ms —
+returns the full 3,689-row Trial Balance against `Acme Industries Pvt Ltd` in 330 ms —
 15× under the 5,000 ms kill-switch budget — and leaves the Tally instance
 fully responsive (follow-up master query in 4 ms). The architectural bet is
 empirically validated. v0.7.1 (rewire B2–B7 connectors + dispatcher through
@@ -46,7 +46,7 @@ empirically validated. v0.7.1 (rewire B2–B7 connectors + dispatcher through
 ## v0.7.1 — All 12 connectors live-verified (2026-05-25)
 
 **Spec §2 success metric:** every report connector returns real data from
-the live `OM JAI JAGDISH` book on TallyPrime Silver. Tally instance stays
+the live `Acme Industries Pvt Ltd` book on TallyPrime Silver. Tally instance stays
 responsive after the full sweep.
 
 **Run:**
@@ -104,7 +104,7 @@ remains; write-side flow is out of scope for this release.
 | 3 | Re-wire is noop | `wire claude-desktop --install-dir <mock> --yes` (2nd time) | ✅ `noop`, config + `.bak` SHA both identical to step 2 |
 | 4 | Unwire | `unwire claude-desktop --yes` | ✅ `removed`, `tally-prime` survives, `.bak` SHA still identical |
 | 5 | tally-fix (applied path) | `tally-fix --tally-dir <fixture> --yes` | ✅ tally.ini 175→209 bytes, XML lines added, others preserved, `.tallymcp-bak` == pre-fix SHA; firewall step gracefully skipped (non-admin) with a clear warning, exit code 0 |
-| 6 | verify-all-reports against real Tally | `pnpm verify-all-reports` | ✅ **12/12** on live OM JAI JAGDISH, sweep in ~6.8 s |
+| 6 | verify-all-reports against real Tally | `pnpm verify-all-reports` | ✅ **12/12** on live Acme Industries Pvt Ltd, sweep in ~6.8 s |
 | 7 | tally-restore | `tally-restore --tally-dir <fixture> --yes` | ✅ tally.ini restored byte-for-byte to pristine SHA, firewall noop branch fired ("not present"), exit 0 |
 | 8 | Backup-once across 2 cycles | tally-fix → fix → restore → fix → restore | ✅ `.bak` SHA `C28AB0C8...` across every step; never overwritten |
 

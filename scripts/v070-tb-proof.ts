@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
 /**
  * v0.7.0 kill-switch: prove that the TDL trial-balance template returns ≥1
- * row in <5 s against the live OM JAI JAGDISH book on TallyPrime Silver,
+ * row in <5 s against the live Acme Industries Pvt Ltd book on TallyPrime Silver,
  * and that Tally remains responsive afterwards.
  *
  * Usage:
  *   pnpm v070-tb-proof
- *   pnpm v070-tb-proof --company "OM JAI JAGDISH" --from 20220401 --to 20230331
+ *   pnpm v070-tb-proof --company "Acme Industries Pvt Ltd" --from 20220401 --to 20230331
  *   pnpm v070-tb-proof --charset utf-8     (fallback if UTF-16 is the wrong choice for this instance)
  *
  * Environment:
@@ -36,7 +36,7 @@ const PROOF_BUDGET_MS = 5_000;
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const company = args.company ?? "OM JAI JAGDISH";
+  const company = args.company ?? "Acme Industries Pvt Ltd";
   const fromDate = args.from ?? "20220401";
   const toDate = args.to ?? "20230331";
   const host = args.host ?? process.env.TALLY_HOST ?? "127.0.0.1";

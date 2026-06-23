@@ -7,13 +7,13 @@ describe("StatusBanner", () => {
   it("shows 'Tally connected — <company>' when reachable + company loaded", () => {
     render(
       <StatusBanner
-        tallyStatus={{ reachable: true, companyName: "OM JAI JAGDISH", probedAt: 1 }}
+        tallyStatus={{ reachable: true, companyName: "Acme Industries Pvt Ltd", probedAt: 1 }}
         serverHealthy={true}
         version="v1.0.0"
       />,
     );
     expect(screen.getByText(/Tally connected/i)).toBeDefined();
-    expect(screen.getByText(/OM JAI JAGDISH/i)).toBeDefined();
+    expect(screen.getByText(/Acme Industries Pvt Ltd/i)).toBeDefined();
     expect(screen.getByText(/MCP server running/i)).toBeDefined();
     expect(screen.getByText("v1.0.0")).toBeDefined();
   });

@@ -26,10 +26,10 @@ describe("useAppStore", () => {
   it("setTallyStatus replaces the status object", () => {
     useAppStore.getState().setTallyStatus({
       reachable: true,
-      companyName: "OM JAI JAGDISH",
+      companyName: "Acme Industries Pvt Ltd",
       probedAt: 12345,
     });
-    expect(useAppStore.getState().tallyStatus.companyName).toBe("OM JAI JAGDISH");
+    expect(useAppStore.getState().tallyStatus.companyName).toBe("Acme Industries Pvt Ltd");
   });
 
   it("markClientConfigured + isClientConfigured track the set", () => {

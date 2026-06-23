@@ -95,6 +95,36 @@ ${vars}
 </ENVELOPE>`;
 }
 
+/**
+ * Probe envelope that returns Tally's ACTUAL current company (`$$CurrentCompany`)
+ * after applying the given `SVCURRENTCOMPANY`. Used to confirm a company switch
+ * actually took effect before trusting report data — Tally silently serves the
+ * active company if the requested one can't be selected, which would otherwise
+ * leak a DIFFERENT company's books.
+ */
+export function currentCompanyEnvelope(company: string): string {
+  return `<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>TallyMcpCurrentCompany</ID></HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>${escapeXmlText(company)}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="TallyMcpCurrentCompany"><FORMS>TallyMcpCCForm</FORMS></REPORT>
+          <FORM NAME="TallyMcpCCForm"><PARTS>TallyMcpCCPart</PARTS><XMLTAG>DATA</XMLTAG></FORM>
+          <PART NAME="TallyMcpCCPart"><LINES>TallyMcpCCLine</LINES><SCROLLED>Vertical</SCROLLED></PART>
+          <LINE NAME="TallyMcpCCLine"><FIELDS>TallyMcpCCFld</FIELDS><XMLTAG>ROW</XMLTAG></LINE>
+          <FIELD NAME="TallyMcpCCFld"><SET>$$CurrentCompany</SET><XMLTAG>CMP</XMLTAG></FIELD>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+}
+
 export interface CollectionEnvelopeOptions {
   /** Used both as `<ID>` and the `<COLLECTION NAME="...">` attribute. */
   name: string;

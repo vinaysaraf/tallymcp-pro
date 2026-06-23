@@ -57,7 +57,7 @@ describe("trial-balance through tdl-engine (integration)", () => {
     const rows = await runTdlReport<TdlTbRow>(client, report, template, {
       fromDate: new Date(2022, 3, 1),
       toDate: new Date(2023, 2, 31),
-      targetCompany: "OM JAI JAGDISH",
+      targetCompany: "Acme Industries Pvt Ltd",
     });
 
     expect(rows).toHaveLength(3);

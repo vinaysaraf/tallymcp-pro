@@ -12,10 +12,20 @@ export async function getCompanyInfo(
   const xml = await client.post(companyInfoEnvelope({ company: options.company }), { charset: "utf-8" });
   const { raw, lineErrors } = parseTallyResponse(xml);
   if (lineErrors.length) throw new TallyReportError("CompanyInfo", lineErrors);
+  // Tally's `Company` collection returns EVERY loaded company, not just the one
+  // named in SVCURRENTCOMPANY — so we must pick the node whose name matches the
+  // request. Taking the first node silently returned a DIFFERENT company's
+  // metadata (the alphabetically-first / active one). Match by NAME / @_NAME.
   const nodes = findAllObjects(raw, "COMPANY");
-  const node = nodes[0];
+  const node = nodes.find(
+    (n) => nodeText(n["@_NAME"]) === options.company || nodeText(n.NAME) === options.company,
+  );
   if (!node) {
-    throw new TallyReportError("CompanyInfo", ["No COMPANY element in response"]);
+    throw new TallyReportError("CompanyInfo", [
+      `Company "${options.company}" was not found among the companies loaded in TallyPrime. ` +
+        `Open it in Tally (Gateway of Tally → press F3 to select it), or run tally_list_companies ` +
+        `to copy its exact name, then retry.`,
+    ]);
   }
   const id = nodeText(node["@_NAME"]) || nodeText(node.NAME) || options.company;
   const baseCurrency = nodeText(node.BASECURRENCY);

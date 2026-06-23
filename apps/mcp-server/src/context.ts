@@ -1,6 +1,7 @@
 import { ConfigStore, type Config, type TallyConnection } from "@tallymcp/config-store";
 import { TallyHttpClient } from "@tallymcp/tally-connector";
 import { resolveOutputDir } from "@tallymcp/output-store";
+import { getCurrentCompany } from "@tallymcp/report-engine";
 import {
   fromAssumedEdition,
   probeTallyCapabilities,
@@ -27,6 +28,13 @@ export interface McpContext {
   capabilities: TallyCapabilities;
   /** Refreshes the Tally client + network guard + capabilities after a config change. */
   refresh(): Promise<void>;
+  /**
+   * Confirms Tally will serve `company` before any report runs. Tally silently
+   * falls back to the active company when the requested one can't be selected,
+   * so this refuses to proceed (and leak another company's books) on a
+   * definitive mismatch. No-op when the probe can't determine the company.
+   */
+  assertCompany(company: string): Promise<void>;
 }
 
 function pickConnection(config: Config): TallyConnection {
@@ -114,6 +122,19 @@ export async function createContext(options: McpContextOptions): Promise<McpCont
         tallyClient,
         options.skipCapabilityProbe,
       );
+    },
+    async assertCompany(company: string) {
+      const actual = await getCurrentCompany(tallyClient, company);
+      // Only refuse on a DEFINITIVE mismatch — an empty probe result (older
+      // Tally / transient) shouldn't block a legitimate request.
+      if (actual && actual !== company) {
+        throw new Error(
+          `TallyPrime served company "${actual}", not "${company}". The requested company is not the ` +
+            `active one and could not be selected, so the data would belong to a different company. ` +
+            `Open "${company}" in TallyPrime (Gateway of Tally → F3: Company), or run tally_list_companies ` +
+            `to copy its exact name, then retry.`,
+        );
+      }
     },
   };
   return context;

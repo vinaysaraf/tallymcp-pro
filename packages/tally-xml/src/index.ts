@@ -4,6 +4,7 @@ export {
   buildCollectionEnvelope,
   buildExportEnvelope,
   companyInfoEnvelope,
+  currentCompanyEnvelope,
   dayBookEnvelope,
   listCompaniesEnvelope,
   listGroupsEnvelope,

@@ -25,6 +25,11 @@ describe("parseTallyAmount", () => {
     ["  1,000.50  ", 1000.5],
     ["100.00 Dr", 100],
     ["-500 Cr", 500],
+    // Forex / multi-currency amounts: take the base-currency value after "=".
+    ["-3673.88 $ @ ? / $ = ? 0.00", 0],
+    ["1000.00 $ @ 83 / $ = 83,000.00", 83000],
+    ["500.00 $ @ 83 / $ = -41,500.00", -41500],
+    ["1,234.56 € @ ? / € = ? 0.00", 0],
   ];
 
   for (const [input, expected] of cases) {
