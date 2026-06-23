@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -37,8 +37,25 @@ export type CatalogReport = z.infer<typeof ReportSchema>;
 export type Catalog = z.infer<typeof CatalogSchema>;
 
 const packageDir = dirname(fileURLToPath(import.meta.url));
-const defaultCatalogPath = join(packageDir, "..", "report-catalog.json");
-const defaultTemplateDir = join(packageDir, "..", "templates");
+
+/**
+ * Resolves a runtime data file (`report-catalog.json`, `templates/`). These
+ * ship at the tdl-engine package ROOT in a dev/source build, but are copied
+ * NEXT TO the bundle (same directory) when the mcp-server is esbuild-bundled
+ * and deployed (v1.0.5+). esbuild only bundles JS, so these files must be
+ * shipped + located explicitly — otherwise the installed bundle throws
+ * "report-catalog.json not found". Check the bundle-adjacent location first,
+ * then fall back to the package-root layout, so it works in dev, the bundle,
+ * and the installed app.
+ */
+function resolveDataPath(name: string): string {
+  const adjacent = join(packageDir, name); // bundle / deployed layout
+  const parent = join(packageDir, "..", name); // dev / package-root layout
+  return existsSync(adjacent) ? adjacent : parent;
+}
+
+const defaultCatalogPath = resolveDataPath("report-catalog.json");
+const defaultTemplateDir = resolveDataPath("templates");
 
 let cachedCatalog: Catalog | undefined;
 

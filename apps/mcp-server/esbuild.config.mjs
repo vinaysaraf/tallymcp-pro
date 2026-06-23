@@ -15,7 +15,7 @@
 //  - target: "node20" matches the runtime/node.exe we ship in the installer
 
 import esbuild from "esbuild";
-import { mkdir, access } from "node:fs/promises";
+import { mkdir, access, copyFile, cp } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -48,6 +48,16 @@ const result = await esbuild.build({
 
 await access(join(outdir, "main.bundle.js"));
 console.log("[esbuild] main.bundle.js produced");
+
+// Copy the TDL engine's runtime data files NEXT TO the bundle. esbuild bundles
+// JS only, but @tallymcp/tdl-engine reads report-catalog.json + templates/*.xml
+// from disk at runtime (resolved relative to its module). The bundle collapses
+// the package layout, so these must travel with main.bundle.js or the installed
+// server throws "report-catalog.json not found". (catalog.ts checks same-dir first.)
+const tdlDir = join(__dirname, "..", "..", "packages", "tdl-engine");
+await copyFile(join(tdlDir, "report-catalog.json"), join(outdir, "report-catalog.json"));
+await cp(join(tdlDir, "templates"), join(outdir, "templates"), { recursive: true });
+console.log("[esbuild] copied report-catalog.json + templates/ next to the bundle");
 
 const bytes = Object.entries(result.metafile.outputs).reduce(
   (total, [path, info]) => (path.endsWith(".js") ? total + info.bytes : total),

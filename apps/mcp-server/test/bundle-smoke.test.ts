@@ -9,6 +9,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const bundlePath = join(__dirname, "..", "dist", "main.bundle.js");
 
 describe("MCP server bundle smoke (#152)", () => {
+  it("ships the TDL data files next to the bundle (report-catalog.json + templates)", async () => {
+    // Regression guard (v1.0.7): @tallymcp/tdl-engine readFileSync's
+    // report-catalog.json + templates/*.xml at runtime. esbuild bundles JS
+    // only, so without an explicit copy step the installed bundle threw
+    // "report-catalog.json not found". The build must place them in dist/.
+    const distDir = join(__dirname, "..", "dist");
+    await access(join(distDir, "report-catalog.json"));
+    await access(join(distDir, "templates", "day-book.xml"));
+    await access(join(distDir, "templates", "trial-balance.xml"));
+  });
+
   it("the bundle starts without ERR_MODULE_NOT_FOUND", async () => {
     // Sanity-check the bundle exists. The `test` script chains
     // `pnpm run build` first, so dist/main.bundle.js should be present.

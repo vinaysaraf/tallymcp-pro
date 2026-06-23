@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.7 — TDL data files travel with the bundle + auto-updater logging (2026-06-23)
+
+### Fixed
+- **`report-catalog.json not found` on the installed build.** The TDL engine reads `report-catalog.json` + template XMLs from disk at runtime, but the v1.0.5 single-bundle build shipped only the JS — so every TDL-routed report (Trial Balance, P&L, Balance Sheet, Day Book, Sales Register) and audit-lite failed on the installed app with a missing-file error. The build now copies these data files next to `main.bundle.js`, the deploy ships them into `<installDir>\mcp-server\`, and `tdl-engine/catalog.ts` resolves them bundle-adjacent-first (with the package-root layout as a dev fallback). A new bundle-smoke assertion guards that the data files travel with the bundle.
+
+### Added
+- **Auto-updater logging.** `electron-updater` now writes every check/download/verify event to `<userData>\logs\updater.log` (and stderr). Previously the updater had no logger wired, so a failed in-app update looped silently with no diagnosable error — this surfaces the real cause. (Combined with the install being per-user, in-app updates from v1.0.7 onward are expected to work.)
+
 ## v1.0.6 — Config backup/restore + shorter output paths (2026-06-23)
 
 ### Added
