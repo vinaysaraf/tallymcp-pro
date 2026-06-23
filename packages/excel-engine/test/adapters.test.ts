@@ -54,6 +54,34 @@ describe("toWorkbookSpec", () => {
     expect(spec.cover?.disclaimer).toMatch(/Analytical/);
   });
 
+  it("explodes a Day Book voucher into one row per ledger posting (Dr/Cr split)", () => {
+    const spec = toWorkbookSpec(
+      makeResult("DayBook", [
+        {
+          date: "20260403",
+          voucherType: "Payment",
+          voucherNumber: "P-1",
+          party: "HDFC Bank",
+          narration: "Rent paid",
+          entries: [
+            { ledger: "Rent", amount: -30000, isDeemedPositive: true },
+            { ledger: "HDFC Bank", amount: 30000, isDeemedPositive: false },
+          ],
+        },
+      ]),
+    );
+    const rows = spec.sheets[0]?.rows ?? [];
+    expect(rows).toHaveLength(2);
+    // isDeemedPositive=true → Debit; false → Credit; magnitude = abs(amount).
+    expect(rows[0]).toMatchObject({ ledger: "Rent", debit: 30000, credit: null, voucherNumber: "P-1" });
+    expect(rows[1]).toMatchObject({ ledger: "HDFC Bank", debit: null, credit: 30000, party: "HDFC Bank" });
+    // Day Book layout exposes Debit/Credit columns (no single Amount column).
+    const keys = spec.sheets[0]?.columns.map((c) => c.key) ?? [];
+    expect(keys).toContain("debit");
+    expect(keys).toContain("credit");
+    expect(keys).not.toContain("amount");
+  });
+
   it("omits the disclaimer by default", () => {
     expect(toWorkbookSpec(makeResult("TrialBalance", [])).cover?.disclaimer).toBeUndefined();
   });
