@@ -6,6 +6,7 @@ import {
   balanceSheetEnvelope,
   buildExportEnvelope,
   companyInfoEnvelope,
+  currentCompanyEnvelope,
   dayBookEnvelope,
   listCompaniesEnvelope,
   listGroupsEnvelope,
@@ -92,6 +93,14 @@ describe("per-report envelope helpers", () => {
     expect(
       dayBookEnvelope({ company: "10000 - Acme Trading", fromDate: "20250401", toDate: "20260331" }).trim(),
     ).toBe(readSample("day-book.request.xml").trim());
+  });
+
+  it("currentCompanyEnvelope probes $$CurrentCompany with UTF-8 encoding + escaped name", () => {
+    const xml = currentCompanyEnvelope("Acme & Co <Pvt>");
+    expect(xml).toContain("$$CurrentCompany");
+    expect(xml).toContain("<ENCODINGTYPE>UTF8</ENCODINGTYPE>");
+    // Company name is XML-escaped (injection-safe, non-ASCII-safe).
+    expect(xml).toContain("<SVCURRENTCOMPANY>Acme &amp; Co &lt;Pvt&gt;</SVCURRENTCOMPANY>");
   });
 
   it("listLedgersEnvelope targets List of Ledgers for the company", () => {

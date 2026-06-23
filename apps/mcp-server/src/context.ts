@@ -124,20 +124,27 @@ export async function createContext(options: McpContextOptions): Promise<McpCont
       );
     },
     async assertCompany(company: string) {
-      const actual = await getCurrentCompany(tallyClient, company);
-      // Only refuse on a DEFINITIVE mismatch — an empty probe result (older
-      // Tally / transient) shouldn't block a legitimate request.
-      if (actual && actual !== company) {
-        throw new Error(
-          `TallyPrime served company "${actual}", not "${company}". The requested company is not the ` +
-            `active one and could not be selected, so the data would belong to a different company. ` +
-            `Open "${company}" in TallyPrime (Gateway of Tally → F3: Company), or run tally_list_companies ` +
-            `to copy its exact name, then retry.`,
-        );
-      }
+      verifyCompanyMatch(company, await getCurrentCompany(tallyClient, company));
     },
   };
   return context;
+}
+
+/**
+ * Throws when Tally is definitively serving a DIFFERENT company than requested.
+ * A blank `actual` (older Tally / transient probe) is a no-op so it never blocks
+ * a legitimate request; only a non-empty mismatch is refused. Pure + exported so
+ * the safety-critical decision is unit-testable without a live Tally.
+ */
+export function verifyCompanyMatch(requested: string, actual: string): void {
+  if (actual && actual !== requested) {
+    throw new Error(
+      `TallyPrime served company "${actual}", not "${requested}". The requested company is not the ` +
+        `active one and could not be selected, so the data would belong to a different company. ` +
+        `Open "${requested}" in TallyPrime (Gateway of Tally → F3: Company), or run tally_list_companies ` +
+        `to copy its exact name, then retry.`,
+    );
+  }
 }
 
 /** Returns the config with secrets redacted for safe MCP exposure. */

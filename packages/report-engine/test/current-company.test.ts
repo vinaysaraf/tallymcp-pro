@@ -37,4 +37,13 @@ describe("getCurrentCompany", () => {
     const client = stubClient(`<ENVELOPE><BODY><DATA></DATA></BODY></ENVELOPE>`);
     expect(await getCurrentCompany(client, "Whatever")).toBe("");
   });
+
+  it("throws on a Tally <LINEERROR> (definitive selection failure, not a silent no-op)", async () => {
+    // If Tally returns "Could not find Company" with no <CMP>, the guard must
+    // surface it as a hard failure — not fall through to the empty-string no-op.
+    const client = stubClient(
+      `<ENVELOPE><BODY><DATA><LINEERROR>Could not find Company</LINEERROR></DATA></BODY></ENVELOPE>`,
+    );
+    await expect(getCurrentCompany(client, "Ghost Co")).rejects.toThrow(/Could not find Company/);
+  });
 });

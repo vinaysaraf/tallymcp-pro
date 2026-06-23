@@ -109,6 +109,7 @@ export function currentCompanyEnvelope(company: string): string {
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <ENCODINGTYPE>UTF8</ENCODINGTYPE>
         <SVCURRENTCOMPANY>${escapeXmlText(company)}</SVCURRENTCOMPANY>
       </STATICVARIABLES>
       <TDL>

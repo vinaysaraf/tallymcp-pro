@@ -71,8 +71,11 @@ tallymcp-output/
 # ICAI / AICA Level-2 Capstone submission package — local only
 /icai-submission/
 
-# Stray shell-glob artifacts (guard against accidental brace-expansion files)
-/({,+
-/{,+
-/{
+# Stray shell-glob artifacts (guard against accidental brace-expansion files).
+# Braces/parens are escaped so glob-aware tools (ripgrep's ignore parser) don't
+# choke on them — unescaped `{...}` is read as a brace alternation and errors.
+/\{
+/\{,
+/\(
+/\(\)
 /b.backupPath

@@ -9,7 +9,7 @@ them live here so the evidence is in-repo, not only in commit messages.
 ## v0.7.0 — TDL engine kill-switch (TB proof)
 
 **Spec §2 success metric:** Trial Balance latency <5 s on the
-`Acme Industries Pvt Ltd` book (3,689 ledgers) on TallyPrime Silver. Tally instance
+`Acme Industries Pvt Ltd` book (~3,700 ledgers) on TallyPrime Silver. Tally instance
 stays responsive afterwards.
 
 **Run:**
@@ -28,7 +28,7 @@ pnpm v070-tb-proof --charset utf-8
 | Metric | Target | Actual | Pass? |
 |---|---|---|---|
 | TB latency | < 5,000 ms | **330 ms** | ✅ (~15× under budget) |
-| Rows returned | ≥ 1 | **3,689** | ✅ (full ledger set projected) |
+| Rows returned | ≥ 1 | **~3,700** | ✅ (full ledger set projected) |
 | Tally responsive after | < 2,000 ms follow-up | **4 ms** | ✅ |
 | Tally restart needed | No | **No** | ✅ |
 | Charset that worked | utf-16 (default) | utf-16 | — |
@@ -37,7 +37,7 @@ pnpm v070-tb-proof --charset utf-8
 | Operator notes | — | Sample sign convention (`dr`/`cr` columns) is inverted relative to typical TB display because the TDL formula uses `-$$Number:$DebitTotals`. Calibration of display semantics deferred to v0.7.1 when downstream consumers (B5/B6 closing-balance tools) land. Performance proof unaffected. | — |
 
 **Decision: ✅ PROCEED to v0.7.1.** The TDL engine + UTF-16 transport pipeline
-returns the full 3,689-row Trial Balance against `Acme Industries Pvt Ltd` in 330 ms —
+returns the full Trial Balance against `Acme Industries Pvt Ltd` in 330 ms —
 15× under the 5,000 ms kill-switch budget — and leaves the Tally instance
 fully responsive (follow-up master query in 4 ms). The architectural bet is
 empirically validated. v0.7.1 (rewire B2–B7 connectors + dispatcher through
@@ -60,12 +60,12 @@ pnpm verify-all-reports
 |---:|---|---|---:|---:|:---:|
 | 1 | `list-companies` | legacy / utf-8 / Collection | 36 ms | 1 | ✅ |
 | 2 | `company-info` | legacy / utf-8 / Collection | 10 ms | 1 | ✅ |
-| 3 | `list-ledgers` | legacy / utf-8 / Collection | 452 ms | 3,689 | ✅ |
+| 3 | `list-ledgers` | legacy / utf-8 / Collection | 452 ms | ~3,700 | ✅ |
 | 4 | `list-groups` | legacy / utf-8 / Collection | 19 ms | 35 | ✅ |
 | 5 | `list-voucher-types` | legacy / utf-8 / Collection | 10 ms | 26 | ✅ |
 | 6 | `ledger-closing-balance` (Cash) | **tdl / utf-16 / trial-balance template** | 452 ms | 1 | ✅ |
 | 7 | `group-closing-balances` (Sales Accounts) | **tdl / utf-16 / trial-balance template** | 229 ms | 3 | ✅ |
-| 8 | `trial-balance` | tdl / utf-16 | 229 ms | 3,689 | ✅ |
+| 8 | `trial-balance` | tdl / utf-16 | 229 ms | ~3,700 | ✅ |
 | 9 | `profit-and-loss` | tdl / utf-16 | 8 ms | 7 | ✅ |
 | 10 | `balance-sheet` | tdl / utf-16 | 8 ms | 28 | ✅ |
 | 11 | `day-book` | tdl / utf-16 | 6,296 ms | 21,827 | ✅ |
@@ -77,7 +77,7 @@ fully responsive, no wedge).
 **Key fix landed in this run:**
 `packages/report-engine/src/connectors/ledger-balance.ts` — previously used
 a raw `Collection`+`FETCH` envelope with a `$ClosingBalance` projection over
-all 3,689 ledgers. On Silver, Tally evaluates `$ClosingBalance` before any
+all ~3,700 ledgers. On Silver, Tally evaluates `$ClosingBalance` before any
 filter, so the request ran past the 10 s headersTimeout and wedged the
 gateway, poisoning every subsequent request in the sweep (7/12 failures).
 Now backed by the proven `trial-balance` TDL template — same data, fast

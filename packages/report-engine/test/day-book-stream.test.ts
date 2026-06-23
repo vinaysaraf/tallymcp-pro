@@ -66,4 +66,26 @@ describe("getDayBookStream (period-safe)", () => {
     // (so the audit's duplicate-number check still sees them).
     expect(vouchers).toHaveLength(2);
   });
+
+  it("keeps same date/type/number/entries vouchers that differ only in reference/narration", async () => {
+    const XML = `<ENVELOPE><BODY><DATA><COLLECTION>
+      <VOUCHER><DATE>20260405</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>1</VOUCHERNUMBER><REFERENCE>INV-A</REFERENCE>
+        <ALLLEDGERENTRIES.LIST><LEDGERNAME>A</LEDGERNAME><AMOUNT>100</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST></VOUCHER>
+      <VOUCHER><DATE>20260405</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>1</VOUCHERNUMBER><REFERENCE>INV-B</REFERENCE>
+        <ALLLEDGERENTRIES.LIST><LEDGERNAME>A</LEDGERNAME><AMOUNT>100</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST></VOUCHER>
+    </COLLECTION></DATA></BODY></ENVELOPE>`;
+    const vouchers = await collect("Acme", "20260401", "20260407", repeatingStub(XML));
+    // Identical except Reference → the fingerprint includes reference, so both
+    // are retained rather than collapsed.
+    expect(vouchers).toHaveLength(2);
+  });
+
+  it("fails loudly when Tally serves only its current period and it is out of range", async () => {
+    // Requested a historical FY, but Tally (ignoring SVFROMDATE/SVTODATE on a
+    // bare Voucher collection) returns only current-period vouchers — none in
+    // range. Must throw, not silently return empty/partial data.
+    await expect(
+      collect("Acme", "20200401", "20200414", repeatingStub(VOUCHERS_XML)),
+    ).rejects.toThrow(/currently-loaded period/);
+  });
 });
