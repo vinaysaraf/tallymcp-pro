@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { findAll, parseTallyBoolean, parseTallyResponse } from "../src/parser.js";
+import { findAll, nodeText, parseTallyBoolean, parseTallyResponse } from "../src/parser.js";
 
 const samplesDir = join(dirname(fileURLToPath(import.meta.url)), "../../../samples");
 const listCompaniesResponse = readFileSync(
@@ -79,5 +79,36 @@ describe("parseTallyBoolean", () => {
 
   it("treats undefined as false", () => {
     expect(parseTallyBoolean(undefined as unknown as string)).toBe(false);
+  });
+});
+
+describe("nodeText", () => {
+  it("returns plain string and number values as strings", () => {
+    expect(nodeText("Cash")).toBe("Cash");
+    expect(nodeText(42)).toBe("42");
+  });
+
+  it("returns an empty string for null/undefined", () => {
+    expect(nodeText(null)).toBe("");
+    expect(nodeText(undefined)).toBe("");
+  });
+
+  it("unwraps #text from an attribute-carrying element (the [object Object] fix)", () => {
+    // <OPENINGBALANCE TYPE="Dr">10,000.00</OPENINGBALANCE> →
+    // { "@_TYPE": "Dr", "#text": "10,000.00" }
+    expect(nodeText({ "@_TYPE": "Dr", "#text": "10,000.00" })).toBe("10,000.00");
+  });
+
+  it("returns an empty string for an attribute-only element (no #text)", () => {
+    expect(nodeText({ "@_TYPE": "Dr" })).toBe("");
+  });
+
+  it("reads the first item of an array", () => {
+    expect(nodeText(["a", "b"])).toBe("a");
+    expect(nodeText([])).toBe("");
+  });
+
+  it("never yields the string \"[object Object]\"", () => {
+    expect(nodeText({ "@_X": "1", "#text": "5" })).not.toBe("[object Object]");
   });
 });

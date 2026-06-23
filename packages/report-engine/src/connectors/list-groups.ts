@@ -2,6 +2,7 @@ import { GroupSchema, type Group } from "@tallymcp/shared-types";
 import {
   findAllObjects,
   listGroupsEnvelope,
+  nodeText,
   parseTallyBoolean,
   parseTallyResponse,
 } from "@tallymcp/tally-xml";
@@ -21,14 +22,15 @@ export async function listGroups(
 }
 
 function toGroup(node: Record<string, unknown>): Group {
+  const parent = nodeText(node.PARENT);
   return GroupSchema.parse({
-    name: String(node["@_NAME"] ?? node.NAME ?? ""),
-    parent: node.PARENT ? String(node.PARENT) : undefined,
+    name: nodeText(node["@_NAME"]) || nodeText(node.NAME),
+    parent: parent || undefined,
     isRevenue:
-      node.ISREVENUE !== undefined ? parseTallyBoolean(String(node.ISREVENUE)) : undefined,
+      node.ISREVENUE !== undefined ? parseTallyBoolean(nodeText(node.ISREVENUE)) : undefined,
     affectsGrossProfit:
       node.AFFECTSGROSSPROFIT !== undefined
-        ? parseTallyBoolean(String(node.AFFECTSGROSSPROFIT))
+        ? parseTallyBoolean(nodeText(node.AFFECTSGROSSPROFIT))
         : undefined,
   });
 }

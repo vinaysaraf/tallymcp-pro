@@ -2,6 +2,7 @@ import { LedgerSchema, type Ledger } from "@tallymcp/shared-types";
 import {
   findAllObjects,
   listLedgersEnvelope,
+  nodeText,
   parseTallyAmount,
   parseTallyBoolean,
   parseTallyResponse,
@@ -22,18 +23,21 @@ export async function listLedgers(
 }
 
 function toLedger(node: Record<string, unknown>): Ledger {
-  const gstinSource = node.PARTYGSTIN ?? node.GSTIN;
+  // nodeText() unwraps `#text` from attribute-carrying elements; a bare
+  // String() on those yields "[object Object]" and crashes parseTallyAmount.
+  const gstin = nodeText(node.PARTYGSTIN) || nodeText(node.GSTIN);
+  const pan = nodeText(node.INCOMETAXNUMBER);
   return LedgerSchema.parse({
-    name: String(node["@_NAME"] ?? node.NAME ?? ""),
-    parent: String(node.PARENT ?? ""),
-    openingBalance: parseTallyAmount(String(node.OPENINGBALANCE ?? "")),
+    name: nodeText(node["@_NAME"]) || nodeText(node.NAME),
+    parent: nodeText(node.PARENT),
+    openingBalance: parseTallyAmount(nodeText(node.OPENINGBALANCE)),
     isRevenue:
-      node.ISREVENUE !== undefined ? parseTallyBoolean(String(node.ISREVENUE)) : undefined,
+      node.ISREVENUE !== undefined ? parseTallyBoolean(nodeText(node.ISREVENUE)) : undefined,
     isDeemedPositive:
       node.ISDEEMEDPOSITIVE !== undefined
-        ? parseTallyBoolean(String(node.ISDEEMEDPOSITIVE))
+        ? parseTallyBoolean(nodeText(node.ISDEEMEDPOSITIVE))
         : undefined,
-    gstin: gstinSource ? String(gstinSource) : undefined,
-    panNumber: node.INCOMETAXNUMBER ? String(node.INCOMETAXNUMBER) : undefined,
+    gstin: gstin || undefined,
+    panNumber: pan || undefined,
   });
 }

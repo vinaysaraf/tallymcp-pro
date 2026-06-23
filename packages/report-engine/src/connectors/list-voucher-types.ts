@@ -1,5 +1,5 @@
 import { VoucherTypeSchema, type VoucherType } from "@tallymcp/shared-types";
-import { findAllObjects, listVoucherTypesEnvelope, parseTallyResponse } from "@tallymcp/tally-xml";
+import { findAllObjects, listVoucherTypesEnvelope, nodeText, parseTallyResponse } from "@tallymcp/tally-xml";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
 
@@ -23,11 +23,11 @@ export async function listVoucherTypes(
 }
 
 function toVoucherType(node: Record<string, unknown>): VoucherType {
-  const raw = node.NUMBERINGMETHOD ? String(node.NUMBERINGMETHOD) : undefined;
+  const raw = nodeText(node.NUMBERINGMETHOD);
   const numberingMethod = raw && KNOWN_NUMBERING.has(raw) ? raw : undefined;
   return VoucherTypeSchema.parse({
-    name: String(node["@_NAME"] ?? node.NAME ?? ""),
-    parent: String(node.PARENT ?? ""),
+    name: nodeText(node["@_NAME"]) || nodeText(node.NAME),
+    parent: nodeText(node.PARENT),
     numberingMethod,
   });
 }

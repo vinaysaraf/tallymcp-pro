@@ -1,4 +1,5 @@
 import type { TallyDate } from "@tallymcp/shared-types";
+import { nodeText } from "@tallymcp/tally-xml";
 
 /**
  * Normalize a Tally date string to the canonical YYYYMMDD form that
@@ -24,7 +25,10 @@ import type { TallyDate } from "@tallymcp/shared-types";
  */
 export function normalizeTallyDate(value: unknown): TallyDate | undefined {
   if (value === undefined || value === null || value === "") return undefined;
-  const s = String(value).trim();
+  // nodeText() unwraps `#text` from attribute-carrying date elements; a bare
+  // String() on those yields "[object Object]" and silently loses the date.
+  const s = nodeText(value).trim();
+  if (s === "") return undefined;
   if (/^\d{8}$/.test(s)) return s as TallyDate;
 
   // Try `d-MMM-yyyy` (e.g. "1-Apr-2024", "01-Oct-2024", "31-DEC-2023")

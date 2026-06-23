@@ -90,6 +90,26 @@ export function parseTallyResponse(xml: string): ParsedTallyResponse {
   return { raw, lineErrors: extractLineErrors(raw) };
 }
 
+/**
+ * Reads the text value of a parsed XML field that may be a string, number, or
+ * an object. fast-xml-parser represents an element carrying ATTRIBUTES (or
+ * mixed content) as an object with the text under `#text` — e.g.
+ * `<OPENINGBALANCE TYPE="Dr">10,000</OPENINGBALANCE>` →
+ * `{ "@_TYPE": "Dr", "#text": "10,000" }`. A naive `String(node.FIELD)` on that
+ * yields `"[object Object]"`, which crashes `parseTallyAmount` and corrupts
+ * text fields. Use this for any field that could carry attributes (Tally adds
+ * them unpredictably, especially on amount/balance fields).
+ */
+export function nodeText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    if (Array.isArray(value)) return value.length ? nodeText(value[0]) : "";
+    const t = (value as Record<string, unknown>)["#text"];
+    return t === null || t === undefined ? "" : String(t);
+  }
+  return String(value);
+}
+
 /** Parses a Tally boolean (`"Yes"` / `"No"` style) into a real boolean. */
 export const parseTallyBoolean = (value: string): boolean =>
   /^(yes|true|1)$/i.test(value?.trim() ?? "");

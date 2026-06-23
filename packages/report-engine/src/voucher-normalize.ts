@@ -1,5 +1,5 @@
 import { VoucherSchema, type Voucher } from "@tallymcp/shared-types";
-import { parseTallyAmount, parseTallyBoolean } from "@tallymcp/tally-xml";
+import { nodeText, parseTallyAmount, parseTallyBoolean } from "@tallymcp/tally-xml";
 
 /**
  * Converts a parsed `<VOUCHER>` node (from fast-xml-parser output) into the
@@ -17,23 +17,22 @@ export function toVoucher(node: Record<string, unknown>): Voucher {
       ? [entriesRaw as Record<string, unknown>]
       : [];
 
+  // nodeText() unwraps `#text` from attribute-carrying elements; a bare
+  // String() on those yields "[object Object]" and crashes parseTallyAmount.
   const entries = entriesList.map((e) => ({
-    ledger: String(e.LEDGERNAME ?? ""),
-    amount: parseTallyAmount(String(e.AMOUNT ?? "0")),
-    isDeemedPositive: parseTallyBoolean(String(e.ISDEEMEDPOSITIVE ?? "No")),
+    ledger: nodeText(e.LEDGERNAME),
+    amount: parseTallyAmount(nodeText(e.AMOUNT) || "0"),
+    isDeemedPositive: parseTallyBoolean(nodeText(e.ISDEEMEDPOSITIVE) || "No"),
   }));
 
+  const party = nodeText(node.PARTYLEDGERNAME) || nodeText(node.PARTYNAME);
   return VoucherSchema.parse({
-    date: String(node.DATE ?? ""),
-    voucherType: String(node.VOUCHERTYPENAME ?? node["@_VCHTYPE"] ?? ""),
-    voucherNumber: node.VOUCHERNUMBER ? String(node.VOUCHERNUMBER) : undefined,
-    narration: node.NARRATION ? String(node.NARRATION) : undefined,
-    party: node.PARTYLEDGERNAME
-      ? String(node.PARTYLEDGERNAME)
-      : node.PARTYNAME
-        ? String(node.PARTYNAME)
-        : undefined,
-    reference: node.REFERENCE ? String(node.REFERENCE) : undefined,
+    date: nodeText(node.DATE),
+    voucherType: nodeText(node.VOUCHERTYPENAME) || nodeText(node["@_VCHTYPE"]),
+    voucherNumber: nodeText(node.VOUCHERNUMBER) || undefined,
+    narration: nodeText(node.NARRATION) || undefined,
+    party: party || undefined,
+    reference: nodeText(node.REFERENCE) || undefined,
     entries,
   });
 }

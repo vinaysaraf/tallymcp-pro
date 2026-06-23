@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.8 — Fix `[object Object]` amount-parse crash on attribute-carrying fields (2026-06-23)
+
+### Fixed
+- **`Cannot parse Tally amount: "[object Object]"` crash during Excel export.** Some TallyPrime installs return amount/balance and text fields with an XML attribute (e.g. `<OPENINGBALANCE TYPE="Amount">10,000.00</OPENINGBALANCE>`), which `fast-xml-parser` represents as `{ "@_TYPE": "Amount", "#text": "10,000.00" }`. The collection-based connectors coerced these with a bare `String(node.FIELD)`, producing the literal string `"[object Object]"` — which then crashed `parseTallyAmount`, aborting `tally_export_report_excel` for **Ledger Masters** (and the same risk existed in the streaming Day Book voucher path used by audit-lite and dashboards). New `nodeText()` helper in `@tallymcp/tally-xml` unwraps `#text` before coercion; every collection connector (`list-ledgers`, `list-groups`, `list-voucher-types`, `list-companies`, `company-info`, `date-utils`) and `voucher-normalize` now route field reads through it. The TDL-backed reports (Trial Balance, P&L, Balance Sheet) were never affected — `tdl-engine`'s parser already unwraps `#text`.
+
+### Added
+- **`nodeText()`** in `@tallymcp/tally-xml` — single source of truth for reading a parsed XML field that may be a string, number, `#text`-wrapped object, or array. Unit-tested for each shape (incl. an explicit guard that it never yields `"[object Object]"`).
+- **Live end-to-end feature harness** (`apps/mcp-server/scripts/run-all-features.ts`) — drives all 10 standard reports + the bonus features (masters/vouchers export, audit-lite Books Score, 3 dashboards) through the exact service functions the MCP tools call, against a live TallyPrime. Verified 17/17 features pass on a real company (Ledger Masters: 8,526 rows exported cleanly — the report that previously crashed).
+
+### Tests
+- Regression tests: `nodeText` shape coverage (`tally-xml`), an attribute-carrying `OPENINGBALANCE`/`PARTYGSTIN` ledger fixture (`master-connectors`), and an attribute-carrying voucher `AMOUNT`/`LEDGERNAME` case (`voucher-normalize`).
+
 ## v1.0.7 — TDL data files travel with the bundle + auto-updater logging (2026-06-23)
 
 ### Fixed

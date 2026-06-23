@@ -87,6 +87,28 @@ const LIST_LEDGERS_XML = `<ENVELOPE>
 
 const SINGLE_LEDGER_XML = `<ENVELOPE><BODY><DATA><COLLECTION NAME="List of Ledgers"><LEDGER NAME="Solo"><NAME>Solo</NAME><PARENT>Sundry Debtors</PARENT><OPENINGBALANCE>0</OPENINGBALANCE></LEDGER></COLLECTION></DATA></BODY></ENVELOPE>`;
 
+// Real-world v1.0.7 bug: some TallyPrime installs return amount/balance and
+// text fields with an ATTRIBUTE (e.g. <OPENINGBALANCE TYPE="Dr">10,000</…>),
+// which fast-xml-parser represents as `{ "@_TYPE": "Dr", "#text": "10,000" }`.
+// A naive String(node.OPENINGBALANCE) yielded "[object Object]", crashing
+// tally_export_report_excel (reportId LedgerMasters) with
+// `Cannot parse Tally amount: "[object Object]"`. nodeText() unwraps `#text`.
+const ATTRIBUTED_LEDGER_XML = `<ENVELOPE>
+  <BODY>
+    <DATA>
+      <COLLECTION NAME="List of Ledgers">
+        <LEDGER NAME="Cash">
+          <NAME TYPE="String">Cash</NAME>
+          <PARENT TYPE="String">Cash-in-hand</PARENT>
+          <OPENINGBALANCE TYPE="Amount">10,000.00</OPENINGBALANCE>
+          <ISDEEMEDPOSITIVE TYPE="Logical">Yes</ISDEEMEDPOSITIVE>
+          <PARTYGSTIN TYPE="String">27ACMEC0001Z</PARTYGSTIN>
+        </LEDGER>
+      </COLLECTION>
+    </DATA>
+  </BODY>
+</ENVELOPE>`;
+
 const LIST_GROUPS_XML = `<ENVELOPE>
   <BODY>
     <DATA>
@@ -274,6 +296,19 @@ describe("listLedgers", () => {
     const ledgers = await listLedgers(stubClient(SINGLE_LEDGER_XML), { company: "Acme" });
     expect(ledgers).toHaveLength(1);
     expect(ledgers[0]?.name).toBe("Solo");
+  });
+
+  it("parses attribute-carrying balance/text fields without the [object Object] crash (v1.0.8 regression fix)", async () => {
+    // Before the fix String(node.OPENINGBALANCE) on an attributed element
+    // produced "[object Object]" and parseTallyAmount threw, aborting the
+    // LedgerMasters Excel export. nodeText() must unwrap `#text` first.
+    const ledgers = await listLedgers(stubClient(ATTRIBUTED_LEDGER_XML), { company: "Acme" });
+    expect(ledgers).toHaveLength(1);
+    expect(ledgers[0]?.name).toBe("Cash");
+    expect(ledgers[0]?.parent).toBe("Cash-in-hand");
+    expect(ledgers[0]?.openingBalance).toBe(10000);
+    expect(ledgers[0]?.isDeemedPositive).toBe(true);
+    expect(ledgers[0]?.gstin).toBe("27ACMEC0001Z");
   });
 
   it("sends List of Ledgers envelope for the given company", async () => {

@@ -23,6 +23,7 @@ export {
   extractLineErrors,
   findAll,
   findAllObjects,
+  nodeText,
   parseTallyBoolean,
   parseTallyResponse,
   walk,
