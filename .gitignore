@@ -37,3 +37,23 @@ apps/configurator/dist-installer/
 # Code signing — never commit private cert material
 *.pfx
 *.p12
+
+# OM AI Reviewer — never commit the room config (contains a secret token),
+# its review/communication artifacts, or the reviewer rule files.
+/.omai-review/
+/.omai-review.json
+/ai-review/
+/.cursor/rules/omai-reviewer.mdc
+/.cursor/rules/tallymcp-review.mdc
+
+# Agent / swarm runtime state (ruflo / claude-flow) — local only
+/.swarm/
+
+# Generated report output + release build artifacts — never commit
+/output/
+/release-test/
+
+# Stray shell-glob artifacts (guard against accidental brace-expansion files)
+/({,+
+/{,+
+/b.backupPath
