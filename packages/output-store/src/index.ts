@@ -4,6 +4,8 @@ export { exportVouchers, type ExportVouchersOptions } from "./export-vouchers.js
 export {
   ensureDir,
   generatedFileFor,
+  resolveOutputDir,
+  compactStamp,
   MIME_CSV,
   MIME_JSON,
   MIME_XLSX,
