@@ -5,6 +5,7 @@ import {
   UPDATE_STATUS_EVENT,
   type WireResponse,
   type UnwireResponse,
+  type RestoreResponse,
   type HealthCheckResponse,
   type TallyFixResponse,
   type TallyRestoreResponse,
@@ -32,6 +33,7 @@ export function buildTallymcpApi(bridge: IpcBridge): TallymcpApi {
   return {
     wireMcp: (req) => bridge.invoke(IPC_CHANNELS.WIRE_MCP, req) as Promise<WireResponse>,
     unwireMcp: (req) => bridge.invoke(IPC_CHANNELS.UNWIRE_MCP, req) as Promise<UnwireResponse>,
+    restoreMcp: (req) => bridge.invoke(IPC_CHANNELS.RESTORE_CONFIG, req) as Promise<RestoreResponse>,
     healthCheck: () => bridge.invoke(IPC_CHANNELS.HEALTH_CHECK) as Promise<HealthCheckResponse>,
     tallyFix: () => bridge.invoke(IPC_CHANNELS.TALLY_FIX) as Promise<TallyFixResponse>,
     tallyRestore: () => bridge.invoke(IPC_CHANNELS.TALLY_RESTORE) as Promise<TallyRestoreResponse>,

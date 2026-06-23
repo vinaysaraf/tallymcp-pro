@@ -20,6 +20,7 @@ describe("ClientTile", () => {
         onAdd={vi.fn()}
         onReconfigure={vi.fn()}
         onDisconnect={vi.fn()}
+        onReset={vi.fn()}
       />,
     );
     expect(screen.getByText(/Claude Desktop/)).toBeDefined();
@@ -36,6 +37,7 @@ describe("ClientTile", () => {
         onAdd={vi.fn()}
         onReconfigure={vi.fn()}
         onDisconnect={vi.fn()}
+        onReset={vi.fn()}
       />,
     );
     expect(screen.getByText(/Not added/i)).toBeDefined();
@@ -52,6 +54,7 @@ describe("ClientTile", () => {
         onAdd={onAdd}
         onReconfigure={vi.fn()}
         onDisconnect={vi.fn()}
+        onReset={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Add MCP/i }));
@@ -68,6 +71,7 @@ describe("ClientTile", () => {
         onAdd={vi.fn()}
         onReconfigure={onReconfigure}
         onDisconnect={vi.fn()}
+        onReset={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Reconfigure/i }));
@@ -85,6 +89,7 @@ describe("ClientTile — Disconnect button (#141)", () => {
         onAdd={() => {}}
         onReconfigure={() => {}}
         onDisconnect={() => {}}
+        onReset={() => {}}
       />,
     );
     expect(screen.getByRole("button", { name: /reconfigure/i })).toBeInTheDocument();
@@ -100,6 +105,7 @@ describe("ClientTile — Disconnect button (#141)", () => {
         onAdd={() => {}}
         onReconfigure={() => {}}
         onDisconnect={() => {}}
+        onReset={() => {}}
       />,
     );
     expect(screen.queryByTestId("disconnect-cursor")).not.toBeInTheDocument();
@@ -116,10 +122,66 @@ describe("ClientTile — Disconnect button (#141)", () => {
         onAdd={() => {}}
         onReconfigure={() => {}}
         onDisconnect={onDisconnect}
+        onReset={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByTestId("disconnect-lm-studio"));
     expect(onDisconnect).toHaveBeenCalledTimes(1);
     expect(onDisconnect).toHaveBeenCalledWith("lm-studio");
+  });
+});
+
+describe("ClientTile — Reset config button", () => {
+  it("calls onReset with clientId when Reset config is clicked on a configured tile", () => {
+    const onReset = vi.fn();
+    render(
+      <ClientTile
+        clientId="claude-desktop"
+        displayName="Claude Desktop"
+        configured={true}
+        onAdd={() => {}}
+        onReconfigure={() => {}}
+        onDisconnect={() => {}}
+        onReset={onReset}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("reset-claude-desktop"));
+    expect(onReset).toHaveBeenCalledWith("claude-desktop");
+  });
+
+  it("shows Reset on an un-configured tile when restorable (recovery case) and calls onReset", () => {
+    const onReset = vi.fn();
+    render(
+      <ClientTile
+        clientId="cursor"
+        displayName="Cursor"
+        configured={false}
+        restorable={true}
+        onAdd={() => {}}
+        onReconfigure={() => {}}
+        onDisconnect={() => {}}
+        onReset={onReset}
+      />,
+    );
+    // Add MCP is still offered, AND Reset is available because a backup exists.
+    expect(screen.getByRole("button", { name: /add mcp/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("reset-cursor"));
+    expect(onReset).toHaveBeenCalledWith("cursor");
+  });
+
+  it("does NOT show Reset on an un-configured tile with no backup", () => {
+    render(
+      <ClientTile
+        clientId="cursor"
+        displayName="Cursor"
+        configured={false}
+        restorable={false}
+        onAdd={() => {}}
+        onReconfigure={() => {}}
+        onDisconnect={() => {}}
+        onReset={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("reset-cursor")).not.toBeInTheDocument();
   });
 });

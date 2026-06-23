@@ -30,6 +30,12 @@ function buildFakeApi(overrides: Partial<TallymcpApi> = {}): TallymcpApi {
       configPaths: ["X"],
       action: "removed",
     }),
+    restoreMcp: vi.fn().mockResolvedValue({
+      clientId: "claude-desktop",
+      configPaths: ["X"],
+      action: "restored",
+      restoredFromISO: "2026-06-23T10:00:00.000Z",
+    }),
     healthCheck: vi.fn().mockResolvedValue({
       tallyInstalled: true,
       tallyInstallDir: "C:\\Tally",
@@ -140,6 +146,85 @@ describe("App", () => {
     // Dismiss clears the banner.
     fireEvent.click(screen.getByRole("button", { name: /Dismiss error/i }));
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  const HEALTH_CONFIGURED = {
+    tallyInstalled: true,
+    tallyInstallDir: "C:\\Tally",
+    tallyRunning: true,
+    xmlInterfaceEnabled: true,
+    firewallRulePresent: true,
+    configuredClients: ["claude-desktop"],
+  };
+
+  it("offers Reset on an un-configured tile when a backup exists, and calls restoreMcp (recovery case)", async () => {
+    const api = buildFakeApi({
+      healthCheck: vi.fn().mockResolvedValue({
+        tallyInstalled: true,
+        tallyRunning: true,
+        xmlInterfaceEnabled: true,
+        firewallRulePresent: true,
+        configuredClients: [], // wiped/corrupted — not configured
+        restorableClients: ["claude-desktop"], // but a backup exists
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    // Reset is available even though the tile is NOT "Connected".
+    fireEvent.click(await screen.findByTestId("reset-claude-desktop"));
+    fireEvent.click(screen.getByTestId("reset-config-confirm-button"));
+    await screen.findByTestId("reset-notice");
+    expect(api.restoreMcp).toHaveBeenCalledWith({ clientId: "claude-desktop" });
+  });
+
+  it("shows a dated success notice after a successful reset", async () => {
+    const api = buildFakeApi({
+      healthCheck: vi.fn().mockResolvedValue(HEALTH_CONFIGURED),
+      restoreMcp: vi.fn().mockResolvedValue({
+        clientId: "claude-desktop",
+        configPath: "X",
+        configPaths: ["X"],
+        action: "restored",
+        restoredFromISO: "2026-06-23T10:00:00.000Z",
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    fireEvent.click(await screen.findByTestId("reset-claude-desktop"));
+    fireEvent.click(screen.getByTestId("reset-config-confirm-button"));
+    const notice = await screen.findByTestId("reset-notice");
+    expect(notice.textContent).toMatch(/Restored Claude Desktop from the backup dated/i);
+  });
+
+  it("shows a 'no backup' notice when reset finds nothing", async () => {
+    const api = buildFakeApi({
+      healthCheck: vi.fn().mockResolvedValue(HEALTH_CONFIGURED),
+      restoreMcp: vi.fn().mockResolvedValue({
+        clientId: "claude-desktop",
+        configPath: "X",
+        configPaths: ["X"],
+        action: "noop",
+      }),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    fireEvent.click(await screen.findByTestId("reset-claude-desktop"));
+    fireEvent.click(screen.getByTestId("reset-config-confirm-button"));
+    const notice = await screen.findByTestId("reset-notice");
+    expect(notice.textContent).toMatch(/No earlier backup found/i);
+  });
+
+  it("surfaces restoreMcp failures via ErrorBanner", async () => {
+    const api = buildFakeApi({
+      healthCheck: vi.fn().mockResolvedValue(HEALTH_CONFIGURED),
+      restoreMcp: vi.fn().mockRejectedValue(new Error("file locked")),
+    });
+    globalThis.window.tallymcp = api;
+    render(<App />);
+    fireEvent.click(await screen.findByTestId("reset-claude-desktop"));
+    fireEvent.click(screen.getByTestId("reset-config-confirm-button"));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("file locked");
   });
 
   it("surfaces tallyFix failures via ErrorBanner (Cursor M3)", async () => {

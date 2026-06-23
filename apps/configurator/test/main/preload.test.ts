@@ -15,6 +15,17 @@ describe("buildTallymcpApi", () => {
     });
   });
 
+  it("invokes the correct channel for restoreMcp", async () => {
+    const invoke = vi.fn().mockResolvedValue({ action: "restored" });
+    const api = buildTallymcpApi({ invoke, on: vi.fn() });
+
+    await api.restoreMcp({ clientId: "claude-desktop" });
+
+    expect(invoke).toHaveBeenCalledWith(IPC_CHANNELS.RESTORE_CONFIG, {
+      clientId: "claude-desktop",
+    });
+  });
+
   it("invokes the correct channel for healthCheck (no payload)", async () => {
     const invoke = vi.fn().mockResolvedValue({ tallyInstalled: true });
     const api = buildTallymcpApi({ invoke, on: vi.fn() });
