@@ -92,18 +92,24 @@ describe("getProfitAndLoss (TDL-backed)", () => {
 });
 
 describe("getBalanceSheet (TDL-backed)", () => {
-  it("parses non-revenue groups and classifies side from asset heuristics", async () => {
+  it("keeps only primary groups and appends a balancing Profit & Loss A/c line", async () => {
     const rows = await getBalanceSheet(stubClient(BS_XML), PERIOD);
-    expect(rows).toHaveLength(3);
-    // "Current Assets" group itself appears in the asset set → side=Assets
-    expect(rows[0]?.group).toBe("Current Assets");
+    // "Sundry Debtors" (a sub-group of Current Assets) is dropped to avoid
+    // double-counting — its closing is already inside Current Assets.
+    expect(rows.map((r) => r.group)).toEqual([
+      "Current Assets",
+      "Capital Account",
+      "Profit & Loss A/c",
+    ]);
+    // "Current Assets" is in the asset set → Assets; Capital Account → Liabilities.
     expect(rows[0]?.side).toBe("Assets");
-    // "Sundry Debtors" under "Current Assets" → side=Assets via parent
-    expect(rows[1]?.side).toBe("Assets");
-    expect(rows[1]?.subGroup).toBe("Current Assets");
-    // "Capital Account" with no known asset parent → side=Liabilities
-    expect(rows[2]?.side).toBe("Liabilities");
-    expect(rows[2]?.amount).toBe(-300000);
+    expect(rows[1]?.side).toBe("Liabilities");
+    expect(rows[1]?.amount).toBe(-300000);
+    // Balancing figure = -(sum of primary groups) = -(500000 + -300000) = -200000.
+    expect(rows[2]?.group).toBe("Profit & Loss A/c");
+    expect(rows[2]?.amount).toBe(-200000);
+    // The signed Amount column now ties to exactly zero.
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(0);
   });
 
   it("sends a Group-collection TDL request filtered to NOT IsRevenue", async () => {

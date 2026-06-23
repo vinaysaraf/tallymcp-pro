@@ -65,6 +65,8 @@ describe("getDayBook (TDL-backed)", () => {
     expect(first?.party).toBe("Acme & Co");
     expect(first?.reference).toBe("INV-S-1");
     expect(first?.narration).toBe("Sale");
+    // Net voucher value also surfaces top-level (the Amount export column).
+    expect(first?.amount).toBe(-118000);
   });
 
   it("stores the voucher amount as the single entry with sign-derived isDeemedPositive", async () => {
@@ -89,6 +91,8 @@ describe("getDayBook (TDL-backed)", () => {
     });
     expect(client.calls[0]).toContain("<TYPE>Voucher</TYPE>");
     expect(client.calls[0]).toContain("<BELONGSTO>Yes</BELONGSTO>");
+    // $Amount is unpopulated on a raw Voucher collection unless fetched.
+    expect(client.calls[0]).toContain("<FETCH>Amount</FETCH>");
     expect(client.calls[0]).toContain("<SVFROMDATE>1-Apr-2026</SVFROMDATE>");
     expect(client.calls[0]).toContain("<SVTODATE>30-Apr-2026</SVTODATE>");
   });

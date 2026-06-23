@@ -51,7 +51,34 @@ export async function getBalanceSheet(
     toDate: toDate(options.toDate),
     targetCompany: options.company,
   });
-  return rows.map(toBsRow);
+
+  // Tally returns every balance-sheet group — primary groups AND their
+  // sub-groups — each carrying its own aggregate closing. A parent's closing
+  // already includes its children, so summing the flat list double-counts and
+  // the sheet never ties. Keep only primary (top-level) groups; `parent` is ""
+  // for a primary group (Fld02 blanks it). Drop zero-balance groups to match
+  // how Tally presents the Balance Sheet.
+  const primary = rows
+    .filter((r) => r.parent.trim() === "")
+    .map(toBsRow)
+    .filter((r) => Math.abs(r.amount) >= 0.005);
+
+  // Double-entry makes every primary group's signed closing sum to zero across
+  // the whole company (the Trial Balance ties: Dr = Cr). The non-revenue
+  // groups alone fall short by exactly the brought-forward P&L A/c balance plus
+  // the current period's profit/loss — the figure Tally surfaces on the BS as
+  // "Profit & Loss A/c". Append it as the balancing line so the sheet ties out.
+  const plug = -primary.reduce((sum, r) => sum + r.amount, 0);
+  if (Math.abs(plug) >= 0.005) {
+    primary.push(
+      BalanceSheetRowSchema.parse({
+        side: plug >= 0 ? "Liabilities" : "Assets",
+        group: "Profit & Loss A/c",
+        amount: plug,
+      }),
+    );
+  }
+  return primary;
 }
 
 function toBsRow(row: TdlBsRow): BalanceSheetRow {

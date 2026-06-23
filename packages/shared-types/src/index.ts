@@ -69,6 +69,9 @@ export const VoucherSchema = z.object({
   narration: z.string().optional(),
   party: z.string().optional(),
   reference: z.string().optional(),
+  /** Net transaction value of the voucher (Tally's `$Amount`). Surfaced as the
+   *  Amount column in the Day Book / Sales Register exports. */
+  amount: z.number().optional(),
   entries: z.array(VoucherLineSchema).min(1),
 });
 export type Voucher = z.infer<typeof VoucherSchema>;

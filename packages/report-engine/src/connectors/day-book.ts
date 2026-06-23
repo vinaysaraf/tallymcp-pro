@@ -75,6 +75,7 @@ function toVoucher(row: TdlDayBookRow): Voucher {
     party: row.party || undefined,
     reference: row.reference || undefined,
     narration: row.narration || undefined,
+    amount: row.amount,
     entries: [
       {
         ledger: row.party || row.voucherType || "Unknown",

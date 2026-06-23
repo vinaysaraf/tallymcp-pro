@@ -41,14 +41,18 @@ describe("getSalesRegister (TDL-backed)", () => {
     expect(vs[0]?.reference).toBe("INV-100");
     expect(vs[0]?.narration).toBe("Sale to Acme");
     expect(vs[0]?.entries[0]?.amount).toBe(-118000);
+    // Net voucher value also surfaces top-level (the Amount export column).
+    expect(vs[0]?.amount).toBe(-118000);
   });
 
-  it("sends an inline-TDL Voucher collection filtered to $$IsSales", async () => {
+  it("sends an inline-TDL Voucher collection filtered to $$IsSales, fetching Amount", async () => {
     const client = stubClient(SALES_XML);
     await getSalesRegister(client, PERIOD);
     expect(client.calls[0]).toContain("<TYPE>Voucher</TYPE>");
     expect(client.calls[0]).toContain("<FILTER>IsSalesVch</FILTER>");
     expect(client.calls[0]).toContain('$$IsSales:$VoucherTypeName');
+    // $Amount is unpopulated on a raw Voucher collection unless fetched.
+    expect(client.calls[0]).toContain("<FETCH>Amount</FETCH>");
   });
 
   it("throws on Tally <EXCEPTION> response", async () => {

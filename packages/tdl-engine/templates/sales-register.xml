@@ -28,12 +28,8 @@
           <FIELD NAME="Fld04"><SET>$PartyLedgerName</SET><XMLTAG>F04</XMLTAG></FIELD>
           <FIELD NAME="Fld05"><SET>$Reference</SET><XMLTAG>F05</XMLTAG></FIELD>
           <FIELD NAME="Fld06"><SET>$Narration</SET><XMLTAG>F06</XMLTAG></FIELD>
-          <FIELD NAME="Fld07"><SET>if $$IsEmpty:$Amount then 0 else $$StringFindAndReplace:$$Number:$$String:$Amount:"(-)":"-"</SET><XMLTAG>F07</XMLTAG></FIELD>
-          <COLLECTION NAME="TallyMcpCollection">
-            <TYPE>Voucher</TYPE>
-            <BELONGSTO>Yes</BELONGSTO>
-            <FILTER>IsSalesVch</FILTER>
-          </COLLECTION>
+          <FIELD NAME="Fld07"><SET>if $$IsEmpty:$Amount then 0 else $$StringFindAndReplace:($$Number:$Amount):"(-)":"-"</SET><XMLTAG>F07</XMLTAG></FIELD>
+          <COLLECTION NAME="TallyMcpCollection"><TYPE>Voucher</TYPE><BELONGSTO>Yes</BELONGSTO><FILTER>IsSalesVch</FILTER><FETCH>Amount</FETCH></COLLECTION>
           <SYSTEM TYPE="Formulae" NAME="IsSalesVch">$$IsSales:$VoucherTypeName</SYSTEM>
         </TDLMESSAGE>
       </TDL>

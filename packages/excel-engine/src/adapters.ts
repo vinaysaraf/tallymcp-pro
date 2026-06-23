@@ -102,6 +102,7 @@ const LAYOUTS: Record<string, ReportLayout> = {
       { header: "Number", key: "voucherNumber", width: 14 },
       { header: "Party", key: "party", width: 32 },
       { header: "Reference", key: "reference", width: 18 },
+      { header: "Amount", key: "amount", width: 18, numberFormat: "currency-inr" },
       { header: "Narration", key: "narration", width: 50 },
     ],
   },
@@ -126,11 +127,9 @@ const LAYOUTS: Record<string, ReportLayout> = {
   BalanceSheet: {
     sheetName: "Balance Sheet",
     columns: [
-      { header: "Side", key: "side", width: 12 },
-      { header: "Group", key: "group", width: 28 },
-      { header: "Sub Group", key: "subGroup", width: 24 },
-      { header: "Ledger", key: "ledger", width: 28 },
-      { header: "Amount", key: "amount", width: 18, numberFormat: "currency-inr" },
+      { header: "Side", key: "side", width: 14 },
+      { header: "Group", key: "group", width: 30 },
+      { header: "Amount", key: "amount", width: 20, numberFormat: "currency-inr" },
     ],
   },
   SalesRegister: {
@@ -140,6 +139,7 @@ const LAYOUTS: Record<string, ReportLayout> = {
       { header: "Number", key: "voucherNumber", width: 14 },
       { header: "Party", key: "party", width: 32 },
       { header: "Reference", key: "reference", width: 18 },
+      { header: "Amount", key: "amount", width: 18, numberFormat: "currency-inr" },
       { header: "Narration", key: "narration", width: 50 },
     ],
   },
