@@ -49,6 +49,10 @@ apps/configurator/dist-installer/
 # Agent / swarm runtime state (ruflo / claude-flow) — local only
 /.swarm/
 
+# AI-agent guidance — kept local, not committed (repo tracks product code + README)
+/CLAUDE.md
+/AGENTS.md
+
 # Generated report output + release build artifacts — never commit
 /output/
 /release-test/
