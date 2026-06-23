@@ -96,6 +96,41 @@ async function main(): Promise<void> {
   const companies = await listCompanies(ctx.tallyClient);
   console.log(`[run-all-features] ${companies.length} company/companies loaded:`);
   for (const c of companies) console.log(`    - ${c.name}`);
+
+  // ── Probe mode: find which company/FY actually has transaction data ─
+  // Day Book is TDL-backed (fast). Prints a count grid so we can target the
+  // real sample-pack run at a company+period that isn't empty.
+  if (args.probe === "true") {
+    const fys: Array<{ label: string; from: TallyDate; to: TallyDate }> = [
+      { label: "FY26-27", from: "20260401" as TallyDate, to: "20270331" as TallyDate },
+      { label: "FY25-26", from: "20250401" as TallyDate, to: "20260331" as TallyDate },
+      { label: "FY24-25", from: "20240401" as TallyDate, to: "20250331" as TallyDate },
+      { label: "FY23-24", from: "20230401" as TallyDate, to: "20240331" as TallyDate },
+      { label: "FY22-23", from: "20220401" as TallyDate, to: "20230331" as TallyDate },
+    ];
+    console.log(`\n[probe] Day Book row counts per company × FY:\n`);
+    console.log(`  ${"company".padEnd(50)} ${fys.map((f) => f.label.padStart(8)).join("")}`);
+    for (const c of companies) {
+      const counts: string[] = [];
+      for (const fy of fys) {
+        try {
+          const r = await runReport(ctx.tallyClient, {
+            reportId: "DayBook",
+            company: c.name,
+            fromDate: fy.from,
+            toDate: fy.to,
+          });
+          counts.push(String(r.rows.length).padStart(8));
+        } catch {
+          counts.push("   err".padStart(8));
+        }
+      }
+      console.log(`  ${c.name.slice(0, 50).padEnd(50)} ${counts.join("")}`);
+    }
+    console.log(`\n[probe] Re-run without --probe, passing the richest --company/--from/--to.`);
+    return;
+  }
+
   const company = args.company ?? companies[0]?.name;
   if (!company) throw new Error("No company loaded in Tally.");
 
