@@ -139,6 +139,23 @@ describe("MCP server integration (in-process)", () => {
     expect(snippet.mcpServers["tallymcp-pro"].args).toEqual(["/path/to/main.js"]);
   });
 
+  it("tally_export_mcp_config default entry is the running server path, not the old dist/main.js literal (#152 PR review)", async () => {
+    const { client } = await bootServerPair();
+    const result = await client.callTool({
+      name: "tally_export_mcp_config",
+      arguments: { client: "cursor" }, // no serverEntry → must derive from runtime
+    });
+    const text = result.content?.[0]?.type === "text" ? result.content[0].text : "";
+    const payload = JSON.parse(String(text));
+    const snippet = JSON.parse(payload.content);
+    const entry = snippet.mcpServers["tallymcp-pro"].args[0];
+    // The old hardcoded default "dist/main.js" generated a broken path for
+    // installed v1.0.5 users. The default now derives from process.argv[1].
+    expect(entry).not.toBe("dist/main.js");
+    expect(typeof entry).toBe("string");
+    expect(entry.length).toBeGreaterThan(0);
+  });
+
   it("tally_config_get returns the cached config (security.readOnly defaults true)", async () => {
     const { client } = await bootServerPair();
     const result = await client.callTool({ name: "tally_config_get", arguments: {} });

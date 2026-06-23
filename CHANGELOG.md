@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.5 — Bundle MCP server (eliminates the ERR_MODULE_NOT_FOUND class of bugs) (2026-05-28)
+
+Architecture-level hotfix that resolves the systemic failure mode behind v1.0.3 / v1.0.4 missing-module crashes (`zod-to-json-schema`, then `undici`, then `ajv` in sequence after each one-off hotfix). Root cause is pnpm's symlink-based runtime dependency layout not surviving Windows NSIS extraction; the surface area is ~50 transitive dependencies, so individual-package hotfixes don't scale. Solution: bundle the entire MCP server into a single self-contained JavaScript file with esbuild. The deployed `mcp-server/` ships exactly three files (`main.bundle.js`, `main.bundle.js.map`, `package.json`) — no `node_modules` directory at all.
+
+### ⚠ ACTION REQUIRED AFTER UPGRADE — Reconfigure each AI client
+
+electron-updater installs the new files but does NOT touch your AI client configs. If you wired Claude Desktop / Cursor on v1.0.3 or v1.0.4, those config files still reference the OLD path `mcp-server\dist\main.js` — that path no longer exists in v1.0.5 (the bundle is at `mcp-server\main.bundle.js`). You'll see ERR_MODULE_NOT_FOUND or "module not found" in Claude Desktop logs until you:
+
+1. Open the Configurator (auto-updates to v1.0.5)
+2. For each `✓ Connected` tile, click **Reconfigure** (writes the new bundle path into the AI client config)
+3. Fully quit the AI client from the system tray (right-click → Quit), then reopen
+
+After step 3, the MCP server spawns cleanly.
+
+### Fixed
+- **MCP server startup crashes on missing transitive dependencies** (#152 CRITICAL — supersedes v1.0.4's partial fix). The installer's deployed `mcp-server/` no longer carries a fragile pnpm symlink graph. Instead, esbuild bundles the entire dependency tree into `main.bundle.js` at build time. ~50 transitive npm packages collapse into a single ~4.2 MB file that has zero runtime `node_modules` resolution. Windows NSIS extraction, AppContainer restrictions, Defender real-time scanning, Group Policy file-system policies — none of these can break the install anymore because there are no symlinks to flatten and no sibling packages to misplace. ExcelJS (the highest bundling risk) bundles cleanly with no `external` carve-out needed.
+- **Install footprint drops dramatically.** Previous installer extracted thousands of files (~50 MB) into `mcp-server/`. v1.0.5 extracts 3 files (~12 MB incl. sourcemap). NSIS extraction time goes from ~10 minutes (Defender scanning every file) to ~5 seconds. Each Claude Desktop / Cursor MCP invocation now spawns a single bundled `node.exe main.bundle.js` instead of resolving thousands of node_modules paths.
+
+### Added
+- **Bundle smoke test in vitest** — `apps/mcp-server/test/bundle-smoke.test.ts` spawns the built `dist/main.bundle.js` and asserts no `ERR_MODULE_NOT_FOUND` / `Cannot find package` in stderr within a 4-second window, and treats an unexpected clean exit as failure. Catches the v1.0.3 + v1.0.4 regression class BEFORE ship. The mcp-server `test` script now chains `pnpm run build && vitest run ...` so the smoke always runs against a freshly-built bundle.
+- **esbuild config at `apps/mcp-server/esbuild.config.mjs`** — declarative bundling with `format: "esm"`, `target: "node20"`, `createRequire` banner for CJS interop, and linked sourcemap for stack-trace debugging.
+
+### Changed
+- `apps/mcp-server/package.json` — added `esbuild` as `devDependency`; `build` script now runs `tsc && node esbuild.config.mjs`. Production `dependencies` block unchanged (still consumed by `pnpm install` for dev work + workspace tests against `dist/main.js`).
+- `installer/scripts/deploy-mcp-server.mjs` — replaced the `pnpm deploy --prod` step with a 3-file copy (`main.bundle.js`, `main.bundle.js.map`, minimal `package.json`).
+- Wire path migrated from `mcp-server/dist/main.js` to `mcp-server/main.bundle.js` across 11 files (`ipc-handlers.ts` + test, `ipc-types.ts` JSDoc, `electron-builder.yml` comments, `cli/wire.ts` + test, `install-smoke.ps1`, `mcp-client-setup.md`, `phase3-manual-smoke.md`, `installer/README.md`, `defender-exclusion.md`).
+- `apps/configurator/package.json` version 1.0.4 → 1.0.5.
+
+### Notes
+- The bundle is not minified (`minify: false`) so stack traces and error messages remain readable. The sourcemap allows full debugging if needed.
+- No native dependencies in our current runtime graph (only optional macOS `fsevents`). If one is added later, esbuild's `external` option carves it out and the dep ships alongside the bundle.
+- **Wire-path API change**: the internal entry path written into AI client configs changed from `mcp-server/dist/main.js` to `mcp-server/main.bundle.js`. This only affects clients wired in v1.0.5+. Configs from v1.0.3 / v1.0.4 still reference the old path until the user clicks Reconfigure — see the ⚠ ACTION REQUIRED block above. The DEV path `apps/mcp-server/dist/main.js` (tsc output for workspace tests) is unchanged.
+- v1.0.3 + v1.0.4 features (MSIX detection, Disconnect button, wire-time MSIX warning, DoneScreen tray-quit + caveat) carry through unchanged.
+- Open follow-ups deferred to v1.0.6: NSIS welcome macro for cleaner upgrade UI; `differentialPackage` config for smaller update downloads; `RMDir /r mcp-server/node_modules` in uninstaller (only if real-world orphans observed); auto-Reconfigure on first launch after upgrade; #138 (Restart Tally modal after autofix); #134 (edition heuristic refinement); #136 (TB/P&L/BS over-gating fix).
+
 ## v1.0.4 — CRITICAL: missing zod-to-json-schema in deployed mcp-server (2026-05-27)
 
 Critical hotfix shipped immediately after v1.0.3 surfaced a latent install-layout bug. The MCP server crashes on startup with `ERR_MODULE_NOT_FOUND: Cannot find package 'zod-to-json-schema'` because `@modelcontextprotocol/sdk@1.29.0` imports the package but pnpm's symlink-based layout for transitive deps doesn't survive electron-builder's NSIS extraFiles copy on Windows. The bug has been latent since v1.0.1 — users on hot-patched installs didn't hit it; v1.0.3 auto-update overwrites the hot-patch with the broken installer layout, so the bug surfaces on first Claude Desktop ↔ MCP server contact.

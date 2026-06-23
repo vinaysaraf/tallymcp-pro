@@ -55,11 +55,11 @@ export async function handleWireMcp(
 ): Promise<WireResponse> {
   const entry: McpServerEntry = {
     command: join(ctx.installDir, "node.exe"),
-    // pnpm deploy --prod stages mcp-server with dist/ kept (matches
-    // @tallymcp/mcp-server's package.json `main: "./dist/index.js"` /
-    // `bin: "./dist/main.js"`). The installer's extraFiles config copies
-    // installer/staging/mcp-server → <installDir>\mcp-server\.
-    args: [join(ctx.installDir, "mcp-server", "dist", "main.js")],
+    // v1.0.5+ (#152): mcp-server now ships as a single esbuild bundle
+    // (main.bundle.js) directly under <installDir>/mcp-server/. No
+    // dist/ subdir, no node_modules. The previous "mcp-server/dist/main.js"
+    // path was for the pnpm-deploy layout that broke on Windows NSIS extraction.
+    args: [join(ctx.installDir, "mcp-server", "main.bundle.js")],
     env: { TALLYMCP_CONFIG: join(ctx.installDir, "config.json") },
   };
   const wirer = new ClientWirer({ env: ctx.env ?? process.env, entry });

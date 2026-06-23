@@ -1,10 +1,11 @@
 # Speeding up TallyMCP install on Windows Defender / your antivirus
 
 If your TallyMCP install takes more than 2 minutes, your antivirus is
-likely scanning each extracted file. TallyMCP ships ~175 MB of signed
-binary + ~600 small files under `mcp-server/node_modules/` — Defender's
-real-time scan can extend a 60-second extract to 5-15 minutes on slow
-disks.
+likely scanning the extracted files. TallyMCP ships ~175 MB of signed
+binary + a single ~5-8 MB `mcp-server/main.bundle.js` (no node_modules
+tree as of v1.0.5) — Defender's real-time scan triggers once per spawn on
+that one large file rather than thousands of small node_modules files, but
+can still add a few seconds on slow disks.
 
 ## Optional one-time fix (Windows Defender)
 

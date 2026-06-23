@@ -15,11 +15,14 @@
     "tallymcp-server": "./dist/main.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "build": "tsc -p tsconfig.json && node esbuild.config.mjs",
+    "test": "pnpm run build && vitest run --config vitest.config.ts --passWithNoTests",
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/main.ts"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

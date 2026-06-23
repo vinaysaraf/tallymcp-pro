@@ -16,7 +16,7 @@ pnpm package
 Expected (~5 minutes wall-clock):
 - `pnpm -r build` succeeds.
 - `installer/staging/node.exe` (~30 MB) staged.
-- `installer/staging/mcp-server/dist/main.js` + `node_modules/` staged.
+- `installer/staging/mcp-server/main.bundle.js` staged (v1.0.5+ single esbuild bundle; no node_modules).
 - `apps/configurator/dist-installer/TallyMCP-Setup-v0.0.1.exe` (~150 MB) built.
 - `apps/configurator/dist-installer/TallyMCP-Setup-v0.0.1.exe.sha256` written.
 
@@ -45,7 +45,7 @@ Get-ChildItem $dir | Select-Object Name,Length | Format-Table
 Expected entries (subset):
 - `TallyMCP.exe` — the Electron app.
 - `node.exe` — bundled portable Node 20.18.1.
-- `mcp-server\` — directory with `dist/main.js` + `node_modules/`.
+- `mcp-server\` — directory with `main.bundle.js` (v1.0.5+ single esbuild bundle; no node_modules).
 - `resources\` — electron-builder's app resources.
 - `Uninstall TallyMCP.exe` — the bundled NSIS uninstaller.
 
@@ -68,7 +68,7 @@ Open TallyPrime + load any company. Within 5 s of company-load:
 Click Claude Desktop tile → Add MCP → confirm:
 - `%APPDATA%\Claude\claude_desktop_config.json` now has `tallymcp-pro` entry.
 - Command: `<installDir>\node.exe`
-- Args: `[<installDir>\mcp-server\dist\main.js]`
+- Args: `[<installDir>\mcp-server\main.bundle.js]`
 
 Run Claude Desktop. Ask: *"What's my sales for FY 22-23?"*. Claude
 should respond by calling tools through the bundled MCP server.
@@ -124,4 +124,4 @@ Expected: all four green. 76 configurator unit + 4 E2E + Phase 1 (118) + v0.7 (~
 - **SmartScreen "Unknown publisher"** — self-signed cert; users must click "More info → Run anyway" once. SmartScreenGuide popup walks them through it.
 - **No GitHub Actions release pipeline** — `pnpm package` only runs locally. Phase 4 wires this into `windows-latest` runners on tag push.
 - **No `latest.json`** — auto-update infrastructure is Phase 4.
-- **Wire snippet path migration** — existing dev-mode wired AI clients (from Phase 2 testing) have stale `mcp-server\main.js` paths. The Configurator's H10 hydration will still show those tiles as "Connected"; the user should click Reconfigure to refresh. Fresh installs from the NSIS .exe write the correct `mcp-server\dist\main.js` path.
+- **Wire snippet path migration** — existing wired AI clients from v1.0.4 or earlier have stale `mcp-server\dist\main.js` paths (or the even older `mcp-server\main.js`). The Configurator's H10 hydration will still show those tiles as "Connected"; the user should click Reconfigure to refresh. Fresh installs from the NSIS .exe write the correct `mcp-server\main.bundle.js` path (v1.0.5+).

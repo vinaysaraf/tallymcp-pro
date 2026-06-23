@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * Stages @tallymcp/mcp-server with a flat production node_modules tree
- * at installer/staging/mcp-server/, ready for electron-builder's
- * extraFiles config (apps/configurator/electron-builder.yml) to copy
- * it into the NSIS install dir at <installDir>\mcp-server\.
+ * Stages @tallymcp/mcp-server's BUNDLED build output at
+ * installer/staging/mcp-server/, ready for electron-builder's extraFiles
+ * config (apps/configurator/electron-builder.yml) to copy it into the
+ * NSIS install dir at <installDir>\mcp-server\.
  *
- * Uses pnpm's `deploy` command which is purpose-built for this — it
- * handles workspace protocol resolution, prunes devDependencies, and
- * produces a self-contained tree that runs without pnpm or symlinks.
+ * v1.0.5+ (#152): replaces the previous `pnpm deploy --prod` step (which
+ * produced a symlink-heavy node_modules layout that broke on Windows NSIS
+ * extraction) with a simple 3-file copy of the esbuild-produced bundle.
+ * The bundle is fully self-contained — no node_modules at runtime.
  *
- * Idempotent: removes the staging dir first so reruns produce clean
- * output.
+ * Idempotent: removes the staging dir first so reruns produce clean output.
  */
 
-import { rm, mkdir, access } from "node:fs/promises";
+import { rm, mkdir, access, copyFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -21,14 +21,15 @@ import { spawnSync } from "node:child_process";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
 const stagingDir = join(repoRoot, "installer", "staging", "mcp-server");
+const mcpDir = join(repoRoot, "apps", "mcp-server");
 
 async function main() {
   console.log(`[deploy-mcp-server] cleaning ${stagingDir}`);
   await rm(stagingDir, { recursive: true, force: true });
-  await mkdir(dirname(stagingDir), { recursive: true });
+  await mkdir(stagingDir, { recursive: true });
 
-  // Step 1: build mcp-server so dist/ is fresh.
-  console.log(`[deploy-mcp-server] building @tallymcp/mcp-server`);
+  // Step 1: build mcp-server (tsc + esbuild → produces dist/main.bundle.js).
+  console.log(`[deploy-mcp-server] building @tallymcp/mcp-server (tsc + esbuild)`);
   const build = spawnSync(
     "pnpm",
     ["--filter", "@tallymcp/mcp-server", "build"],
@@ -39,35 +40,40 @@ async function main() {
     process.exit(build.status ?? 1);
   }
 
-  // Step 2: pnpm deploy --prod. This creates a flat node_modules under
-  // stagingDir, copying only production dependencies of @tallymcp/mcp-server.
-  // Note: pnpm 9 on Windows rejects absolute paths with drive letters as
-  // the deploy target ("ERR_PNPM_INVALID_DEPLOY_TARGET"). Pass a relative
-  // path from repoRoot instead.
-  const stagingRelative = join("installer", "staging", "mcp-server");
-  console.log(`[deploy-mcp-server] running pnpm deploy --prod → ${stagingDir}`);
-  const deploy = spawnSync(
-    "pnpm",
-    ["--filter=@tallymcp/mcp-server", "deploy", "--prod", stagingRelative],
-    { cwd: repoRoot, stdio: "inherit", shell: true },
-  );
-  if (deploy.status !== 0) {
-    console.error("[deploy-mcp-server] pnpm deploy failed");
-    process.exit(deploy.status ?? 1);
-  }
+  // Step 2: copy the bundle + sourcemap + a minimal package.json to staging.
+  const sourceBundle = join(mcpDir, "dist", "main.bundle.js");
+  const sourceMap = join(mcpDir, "dist", "main.bundle.js.map");
+  const destBundle = join(stagingDir, "main.bundle.js");
+  const destMap = join(stagingDir, "main.bundle.js.map");
 
-  // Step 3: sanity-check the entry point.
-  try {
-    await access(join(stagingDir, "dist", "main.js"));
-  } catch {
-    console.error(
-      `[deploy-mcp-server] expected ${join(stagingDir, "dist", "main.js")} ` +
-        `to exist after deploy; build output layout may have changed.`,
-    );
-    process.exit(1);
-  }
+  await access(sourceBundle);
+  await copyFile(sourceBundle, destBundle);
+  await copyFile(sourceMap, destMap);
+
+  // Step 3: write a minimal package.json declaring `type: module` so Node
+  // treats main.bundle.js as ESM. No `dependencies` field — the bundle is
+  // self-contained.
+  await writeFile(
+    join(stagingDir, "package.json"),
+    JSON.stringify(
+      {
+        name: "@tallymcp/mcp-server",
+        version: "0.0.1",
+        private: true,
+        type: "module",
+        main: "main.bundle.js",
+      },
+      null,
+      2,
+    ) + "\n",
+    "utf8",
+  );
+
+  // Step 4: sanity-check.
+  await access(destBundle);
 
   console.log(`[deploy-mcp-server] staged at ${stagingDir}`);
+  console.log(`[deploy-mcp-server]   main.bundle.js + main.bundle.js.map + package.json`);
 }
 
 main().catch((err) => {

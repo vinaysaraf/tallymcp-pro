@@ -185,6 +185,10 @@ importers:
       zod-to-json-schema:
         specifier: ^3.25.1
         version: 3.25.2(zod@3.25.76)
+    devDependencies:
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.0
 
   packages/analytics-engine:
     dependencies:

@@ -148,7 +148,7 @@ export interface TallyRestoreResponse {
 }
 
 export interface ConfigSnapshot {
-  /** TallyMCP install dir — `node.exe` + `mcp-server\main.js` live here. */
+  /** TallyMCP install dir — `node.exe` + `mcp-server\main.bundle.js` live here. */
   installDir: string;
   /** Detected Tally folder (or undefined if not detected). */
   tallyInstallDir?: string;

@@ -11,17 +11,28 @@ coverage/
 /TallyMCP_Implementation_Plan_ReadOnly_Submission.md
 /CURSOR_START_WINDOWS.md
 
-# Agentic workflow artifacts (specs + plans authored by Claude/superpowers
-# subagents during development) — internal-only, not for the public repo
+# Agentic workflow artifacts (specs + plans authored during development)
+# — internal-only, not for the public repo
 /docs/superpowers/
 
-# IDE / agent session state
+# IDE / agent session state + AI tooling rules (not part of the product)
 /.claude/
-/.cursor/*
-!/.cursor/rules/
+/.cursor/
 /.vscode/
 /.idea/
 /.superpowers/
+
+# AI review / communication artifacts — never committed
+/ai-review/
+/.omai-review/
+/.omai-review.json
+
+# Agent / swarm runtime state (ruflo / claude-flow) — local only
+/.swarm/
+
+# AI-agent guidance — kept local (repo tracks product code + README)
+/CLAUDE.md
+/AGENTS.md
 
 # Local debug / probe artifacts
 /tallyhttp.log
@@ -30,10 +41,23 @@ coverage/
 /tally-state-*.png
 /tally-probe-*.xml
 
-# Phase 3 installer build artifacts (Task 6+7 populate staging/; Task 8 writes dist-installer/)
+# Phase 3 installer build artifacts
 installer/staging/
 apps/configurator/dist-installer/
 
 # Code signing — never commit private cert material
 *.pfx
 *.p12
+
+# Generated report output + release build artifacts — never commit
+/output/
+/release-test/
+
+# ICAI / AICA Level-2 Capstone submission package — local only
+/icai-submission/
+
+# Stray shell-glob artifacts (guard against accidental brace-expansion files)
+/({,+
+/{,+
+/{
+/b.backupPath
