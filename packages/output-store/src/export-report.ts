@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderWorkbook, toWorkbookSpec } from "@tallymcp/excel-engine";
 import type { GeneratedFile, ReadReportResult } from "@tallymcp/shared-types";
-import { ensureDir, generatedFileFor, MIME_JSON, MIME_XLSX, safeFileName } from "./paths.js";
+import { compactStamp, ensureDir, generatedFileFor, MIME_JSON, MIME_XLSX, safeFileName } from "./paths.js";
 
 export interface ExportReportOptions {
   format: "excel" | "json";
@@ -23,7 +23,7 @@ export async function exportReport(
 ): Promise<GeneratedFile> {
   const dir = ensureDir(options.outputDir);
   const stem = safeFileName(
-    options.fileName ?? `${result.meta.reportId}-${result.meta.generatedAt.replace(/[:.]/g, "-")}`,
+    options.fileName ?? `${result.meta.reportId}-${compactStamp(result.meta.generatedAt)}`,
   );
 
   if (options.format === "excel") {
