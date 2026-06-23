@@ -118,4 +118,4 @@ Issues and pull requests are welcome. Every change must pass `pnpm build`,
 
 ## License
 
-© XLURSELF India Pvt Ltd. All rights reserved.
+© 2026 Vinay Saraf. All rights reserved.
