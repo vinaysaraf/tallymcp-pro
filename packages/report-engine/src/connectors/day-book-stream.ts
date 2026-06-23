@@ -3,6 +3,7 @@ import { dayBookEnvelope, findAllObjects, parseTallyResponse } from "@tallymcp/t
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
 import { toVoucher } from "../voucher-normalize.js";
+import { getLoadedPeriod } from "./current-company.js";
 import type { GetDayBookOptions } from "./day-book.js";
 
 /**
@@ -22,10 +23,26 @@ export async function* getDayBookStream(
   // both returns out-of-range vouchers and repeats the same vouchers in every
   // chunk. Guard client-side: keep only vouchers in the requested range,
   // de-duplicate by a content fingerprint, and fail loudly if the live
-  // collection can't cover the requested period at all (rather than silently
-  // returning empty/partial data, which would understate the books).
+  // collection can't cover the requested period (rather than silently returning
+  // empty/partial data, which would understate the books).
   const seen = new Set<string>();
   const { fromDate, toDate } = options;
+
+  // Gate on Tally's loaded period. A bare Voucher collection only ever serves
+  // the loaded period, so a request that extends BEYOND it cannot be satisfied
+  // live — completing would silently return a partial set (the wider-request
+  // case). Refuse up front when the request isn't fully covered. (A null probe
+  // result falls back to the in-loop "no in-range vouchers" guard below.)
+  const loaded = await getLoadedPeriod(client, options.company);
+  if (loaded && (fromDate < loaded.from || toDate > loaded.to)) {
+    throw new TallyReportError("DayBook", [
+      `Live voucher streaming can read only TallyPrime's currently-loaded period ` +
+        `(${loaded.from}–${loaded.to}); the requested range ${fromDate}–${toDate} extends beyond it, so ` +
+        `the result would be incomplete. Set the period in TallyPrime (Gateway of Tally → F2: Date) to ` +
+        `cover ${fromDate}–${toDate}, or use tally_import_vouchers_from_file for an out-of-period range.`,
+    ]);
+  }
+
   let totalInRange = 0;
   for (const window of chunkDateRange(options.fromDate, options.toDate, chunkDays)) {
     const xml = await client.post(
@@ -45,18 +62,20 @@ export async function* getDayBookStream(
       if (v.date < fromDate || v.date > toDate) continue;
       totalInRange++;
       // Fingerprint covers every distinguishing field — date, type, number,
-      // party, reference, narration, and each posting (ledger:amount:Dr/Cr) — so
+      // party, reference, narration, and each posting (ledger/amount/Dr-Cr) — so
       // byte-identical chunk repeats collapse while two genuinely different
       // vouchers (even sharing a number) keep distinct fingerprints and survive.
-      const fingerprint = [
+      // JSON.stringify keeps it unambiguous and text-diffable (no separator
+      // collisions, no control characters in the source).
+      const fingerprint = JSON.stringify([
         v.date,
         v.voucherType,
         v.voucherNumber ?? "",
         v.party ?? "",
         v.reference ?? "",
         v.narration ?? "",
-        v.entries.map((e) => `${e.ledger}:${e.amount}:${e.isDeemedPositive}`).join("|"),
-      ].join("");
+        v.entries.map((e) => [e.ledger, e.amount, e.isDeemedPositive]),
+      ]);
       if (seen.has(fingerprint)) continue;
       seen.add(fingerprint);
       batch.push(v);

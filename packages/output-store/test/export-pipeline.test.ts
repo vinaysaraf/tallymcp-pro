@@ -24,6 +24,12 @@ function stubClient(responses: string | string[]): TallyClient & { calls: string
     calls,
     async post(xml: string) {
       calls.push(xml);
+      // getDayBookStream first probes Tally's loaded period; answer that with a
+      // wide covering range so the period gate passes, and serve the queued
+      // voucher responses for the actual Day Book chunk requests.
+      if (xml.includes("TallyMcpCurrentPeriod")) {
+        return `<ENVELOPE><BODY><DATA><ROW><PFROM>2000-04-01</PFROM><PTO>2099-03-31</PTO></ROW></DATA></BODY></ENVELOPE>`;
+      }
       const r = queue.shift();
       if (r === undefined) throw new Error("StubClient: no more responses queued");
       return r;
@@ -160,7 +166,9 @@ describe("exportVouchers (streaming CSV)", () => {
       toDate: "20260408",
       outputDir: scratchDir,
     });
-    expect(client.calls).toHaveLength(2); // 2 chunks (8-day range)
+    // 1 loaded-period probe + 2 Day Book chunk requests (8-day range).
+    expect(client.calls.filter((c) => c.includes("TallyMcpCurrentPeriod"))).toHaveLength(1);
+    expect(client.calls.filter((c) => !c.includes("TallyMcpCurrentPeriod"))).toHaveLength(2);
     const csv = readFileSync(out.path, "utf8");
     expect(csv.startsWith(UTF8_BOM)).toBe(true);
     const lines = csv.slice(UTF8_BOM.length).split(/\r\n/).filter((l) => l.length > 0);

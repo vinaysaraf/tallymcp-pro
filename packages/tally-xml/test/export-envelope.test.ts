@@ -7,6 +7,7 @@ import {
   buildExportEnvelope,
   companyInfoEnvelope,
   currentCompanyEnvelope,
+  currentPeriodEnvelope,
   dayBookEnvelope,
   listCompaniesEnvelope,
   listGroupsEnvelope,
@@ -101,6 +102,16 @@ describe("per-report envelope helpers", () => {
     expect(xml).toContain("<ENCODINGTYPE>UTF8</ENCODINGTYPE>");
     // Company name is XML-escaped (injection-safe, non-ASCII-safe).
     expect(xml).toContain("<SVCURRENTCOMPANY>Acme &amp; Co &lt;Pvt&gt;</SVCURRENTCOMPANY>");
+  });
+
+  it("currentPeriodEnvelope probes the loaded period (##SVFROMDATE/##SVTODATE) with UTF-8", () => {
+    const xml = currentPeriodEnvelope("Acme & Co");
+    expect(xml).toContain("##SVFROMDATE");
+    expect(xml).toContain("##SVTODATE");
+    expect(xml).toContain("<ENCODINGTYPE>UTF8</ENCODINGTYPE>");
+    expect(xml).toContain("<SVCURRENTCOMPANY>Acme &amp; Co</SVCURRENTCOMPANY>");
+    // Does NOT set SVFROMDATE/SVTODATE itself, so they default to the loaded period.
+    expect(xml).not.toContain("<SVFROMDATE>");
   });
 
   it("listLedgersEnvelope targets List of Ledgers for the company", () => {

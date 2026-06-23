@@ -5,6 +5,7 @@ export {
   buildExportEnvelope,
   companyInfoEnvelope,
   currentCompanyEnvelope,
+  currentPeriodEnvelope,
   dayBookEnvelope,
   listCompaniesEnvelope,
   listGroupsEnvelope,

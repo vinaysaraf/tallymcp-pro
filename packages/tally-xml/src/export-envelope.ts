@@ -126,6 +126,38 @@ export function currentCompanyEnvelope(company: string): string {
 </ENVELOPE>`;
 }
 
+/**
+ * Probe envelope returning the company's currently-loaded period
+ * (`##SVFROMDATE` / `##SVTODATE`, which default to the loaded period when not
+ * set in the request) as `<PFROM>`/`<PTO>` in `YYYY-MM-DD`. Used to gate live
+ * voucher streaming: a bare `Voucher` collection only ever serves the loaded
+ * period, so a request extending beyond it can't be satisfied live.
+ */
+export function currentPeriodEnvelope(company: string): string {
+  return `<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>TallyMcpCurrentPeriod</ID></HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <ENCODINGTYPE>UTF8</ENCODINGTYPE>
+        <SVCURRENTCOMPANY>${escapeXmlText(company)}</SVCURRENTCOMPANY>
+      </STATICVARIABLES>
+      <TDL>
+        <TDLMESSAGE>
+          <REPORT NAME="TallyMcpCurrentPeriod"><FORMS>TallyMcpCPForm</FORMS></REPORT>
+          <FORM NAME="TallyMcpCPForm"><PARTS>TallyMcpCPPart</PARTS><XMLTAG>DATA</XMLTAG></FORM>
+          <PART NAME="TallyMcpCPPart"><LINES>TallyMcpCPLine</LINES><SCROLLED>Vertical</SCROLLED></PART>
+          <LINE NAME="TallyMcpCPLine"><FIELDS>TallyMcpCPFrom,TallyMcpCPTo</FIELDS><XMLTAG>ROW</XMLTAG></LINE>
+          <FIELD NAME="TallyMcpCPFrom"><SET>$$PyrlYYYYMMDDFormat:##SVFROMDATE:"-"</SET><XMLTAG>PFROM</XMLTAG></FIELD>
+          <FIELD NAME="TallyMcpCPTo"><SET>$$PyrlYYYYMMDDFormat:##SVTODATE:"-"</SET><XMLTAG>PTO</XMLTAG></FIELD>
+        </TDLMESSAGE>
+      </TDL>
+    </DESC>
+  </BODY>
+</ENVELOPE>`;
+}
+
 export interface CollectionEnvelopeOptions {
   /** Used both as `<ID>` and the `<COLLECTION NAME="...">` attribute. */
   name: string;

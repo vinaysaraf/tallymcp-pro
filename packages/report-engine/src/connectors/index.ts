@@ -1,6 +1,6 @@
 export { getBalanceSheet } from "./balance-sheet.js";
 export { getCompanyInfo } from "./company-info.js";
-export { getCurrentCompany } from "./current-company.js";
+export { getCurrentCompany, getLoadedPeriod } from "./current-company.js";
 export { getDayBook, type GetDayBookOptions } from "./day-book.js";
 export { getDayBookStream } from "./day-book-stream.js";
 export {
