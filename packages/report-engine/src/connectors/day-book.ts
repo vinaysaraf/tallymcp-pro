@@ -22,6 +22,7 @@ interface TdlDayBookRow {
   reference: string;
   narration: string;
   amount: number;
+  ledger: string;
 }
 
 /**
@@ -68,6 +69,7 @@ async function fetchOne(
 function toVoucher(row: TdlDayBookRow): Voucher {
   // Convert ISO date (YYYY-MM-DD) → Tally compact (YYYYMMDD)
   const date = row.date.replace(/-/g, "") as TallyDate;
+  const ledger = row.ledger || row.party || row.voucherType || "Unknown";
   return VoucherSchema.parse({
     date,
     voucherType: row.voucherType || "Unknown",
@@ -76,9 +78,10 @@ function toVoucher(row: TdlDayBookRow): Voucher {
     reference: row.reference || undefined,
     narration: row.narration || undefined,
     amount: row.amount,
+    ledger,
     entries: [
       {
-        ledger: row.party || row.voucherType || "Unknown",
+        ledger,
         amount: row.amount,
         isDeemedPositive: row.amount >= 0,
       },

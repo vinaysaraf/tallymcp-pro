@@ -10,6 +10,7 @@ interface TdlSalesRow {
   reference: string;
   narration: string;
   amount: number;
+  ledger: string;
 }
 
 /**
@@ -35,6 +36,7 @@ export async function getSalesRegister(
 
 function toVoucher(row: TdlSalesRow): Voucher {
   const date = row.date.replace(/-/g, "") as TallyDate;
+  const ledger = row.ledger || row.party || "Sales";
   return VoucherSchema.parse({
     date,
     voucherType: row.voucherType || "Sales",
@@ -43,9 +45,10 @@ function toVoucher(row: TdlSalesRow): Voucher {
     reference: row.reference || undefined,
     narration: row.narration || undefined,
     amount: row.amount,
+    ledger,
     entries: [
       {
-        ledger: row.party || "Sales",
+        ledger,
         amount: row.amount,
         isDeemedPositive: row.amount >= 0,
       },

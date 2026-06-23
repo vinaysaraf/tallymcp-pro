@@ -72,6 +72,10 @@ export const VoucherSchema = z.object({
   /** Net transaction value of the voucher (Tally's `$Amount`). Surfaced as the
    *  Amount column in the Day Book / Sales Register exports. */
   amount: z.number().optional(),
+  /** Primary ledger of the voucher (Tally's `$LedgerName`) — the "particulars"
+   *  account. Surfaced as the Ledger column in the Day Book / Sales Register
+   *  exports; the full posting breakdown remains in {@link entries}. */
+  ledger: z.string().optional(),
   entries: z.array(VoucherLineSchema).min(1),
 });
 export type Voucher = z.infer<typeof VoucherSchema>;

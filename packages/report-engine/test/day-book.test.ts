@@ -26,6 +26,7 @@ const DAYBOOK_XML = `<ENVELOPE><BODY><DATA>
     <F05>INV-S-1</F05>
     <F06>Sale</F06>
     <F07>-118000</F07>
+    <F08>Sales Accounts</F08>
   </ROW>
   <ROW>
     <F01>2026-04-05</F01>
@@ -35,6 +36,7 @@ const DAYBOOK_XML = `<ENVELOPE><BODY><DATA>
     <F05></F05>
     <F06>Payment received</F06>
     <F07>118000</F07>
+    <F08>Cash</F08>
   </ROW>
 </DATA></BODY></ENVELOPE>`;
 
@@ -67,6 +69,9 @@ describe("getDayBook (TDL-backed)", () => {
     expect(first?.narration).toBe("Sale");
     // Net voucher value also surfaces top-level (the Amount export column).
     expect(first?.amount).toBe(-118000);
+    // Primary ledger (particulars) surfaces top-level and on the entry.
+    expect(first?.ledger).toBe("Sales Accounts");
+    expect(first?.entries[0]?.ledger).toBe("Sales Accounts");
   });
 
   it("stores the voucher amount as the single entry with sign-derived isDeemedPositive", async () => {
@@ -91,8 +96,10 @@ describe("getDayBook (TDL-backed)", () => {
     });
     expect(client.calls[0]).toContain("<TYPE>Voucher</TYPE>");
     expect(client.calls[0]).toContain("<BELONGSTO>Yes</BELONGSTO>");
-    // $Amount is unpopulated on a raw Voucher collection unless fetched.
-    expect(client.calls[0]).toContain("<FETCH>Amount</FETCH>");
+    // Voucher methods ($Amount, $LedgerName, …) are unpopulated on a raw
+    // Voucher collection unless explicitly fetched.
+    expect(client.calls[0]).toContain("<FETCH>Amount");
+    expect(client.calls[0]).toContain("LedgerName");
     expect(client.calls[0]).toContain("<SVFROMDATE>1-Apr-2026</SVFROMDATE>");
     expect(client.calls[0]).toContain("<SVTODATE>30-Apr-2026</SVTODATE>");
   });

@@ -72,7 +72,8 @@
           { "identifier": "F04", "name": "party", "datatype": "string" },
           { "identifier": "F05", "name": "reference", "datatype": "string" },
           { "identifier": "F06", "name": "narration", "datatype": "string" },
-          { "identifier": "F07", "name": "amount", "datatype": "number" }
+          { "identifier": "F07", "name": "amount", "datatype": "number" },
+          { "identifier": "F08", "name": "ledger", "datatype": "string" }
         ]
       }
     },
@@ -93,7 +94,8 @@
           { "identifier": "F04", "name": "party", "datatype": "string" },
           { "identifier": "F05", "name": "reference", "datatype": "string" },
           { "identifier": "F06", "name": "narration", "datatype": "string" },
-          { "identifier": "F07", "name": "amount", "datatype": "number" }
+          { "identifier": "F07", "name": "amount", "datatype": "number" },
+          { "identifier": "F08", "name": "ledger", "datatype": "string" }
         ]
       }
     }

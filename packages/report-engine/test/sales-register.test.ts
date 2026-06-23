@@ -23,6 +23,7 @@ const SALES_XML = `<ENVELOPE><BODY><DATA>
     <F05>INV-100</F05>
     <F06>Sale to Acme</F06>
     <F07>-118000</F07>
+    <F08>Sales Accounts</F08>
   </ROW>
 </DATA></BODY></ENVELOPE>`;
 
@@ -43,6 +44,9 @@ describe("getSalesRegister (TDL-backed)", () => {
     expect(vs[0]?.entries[0]?.amount).toBe(-118000);
     // Net voucher value also surfaces top-level (the Amount export column).
     expect(vs[0]?.amount).toBe(-118000);
+    // Primary ledger (particulars) surfaces top-level and on the entry.
+    expect(vs[0]?.ledger).toBe("Sales Accounts");
+    expect(vs[0]?.entries[0]?.ledger).toBe("Sales Accounts");
   });
 
   it("sends an inline-TDL Voucher collection filtered to $$IsSales, fetching Amount", async () => {
@@ -51,8 +55,10 @@ describe("getSalesRegister (TDL-backed)", () => {
     expect(client.calls[0]).toContain("<TYPE>Voucher</TYPE>");
     expect(client.calls[0]).toContain("<FILTER>IsSalesVch</FILTER>");
     expect(client.calls[0]).toContain('$$IsSales:$VoucherTypeName');
-    // $Amount is unpopulated on a raw Voucher collection unless fetched.
-    expect(client.calls[0]).toContain("<FETCH>Amount</FETCH>");
+    // Voucher methods ($Amount, $LedgerName, …) are unpopulated on a raw
+    // Voucher collection unless explicitly fetched.
+    expect(client.calls[0]).toContain("<FETCH>Amount");
+    expect(client.calls[0]).toContain("LedgerName");
   });
 
   it("throws on Tally <EXCEPTION> response", async () => {
