@@ -16,11 +16,10 @@ describe("MCP server bundle smoke (#152)", () => {
     // "report-catalog.json not found". The build must place them in dist/.
     const distDir = join(__dirname, "..", "dist");
     await access(join(distDir, "report-catalog.json"));
-    // Assert ALL TDL templates travel with the bundle — a partial copy
+    // Assert ALL five templates travel with the bundle — a partial copy
     // failure (some XMLs missing) must not slip through. (Cursor/Claude2 rec.)
-    // The Day Book uses the raw-voucher path (per-line detail), so it has no
-    // TDL template; the remaining four are TDL-projected reports.
     for (const tpl of [
+      "day-book.xml",
       "trial-balance.xml",
       "profit-loss.xml",
       "balance-sheet.xml",

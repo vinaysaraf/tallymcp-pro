@@ -9,88 +9,119 @@ function stubClient(responses: string | string[]): TallyClient & { calls: string
     calls,
     async post(xml: string) {
       calls.push(xml);
-      // Repeat the last response for every chunk request.
-      return queue.length > 1 ? (queue.shift() as string) : (queue[0] as string);
+      const r = queue.shift();
+      if (r === undefined) throw new Error("StubClient: no more responses queued");
+      return r;
     },
   };
 }
 
-// Raw Day Book response — full <VOUCHER> objects with one
-// <ALLLEDGERENTRIES.LIST> per ledger posting (the per-line detail). This is the
-// shape Tally returns for a Voucher collection (the TDL projection that only
-// exposed one ledger per voucher was replaced in v1.0.8).
-const DAYBOOK_XML = `<ENVELOPE><BODY><DATA><COLLECTION>
-  <VOUCHER>
-    <DATE>20260403</DATE>
-    <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>
-    <VOUCHERNUMBER>P-1</VOUCHERNUMBER>
-    <PARTYLEDGERNAME>HDFC Bank</PARTYLEDGERNAME>
-    <NARRATION>Rent paid</NARRATION>
-    <ALLLEDGERENTRIES.LIST>
-      <LEDGERNAME>Rent</LEDGERNAME><AMOUNT>-30000</AMOUNT><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-    </ALLLEDGERENTRIES.LIST>
-    <ALLLEDGERENTRIES.LIST>
-      <LEDGERNAME>HDFC Bank</LEDGERNAME><AMOUNT>30000</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-    </ALLLEDGERENTRIES.LIST>
-  </VOUCHER>
-  <VOUCHER>
-    <DATE>20260405</DATE>
-    <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
-    <VOUCHERNUMBER>S-1</VOUCHERNUMBER>
-    <PARTYLEDGERNAME>Acme &amp; Co</PARTYLEDGERNAME>
-    <NARRATION>Invoice</NARRATION>
-    <ALLLEDGERENTRIES.LIST>
-      <LEDGERNAME>Acme &amp; Co</LEDGERNAME><AMOUNT>118000</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-    </ALLLEDGERENTRIES.LIST>
-  </VOUCHER>
-</COLLECTION></DATA></BODY></ENVELOPE>`;
+// TDL-shaped Day Book response — one row per voucher, F01..F07 projection.
+const DAYBOOK_XML = `<ENVELOPE><BODY><DATA>
+  <ROW>
+    <F01>2026-04-03</F01>
+    <F02>Sales</F02>
+    <F03>S-1</F03>
+    <F04>Acme &amp; Co</F04>
+    <F05>INV-S-1</F05>
+    <F06>Sale</F06>
+    <F07>-118000</F07>
+    <F08>Sales Accounts</F08>
+  </ROW>
+  <ROW>
+    <F01>2026-04-05</F01>
+    <F02>Receipt</F02>
+    <F03>R-1</F03>
+    <F04>Acme &amp; Co</F04>
+    <F05></F05>
+    <F06>Payment received</F06>
+    <F07>118000</F07>
+    <F08>Cash</F08>
+  </ROW>
+</DATA></BODY></ENVELOPE>`;
 
-const LINE_ERROR_XML = `<ENVELOPE><BODY><DATA><LINEERROR>Could not find Company</LINEERROR></DATA></BODY></ENVELOPE>`;
+const EXCEPTION_XML = `<EXCEPTION>Period out of range</EXCEPTION>`;
 
-describe("getDayBook (raw per-line)", () => {
-  it("parses each voucher with its full ledger-entry breakdown", async () => {
-    const vs = await getDayBook(stubClient(DAYBOOK_XML), {
+describe("getDayBook (TDL-backed)", () => {
+  it("makes one POST for the period by default (no chunking)", async () => {
+    const client = stubClient(DAYBOOK_XML);
+    const vouchers = await getDayBook(client, {
       company: "Acme",
-      fromDate: "20260403",
-      toDate: "20260403",
+      fromDate: "20260401",
+      toDate: "20260430",
     });
-    expect(vs).toHaveLength(2);
-    const [payment, sale] = vs;
-    expect(payment?.date).toBe("20260403");
-    expect(payment?.voucherType).toBe("Payment");
-    expect(payment?.voucherNumber).toBe("P-1");
-    expect(payment?.party).toBe("HDFC Bank");
-    expect(payment?.narration).toBe("Rent paid");
-    // Both ledger postings are preserved (real ledger names + signed amounts).
-    expect(payment?.entries).toHaveLength(2);
-    expect(payment?.entries[0]).toMatchObject({ ledger: "Rent", amount: -30000, isDeemedPositive: true });
-    expect(payment?.entries[1]).toMatchObject({ ledger: "HDFC Bank", amount: 30000, isDeemedPositive: false });
-    expect(sale?.party).toBe("Acme & Co");
-    expect(sale?.entries[0]?.ledger).toBe("Acme & Co");
+    expect(client.calls).toHaveLength(1);
+    expect(vouchers).toHaveLength(2);
   });
 
-  it("requests a Day Book Voucher collection for the period", async () => {
+  it("parses voucher metadata: date, type, number, party, narration", async () => {
     const client = stubClient(DAYBOOK_XML);
-    await getDayBook(client, { company: "Acme", fromDate: "20260403", toDate: "20260403" });
-    expect(client.calls[0]).toContain("Day Book");
+    const [first] = await getDayBook(client, {
+      company: "Acme",
+      fromDate: "20260401",
+      toDate: "20260430",
+    });
+    expect(first?.date).toBe("20260403");
+    expect(first?.voucherType).toBe("Sales");
+    expect(first?.voucherNumber).toBe("S-1");
+    expect(first?.party).toBe("Acme & Co");
+    expect(first?.reference).toBe("INV-S-1");
+    expect(first?.narration).toBe("Sale");
+    // Net voucher value also surfaces top-level (the Amount export column).
+    expect(first?.amount).toBe(-118000);
+    // Primary ledger (particulars) surfaces top-level and on the entry.
+    expect(first?.ledger).toBe("Sales Accounts");
+    expect(first?.entries[0]?.ledger).toBe("Sales Accounts");
+  });
+
+  it("stores the voucher amount as the single entry with sign-derived isDeemedPositive", async () => {
+    const client = stubClient(DAYBOOK_XML);
+    const [neg, pos] = await getDayBook(client, {
+      company: "Acme",
+      fromDate: "20260401",
+      toDate: "20260430",
+    });
+    expect(neg?.entries[0]?.amount).toBe(-118000);
+    expect(neg?.entries[0]?.isDeemedPositive).toBe(false);
+    expect(pos?.entries[0]?.amount).toBe(118000);
+    expect(pos?.entries[0]?.isDeemedPositive).toBe(true);
+  });
+
+  it("sends an inline-TDL Voucher collection envelope with the period", async () => {
+    const client = stubClient(DAYBOOK_XML);
+    await getDayBook(client, {
+      company: "Acme",
+      fromDate: "20260401",
+      toDate: "20260430",
+    });
     expect(client.calls[0]).toContain("<TYPE>Voucher</TYPE>");
-    expect(client.calls[0]).toContain("<SVCURRENTCOMPANY>Acme</SVCURRENTCOMPANY>");
+    expect(client.calls[0]).toContain("<BELONGSTO>Yes</BELONGSTO>");
+    // Voucher methods ($Amount, $LedgerName, …) are unpopulated on a raw
+    // Voucher collection unless explicitly fetched.
+    expect(client.calls[0]).toContain("<FETCH>Amount");
+    expect(client.calls[0]).toContain("LedgerName");
+    expect(client.calls[0]).toContain("<SVFROMDATE>1-Apr-2026</SVFROMDATE>");
+    expect(client.calls[0]).toContain("<SVTODATE>30-Apr-2026</SVTODATE>");
   });
 
-  it("chunks long periods into multiple requests (default 7-day window)", async () => {
-    const client = stubClient(DAYBOOK_XML);
-    await getDayBook(client, { company: "Acme", fromDate: "20260401", toDate: "20260430" });
-    // 30 days / 7 = 5 windows → 5 requests.
-    expect(client.calls).toHaveLength(5);
+  it("makes N POSTs when chunkDays > 0 (opt-in chunking)", async () => {
+    const client = stubClient([DAYBOOK_XML, DAYBOOK_XML]);
+    await getDayBook(client, {
+      company: "Acme",
+      fromDate: "20260401",
+      toDate: "20260408",
+      chunkDays: 7,
+    });
+    expect(client.calls).toHaveLength(2);
   });
 
-  it("throws TallyReportError when the response carries a LINEERROR", async () => {
+  it("throws on Tally <EXCEPTION> response", async () => {
     await expect(
-      getDayBook(stubClient(LINE_ERROR_XML), {
+      getDayBook(stubClient(EXCEPTION_XML), {
         company: "Acme",
-        fromDate: "20260403",
-        toDate: "20260403",
+        fromDate: "20260401",
+        toDate: "20260401",
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/Tally returned <EXCEPTION>/);
   });
 });

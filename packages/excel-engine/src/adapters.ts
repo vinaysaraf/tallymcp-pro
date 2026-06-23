@@ -30,58 +30,12 @@ export function toWorkbookSpec(
       {
         name: clampSheetName(layout.sheetName),
         columns: layout.columns,
-        rows: toSheetRows(reportId, result.rows),
+        rows: result.rows as Array<Record<string, unknown>>,
         freezeRows: 1,
         autoFilter: true,
       },
     ],
   };
-}
-
-interface VoucherEntryLike {
-  ledger?: string;
-  amount?: number;
-  isDeemedPositive?: boolean;
-}
-interface VoucherLike {
-  date?: string;
-  voucherType?: string;
-  voucherNumber?: string;
-  party?: string;
-  narration?: string;
-  entries?: VoucherEntryLike[];
-}
-
-/**
- * Maps report rows to sheet rows. Most reports are 1:1, but the Day Book is
- * exploded: each voucher becomes one row per ledger posting, with the entry's
- * amount split into Debit/Credit by `isDeemedPositive` (true = debit). The
- * voucher-level Date/Type/Number/Party/Narration repeat on every line so the
- * sheet stays filterable.
- */
-function toSheetRows(
-  reportId: string,
-  rows: ReadReportResult["rows"],
-): Array<Record<string, unknown>> {
-  if (reportId !== "DayBook") return rows as Array<Record<string, unknown>>;
-  const out: Array<Record<string, unknown>> = [];
-  for (const v of rows as VoucherLike[]) {
-    const entries = v.entries?.length ? v.entries : [{ ledger: v.party, amount: 0, isDeemedPositive: true }];
-    for (const e of entries) {
-      const magnitude = Math.abs(e.amount ?? 0);
-      out.push({
-        date: v.date,
-        voucherType: v.voucherType,
-        voucherNumber: v.voucherNumber,
-        party: v.party,
-        ledger: e.ledger,
-        debit: e.isDeemedPositive ? magnitude : null,
-        credit: e.isDeemedPositive ? null : magnitude,
-        narration: v.narration,
-      });
-    }
-  }
-  return out;
 }
 
 interface ReportLayout {
@@ -142,15 +96,14 @@ const LAYOUTS: Record<string, ReportLayout> = {
   },
   DayBook: {
     sheetName: "Day Book",
-    // One row per ledger posting (the voucher is exploded across its entries).
     columns: [
       { header: "Date", key: "date", width: 12 },
       { header: "Type", key: "voucherType", width: 18 },
       { header: "Number", key: "voucherNumber", width: 14 },
-      { header: "Party", key: "party", width: 26 },
+      { header: "Party", key: "party", width: 28 },
       { header: "Ledger", key: "ledger", width: 28 },
-      { header: "Debit", key: "debit", width: 16, numberFormat: "currency-inr" },
-      { header: "Credit", key: "credit", width: 16, numberFormat: "currency-inr" },
+      { header: "Reference", key: "reference", width: 18 },
+      { header: "Amount", key: "amount", width: 18, numberFormat: "currency-inr" },
       { header: "Narration", key: "narration", width: 50 },
     ],
   },
@@ -181,13 +134,12 @@ const LAYOUTS: Record<string, ReportLayout> = {
     ],
   },
   SalesRegister: {
-    // Invoice-level summary (one row per sales voucher). Per-line ledger
-    // postings for sales vouchers appear in the Day Book.
     sheetName: "Sales Register",
     columns: [
       { header: "Date", key: "date", width: 12 },
-      { header: "Number", key: "voucherNumber", width: 16 },
-      { header: "Party", key: "party", width: 32 },
+      { header: "Number", key: "voucherNumber", width: 14 },
+      { header: "Party", key: "party", width: 28 },
+      { header: "Ledger", key: "ledger", width: 28 },
       { header: "Reference", key: "reference", width: 18 },
       { header: "Amount", key: "amount", width: 18, numberFormat: "currency-inr" },
       { header: "Narration", key: "narration", width: 50 },
