@@ -82,7 +82,9 @@ async function main() {
   await access(destBundle);
 
   console.log(`[deploy-mcp-server] staged at ${stagingDir}`);
-  console.log(`[deploy-mcp-server]   main.bundle.js + main.bundle.js.map + package.json`);
+  console.log(
+    `[deploy-mcp-server]   main.bundle.js + main.bundle.js.map + package.json + report-catalog.json + templates/`,
+  );
 }
 
 main().catch((err) => {

@@ -16,8 +16,17 @@ describe("MCP server bundle smoke (#152)", () => {
     // "report-catalog.json not found". The build must place them in dist/.
     const distDir = join(__dirname, "..", "dist");
     await access(join(distDir, "report-catalog.json"));
-    await access(join(distDir, "templates", "day-book.xml"));
-    await access(join(distDir, "templates", "trial-balance.xml"));
+    // Assert ALL five templates travel with the bundle — a partial copy
+    // failure (some XMLs missing) must not slip through. (Cursor/Claude2 rec.)
+    for (const tpl of [
+      "day-book.xml",
+      "trial-balance.xml",
+      "profit-loss.xml",
+      "balance-sheet.xml",
+      "sales-register.xml",
+    ]) {
+      await access(join(distDir, "templates", tpl));
+    }
   });
 
   it("the bundle starts without ERR_MODULE_NOT_FOUND", async () => {

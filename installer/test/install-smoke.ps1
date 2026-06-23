@@ -62,6 +62,9 @@ $mustExist = @(
   (Join-Path $InstallDir "TallyMCP.exe"),
   (Join-Path $InstallDir "node.exe"),
   (Join-Path $InstallDir "mcp-server\main.bundle.js"),
+  # v1.0.7+: the TDL engine loads these at runtime — they must ship next to the bundle.
+  (Join-Path $InstallDir "mcp-server\report-catalog.json"),
+  (Join-Path $InstallDir "mcp-server\templates\day-book.xml"),
   (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\TallyMCP.lnk")
 )
 
