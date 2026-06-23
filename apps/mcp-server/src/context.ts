@@ -1,5 +1,6 @@
 import { ConfigStore, type Config, type TallyConnection } from "@tallymcp/config-store";
 import { TallyHttpClient } from "@tallymcp/tally-connector";
+import { resolveOutputDir } from "@tallymcp/output-store";
 import {
   fromAssumedEdition,
   probeTallyCapabilities,
@@ -84,7 +85,9 @@ export async function createContext(options: McpContextOptions): Promise<McpCont
   let tallyClient = buildClient(conn, resolveTimeoutMs(config));
   let networkGuard = createNetworkGuard({ host: conn.host, port: conn.port });
   let capabilities = await detectCapabilities(config, tallyClient, options.skipCapabilityProbe);
-  const outputDir = options.outputDir ?? config.output.folder;
+  // Resolve a relative output folder (the default is "./tallymcp-output")
+  // against the user's HOME dir, never the spawn CWD — see resolveOutputDir.
+  const outputDir = options.outputDir ?? resolveOutputDir(config.output.folder);
 
   const context: McpContext = {
     get config() {
