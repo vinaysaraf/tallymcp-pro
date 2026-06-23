@@ -33,6 +33,8 @@
  */
 
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { UpdateStatus } from "../shared/ipc-types.js";
 
 const REPO_OWNER = "vinaysaraf";
@@ -42,9 +44,49 @@ function releaseNotesUrlFor(version: string): string {
   return `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/v${version}`;
 }
 
+/**
+ * Minimal, dependency-free logger for electron-updater. Until v1.0.7 the
+ * updater had NO logger wired, so download/verify failures (e.g. the
+ * per-machine v1.0.4 → v1.0.5 loop) vanished into an uncaptured console with
+ * no way to diagnose them. This writes every updater event to `logFile`
+ * (and stderr) so a failed in-app update is now self-diagnosing.
+ */
+function makeUpdaterLogger(logFile?: string): {
+  info: (...a: unknown[]) => void;
+  warn: (...a: unknown[]) => void;
+  error: (...a: unknown[]) => void;
+  debug: (...a: unknown[]) => void;
+} {
+  const write = (level: string, args: unknown[]): void => {
+    const line = `[${new Date().toISOString()}] [updater:${level}] ${args
+      .map((a) => (a instanceof Error ? `${a.message}\n${a.stack ?? ""}` : String(a)))
+      .join(" ")}\n`;
+    process.stderr.write(line);
+    if (logFile) {
+      try {
+        mkdirSync(dirname(logFile), { recursive: true });
+        appendFileSync(logFile, line);
+      } catch {
+        /* logging must never throw */
+      }
+    }
+  };
+  return {
+    info: (...a) => write("info", a),
+    warn: (...a) => write("warn", a),
+    error: (...a) => write("error", a),
+    debug: (...a) => write("debug", a),
+  };
+}
+
 export interface CreateAutoUpdaterInput {
   /** Installed app version, e.g. "1.0.0". Usually `app.getVersion()`. */
   currentVersion: string;
+  /**
+   * Absolute path for the updater log. Production passes
+   * `<userData>/logs/updater.log`; tests may omit it (stderr only).
+   */
+  logFile?: string;
 }
 
 export interface AutoUpdater {
@@ -81,6 +123,10 @@ export function createAutoUpdater(input: CreateAutoUpdaterInput): AutoUpdater {
     status = next;
     for (const cb of subscribers) cb(next);
   }
+
+  // Capture all electron-updater activity to a log file (+ stderr) so a failed
+  // in-app update is diagnosable instead of silently looping (v1.0.7).
+  autoUpdater.logger = makeUpdaterLogger(input.logFile);
 
   // Wire to electron-updater events. autoUpdater is a singleton across the
   // process, so calling this multiple times would double-subscribe — guard

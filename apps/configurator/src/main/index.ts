@@ -138,7 +138,11 @@ if (process.argv.includes("--uninstall-cleanup")) {
     // still works because the core IPC handlers were registered above.
     try {
       const { createAutoUpdater } = await import("./auto-update.js");
-      const updater = createAutoUpdater({ currentVersion: app.getVersion() });
+      const updater = createAutoUpdater({
+        currentVersion: app.getVersion(),
+        // Captures download/verify failures so a looping update is diagnosable.
+        logFile: join(app.getPath("userData"), "logs", "updater.log"),
+      });
 
       const unsubUpdate = updater.subscribe((status) => {
         if (!mainWindow.isDestroyed()) {

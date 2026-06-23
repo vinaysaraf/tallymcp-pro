@@ -13,7 +13,7 @@
  * Idempotent: removes the staging dir first so reruns produce clean output.
  */
 
-import { rm, mkdir, access, copyFile, writeFile } from "node:fs/promises";
+import { rm, mkdir, access, copyFile, cp, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -49,6 +49,15 @@ async function main() {
   await access(sourceBundle);
   await copyFile(sourceBundle, destBundle);
   await copyFile(sourceMap, destMap);
+
+  // Step 2b: ship the TDL data files alongside the bundle. esbuild copied them
+  // into dist/ (next to main.bundle.js); the bundled tdl-engine loads them from
+  // its own directory at runtime, so they must travel into <installDir>\mcp-server\.
+  await copyFile(
+    join(mcpDir, "dist", "report-catalog.json"),
+    join(stagingDir, "report-catalog.json"),
+  );
+  await cp(join(mcpDir, "dist", "templates"), join(stagingDir, "templates"), { recursive: true });
 
   // Step 3: write a minimal package.json declaring `type: module` so Node
   // treats main.bundle.js as ESM. No `dependencies` field — the bundle is
