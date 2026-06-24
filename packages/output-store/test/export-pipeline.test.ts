@@ -14,7 +14,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(scratchDir, { recursive: true, force: true });
+  // Windows CI can throw ENOTEMPTY/EBUSY when a just-written workbook/CSV handle
+  // is still closing as we delete the scratch dir — retry instead of failing.
+  rmSync(scratchDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 function stubClient(responses: string | string[]): TallyClient & { calls: string[] } {

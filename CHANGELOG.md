@@ -2,7 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## v1.0.14 — Richer, more insightful Excel exports (2026-06-24)
+## v1.0.15 — Richer, more insightful Excel exports (2026-06-24)
+
+### Tests
+- Hardened the temp-dir cleanup in three suites (output-store / config-store / mcp-server) with `rmSync` retries — a Windows CI runner intermittently threw `ENOTEMPTY` while deleting a freshly-written scratch dir (the assertions passed; only the cleanup raced). (This is why v1.0.14 didn't publish; v1.0.15 carries the same Excel changes plus this fix.)
 
 ### Changed
 - **Every Excel download is now insight-rich and visually formatted**, not a bare data dump. The Excel engine gained native visual primitives (no chart dependency): a styled brand-blue header band, in-cell **data bars** on currency columns, **zebra-banded** rows, bold **TOTAL** rows, and per-row colour **tones** (section / good / bad / info / muted). These apply across all workbooks:

@@ -17,7 +17,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(scratchDir, { recursive: true, force: true });
+  rmSync(scratchDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 async function bootServerPair() {
