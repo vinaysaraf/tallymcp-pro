@@ -1,6 +1,6 @@
 # TallyMCP Pro — User Manual (Non‑technical)
 
-**Version:** v1.0.1  
+**Version:** v1.0.10  
 **Audience:** Chartered Accountants, accountants, finance teams  
 **Goal:** Read Tally data safely and export professional reports (no posting)
 
