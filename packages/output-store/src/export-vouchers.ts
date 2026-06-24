@@ -11,7 +11,7 @@ export interface ExportVouchersOptions {
   fromDate: TallyDate;
   toDate: TallyDate;
   outputDir: string;
-  /** Day-Book window size; defaults to 7. */
+  /** Day-Book chunk-window size in days; defaults to 31 (see getDayBookStream). */
   chunkDays?: number;
 }
 
