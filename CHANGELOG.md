@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.14 — Richer, more insightful Excel exports (2026-06-24)
+
+### Changed
+- **Every Excel download is now insight-rich and visually formatted**, not a bare data dump. The Excel engine gained native visual primitives (no chart dependency): a styled brand-blue header band, in-cell **data bars** on currency columns, **zebra-banded** rows, bold **TOTAL** rows, and per-row colour **tones** (section / good / bad / info / muted). These apply across all workbooks:
+  - **Management Snapshot** — rebuilt as a true dashboard: KPI tiles (Revenue, Gross/Net Profit with margins, Cash & Bank, Receivables/Payables, Working Capital), a **Ratios** sheet (gross/net margin, current & quick ratio, debt-equity) each with a benchmark and RAG assessment, plus **Top Debtors**, **Top Creditors**, and **Expense Analysis** drill-downs. Figures are derived from the (now-correct) Trial Balance closing balances. *(Fixed a classification bug while building this — `direct expense` was matching `indirect expenses`, double-counting indirect items and understating profit.)*
+  - **Sales Trend** — sales summary KPIs (total/avg invoice, best month, active customers), month-wise trend with **month-on-month growth %**, and a **Top Customers** sheet.
+  - **Exceptions Overview** — severity counts with tones + data bars, a per-check breakdown, and a new **Findings detail** sheet (severity, code, title, evidence, suggested fix) that previously wasn't shown.
+  - **Audit-lite workbook** — findings colour-coded by severity; books-score components with data bars.
+  - **The 10 report exports** (Trial Balance, P&L, Balance Sheet, Day Book, Sales/Purchase Register, masters, etc.) — data bars on amount columns, banded rows, and TOTAL rows on the financial reports.
+
 ## v1.0.13 — Trial Balance shows closing balances and ties out (2026-06-24)
 
 ### Fixed

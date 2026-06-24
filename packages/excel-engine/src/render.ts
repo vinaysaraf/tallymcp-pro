@@ -1,12 +1,72 @@
 import ExcelJS from "exceljs";
 import { NUMBER_FORMATS } from "./formats.js";
 import {
+  ROW_STYLE_KEY,
   WorkbookSpecSchema,
   type CoverSheetSpec,
   type ExtractionLogSpec,
+  type RowStyle,
   type SheetSpec,
   type WorkbookSpec,
 } from "./spec.js";
+
+// ── Visual palette (ARGB) ─────────────────────────────────────────────────────
+const C = {
+  headerBg: "FF1F3A5F", // deep brand blue
+  headerFg: "FFFFFFFF",
+  band: "FFF4F7FB", // very light blue-grey zebra stripe
+  section: "FFDCE6F1", // section header band
+  good: "FFE2EFDA", // soft green
+  goodFg: "FF2E7D32",
+  bad: "FFFCE4E4", // soft red
+  badFg: "FFC62828",
+  info: "FFE7F0FA", // soft blue
+  infoFg: "FF1F4E79",
+  kpi: "FFFFF2CC", // soft amber tile
+  total: "FFEDEDED",
+  border: "FFBFBFBF",
+} as const;
+
+const fill = (argb: string): ExcelJS.Fill => ({
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb },
+});
+
+/** Applies per-row emphasis (see {@link RowStyle}). */
+function styleRow(row: ExcelJS.Row, style: RowStyle, colCount: number): void {
+  const set = (bg: string, fg?: string, opts?: { bold?: boolean; italic?: boolean }) => {
+    for (let i = 1; i <= colCount; i++) {
+      const cell = row.getCell(i);
+      cell.fill = fill(bg);
+      cell.font = { bold: opts?.bold ?? false, italic: opts?.italic ?? false, color: fg ? { argb: fg } : undefined };
+    }
+  };
+  switch (style) {
+    case "section":
+      set(C.section, C.headerBg, { bold: true });
+      break;
+    case "kpi":
+      set(C.kpi, undefined, { bold: true });
+      row.getCell(1).font = { bold: true };
+      break;
+    case "good":
+      set(C.good, C.goodFg, { bold: true });
+      break;
+    case "bad":
+      set(C.bad, C.badFg, { bold: true });
+      break;
+    case "info":
+      set(C.info, C.infoFg, { bold: true });
+      break;
+    case "muted":
+      set("FFFFFFFF", "FF808080", { italic: true });
+      break;
+    case "total":
+      set(C.total, undefined, { bold: true });
+      break;
+  }
+}
 
 /**
  * Renders a {@link WorkbookSpec} into an `.xlsx` byte buffer.
@@ -68,6 +128,7 @@ function addCoverSheet(wb: ExcelJS.Workbook, cover: CoverSheetSpec): void {
 
 function addDataSheet(wb: ExcelJS.Workbook, sheet: SheetSpec): void {
   const ws = wb.addWorksheet(sheet.name);
+  const colCount = sheet.columns.length;
   ws.columns = sheet.columns.map((c) => ({
     header: c.header,
     key: c.key,
@@ -81,17 +142,58 @@ function addDataSheet(wb: ExcelJS.Workbook, sheet: SheetSpec): void {
     }
   }
 
-  // Add data rows.
-  for (const row of sheet.rows) ws.addRow(row);
+  // Add data rows, applying per-row emphasis + zebra banding.
+  let dataIdx = 0;
+  for (const row of sheet.rows) {
+    const r = ws.addRow(row);
+    const style = (row as Record<string, unknown>)[ROW_STYLE_KEY] as RowStyle | undefined;
+    if (style) {
+      styleRow(r, style, colCount);
+    } else {
+      if (sheet.banded && dataIdx % 2 === 1) {
+        for (let i = 1; i <= colCount; i++) r.getCell(i).fill = fill(C.band);
+      }
+      dataIdx += 1;
+    }
+  }
 
   // Optional totals row in bold.
   if (sheet.totalsRow) {
     const r = ws.addRow(sheet.totalsRow);
-    r.font = { bold: true };
+    styleRow(r, "total", colCount);
   }
 
-  // Header styling.
-  ws.getRow(1).font = { bold: true };
+  // Header styling — deep-blue band, white bold text, thin bottom border.
+  const header = ws.getRow(1);
+  for (let i = 1; i <= colCount; i++) {
+    const cell = header.getCell(i);
+    cell.font = { bold: true, color: { argb: C.headerFg } };
+    cell.fill = fill(C.headerBg);
+    cell.alignment = { vertical: "middle" };
+    cell.border = { bottom: { style: "thin", color: { argb: C.border } } };
+  }
+  header.height = 18;
+
+  // In-cell data bars on flagged numeric columns (over the data range only).
+  const lastRow = ws.rowCount;
+  if (lastRow > 1) {
+    sheet.columns.forEach((c, idx) => {
+      if (!c.dataBar) return;
+      const col = String.fromCharCode(65 + idx); // A..Z
+      const opts = {
+        ref: `${col}2:${col}${lastRow}`,
+        rules: [
+          {
+            type: "dataBar",
+            cfvo: [{ type: "min" }, { type: "max" }],
+            color: { argb: "FF5B9BD5" },
+            priority: 1,
+          },
+        ],
+      } as unknown as Parameters<typeof ws.addConditionalFormatting>[0];
+      ws.addConditionalFormatting(opts);
+    });
+  }
 
   // Freeze panes.
   if (sheet.freezeRows && sheet.freezeRows > 0) {
@@ -99,8 +201,8 @@ function addDataSheet(wb: ExcelJS.Workbook, sheet: SheetSpec): void {
   }
 
   // Auto-filter on the header row across the data column band.
-  if (sheet.autoFilter && sheet.columns.length > 0) {
-    const lastCol = String.fromCharCode(64 + sheet.columns.length); // A..Z up to 26 cols
+  if (sheet.autoFilter && colCount > 0) {
+    const lastCol = String.fromCharCode(64 + colCount); // A..Z up to 26 cols
     ws.autoFilter = { from: "A1", to: `${lastCol}1` };
   }
 }

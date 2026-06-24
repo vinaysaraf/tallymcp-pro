@@ -9,6 +9,15 @@ const AUDIT_DISCLAIMER =
  * picks the report by `result.meta.reportId`; this function chooses column
  * layout, number formats, and freeze/filter behaviour appropriately.
  */
+/** Reports for which a bold TOTAL row (summing the ₹ columns) is meaningful. */
+const TOTALS_REPORTS = new Set([
+  "TrialBalance",
+  "ProfitAndLoss",
+  "BalanceSheet",
+  "DayBook",
+  "SalesRegister",
+]);
+
 export function toWorkbookSpec(
   result: ReadReportResult,
   options: { disclaimer?: boolean } = {},
@@ -16,6 +25,24 @@ export function toWorkbookSpec(
   const reportId = result.meta.reportId;
   const layout = LAYOUTS[reportId] ?? GENERIC_LAYOUT;
   const filename = `${reportId}-${result.meta.generatedAt.replace(/[:.]/g, "-")}.xlsx`;
+  const rows = result.rows as Array<Record<string, unknown>>;
+
+  // Auto-enrich: in-cell data bars on every currency column; zebra banding.
+  const columns = layout.columns.map((c) =>
+    c.numberFormat === "currency-inr" ? { ...c, dataBar: true } : c,
+  );
+  const currencyKeys = columns.filter((c) => c.numberFormat === "currency-inr").map((c) => c.key);
+
+  let totalsRow: Record<string, unknown> | undefined;
+  if (TOTALS_REPORTS.has(reportId) && currencyKeys.length > 0 && rows.length > 0) {
+    totalsRow = { [columns[0]!.key]: "TOTAL" };
+    for (const k of currencyKeys) {
+      totalsRow[k] = rows.reduce(
+        (a, r) => a + (typeof r[k] === "number" ? (r[k] as number) : 0),
+        0,
+      );
+    }
+  }
 
   return {
     filename,
@@ -29,10 +56,12 @@ export function toWorkbookSpec(
     sheets: [
       {
         name: clampSheetName(layout.sheetName),
-        columns: layout.columns,
-        rows: result.rows as Array<Record<string, unknown>>,
+        columns,
+        rows,
         freezeRows: 1,
         autoFilter: true,
+        banded: true,
+        totalsRow,
       },
     ],
   };

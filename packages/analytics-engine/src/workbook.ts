@@ -1,6 +1,10 @@
+import { ROW_STYLE_KEY, type RowStyle } from "@tallymcp/excel-engine";
 import type { WorkbookSpec } from "@tallymcp/excel-engine";
 import type { AuditLiteResult } from "@tallymcp/shared-types";
 import { AUDIT_DISCLAIMER } from "./run-audit-lite.js";
+
+const severityTone = (s: string): RowStyle =>
+  s === "high" ? "bad" : s === "medium" ? "info" : "muted";
 
 /** Turns an `AuditLiteResult` into a `WorkbookSpec` (cover + Findings + Score). */
 export function toAuditWorkbook(result: AuditLiteResult): WorkbookSpec {
@@ -33,6 +37,7 @@ export function toAuditWorkbook(result: AuditLiteResult): WorkbookSpec {
         rows: result.findings.map((f) => ({
           ...f,
           evidence: f.evidence.join(" | "),
+          [ROW_STYLE_KEY]: severityTone(f.severity),
         })),
         freezeRows: 1,
         autoFilter: true,
@@ -41,10 +46,11 @@ export function toAuditWorkbook(result: AuditLiteResult): WorkbookSpec {
         name: "Books Score",
         columns: [
           { header: "Category", key: "category", width: 36 },
-          { header: "Delta", key: "delta", width: 12 },
+          { header: "Delta", key: "delta", width: 12, numberFormat: "integer", dataBar: true },
           { header: "Reason", key: "reason", width: 60 },
         ],
         rows: result.booksScore.components.map((c) => ({ ...c })),
+        banded: true,
         totalsRow: {
           category: "TOTAL",
           delta: result.booksScore.score - 100,

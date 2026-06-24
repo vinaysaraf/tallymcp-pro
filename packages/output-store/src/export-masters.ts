@@ -40,7 +40,7 @@ export async function exportMasters(
       columns: [
         { header: "Name", key: "name", width: 40 },
         { header: "Parent Group", key: "parent", width: 28 },
-        { header: "Opening Balance", key: "openingBalance", width: 18, numberFormat: "currency-inr" },
+        { header: "Opening Balance", key: "openingBalance", width: 18, numberFormat: "currency-inr", dataBar: true },
         { header: "Revenue?", key: "isRevenue", width: 10 },
         { header: "Dr-positive?", key: "isDeemedPositive", width: 14 },
         { header: "GSTIN", key: "gstin", width: 20 },
@@ -49,6 +49,7 @@ export async function exportMasters(
       rows: ledgers as unknown as Array<Record<string, unknown>>,
       freezeRows: 1,
       autoFilter: true,
+      banded: true,
     },
     {
       name: "Groups",
@@ -61,6 +62,7 @@ export async function exportMasters(
       rows: groups as unknown as Array<Record<string, unknown>>,
       freezeRows: 1,
       autoFilter: true,
+      banded: true,
     },
     {
       name: "Voucher Types",
@@ -72,6 +74,7 @@ export async function exportMasters(
       rows: voucherTypes as unknown as Array<Record<string, unknown>>,
       freezeRows: 1,
       autoFilter: true,
+      banded: true,
     },
   ];
 

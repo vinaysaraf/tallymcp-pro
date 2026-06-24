@@ -17,8 +17,19 @@ export const ColumnSpecSchema = z.object({
   /** Approximate column width in Excel's font-width units. */
   width: z.number().int().positive().optional(),
   numberFormat: NumberFormatSchema.optional(),
+  /** Render an in-cell data bar across this (numeric) column's data range. */
+  dataBar: z.boolean().optional(),
 });
 export type ColumnSpec = z.infer<typeof ColumnSpecSchema>;
+
+/**
+ * Per-row visual emphasis for dashboard-style sheets. Set on a row object under
+ * {@link ROW_STYLE_KEY}; the renderer styles the row accordingly and never
+ * writes the marker as a cell (it isn't a column key). Backward-compatible —
+ * rows without it render plainly.
+ */
+export const ROW_STYLE_KEY = "_rowStyle";
+export type RowStyle = "section" | "kpi" | "good" | "bad" | "info" | "muted" | "total";
 
 export const SheetSpecSchema = z.object({
   /** Excel limits sheet names to 31 characters and forbids `:\\/?*[]`. */
@@ -35,6 +46,8 @@ export const SheetSpecSchema = z.object({
   autoFilter: z.boolean().optional(),
   /** Optional totals row appended after data, rendered in bold. */
   totalsRow: z.record(z.string(), z.unknown()).optional(),
+  /** Zebra-stripe the data rows for readability. */
+  banded: z.boolean().optional(),
 });
 export type SheetSpec = z.infer<typeof SheetSpecSchema>;
 
