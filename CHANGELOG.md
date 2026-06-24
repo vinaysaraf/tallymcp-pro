@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.12 — Date parameters accept numeric input (every date-taking tool) (2026-06-24)
+
+### Fixed
+- **Date parameters rejected numeric input, breaking every date-taking tool through the MCP boundary.** `TallyDateSchema` was `z.string().regex(/^\d{8}$/)`, so when an MCP client / LLM sent a `YYYYMMDD` date as a JSON **number** (e.g. `20260331` without quotes — a very common LLM behaviour for all-digit values) Zod rejected it with *"Expected string, received number."* This blocked `tally_read_report`, `tally_export_report_excel` / `_json`, `tally_export_vouchers`, and the ledger/group closing-balance tools whenever an explicit period was given. `TallyDateSchema` now uses `z.coerce.string()` — a numeric date is coerced to a string and then validated by the 8-digit regex; string input and Tally-response parsing are unchanged, and malformed values (e.g. `"2025-26"`, `123`) are still rejected. Verified end-to-end: all 10 reports + bonus exports (masters, vouchers CSV, audit-lite, 3 dashboards) run live against TallyPrime Silver (17/17).
+
 ## v1.0.11 — Connection test detects loaded companies on Silver / multi-company (2026-06-24)
 
 ### Fixed

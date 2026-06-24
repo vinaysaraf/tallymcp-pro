@@ -5,7 +5,14 @@ import { z } from "zod";
 export const CompanyIdSchema = z.string().min(1);
 export type CompanyId = z.infer<typeof CompanyIdSchema>;
 
-export const TallyDateSchema = z
+// `z.coerce.string()` (not bare `z.string()`) so an MCP client/LLM that sends a
+// YYYYMMDD date as a JSON *number* (e.g. 20260331 without quotes — a very common
+// LLM behaviour for all-digit values) is accepted: the number is coerced to a
+// string and then validated by the regex. A bare `z.string()` rejected it with
+// "Expected string, received number", which blocked every date-taking tool
+// (read_report, export_*, closing balances) through the MCP boundary. Parsing
+// Tally responses is unaffected (those values are already strings).
+export const TallyDateSchema = z.coerce
   .string()
   .regex(/^\d{8}$/, "Tally date must be YYYYMMDD");
 export type TallyDate = z.infer<typeof TallyDateSchema>;
