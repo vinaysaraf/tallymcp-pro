@@ -185,14 +185,14 @@ async function main(): Promise<void> {
   // voucher path (toVoucher) and dashboard/audit exports get live coverage.
   const forceVouchers = args["force-vouchers"] === "true";
   if ((ctx.capabilities.voucherQueriesViable || forceVouchers) && period) {
-    await run(results, "vouchers CSV export", async () => {
-      const file = await exportVouchers(ctx.tallyClient, {
+    await run(results, "vouchers CSV + XLSX export", async () => {
+      const files = await exportVouchers(ctx.tallyClient, {
         company,
         fromDate: period!.from,
         toDate: period!.to,
         outputDir,
       });
-      return `→ ${file.fileName}`;
+      return `→ ${files.csv.fileName} + ${files.xlsx.fileName}`;
     });
     await run(results, "audit-lite + Books Score", async () => {
       const r = await runAuditLiteForCompany(ctx, {

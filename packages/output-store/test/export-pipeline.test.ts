@@ -171,13 +171,16 @@ describe("exportVouchers (streaming CSV)", () => {
     // 1 loaded-period probe + 2 Day Book chunk requests (8-day range).
     expect(client.calls.filter((c) => c.includes("TallyMcpCurrentPeriod"))).toHaveLength(1);
     expect(client.calls.filter((c) => !c.includes("TallyMcpCurrentPeriod"))).toHaveLength(2);
-    const csv = readFileSync(out.path, "utf8");
+    const csv = readFileSync(out.csv.path, "utf8");
     expect(csv.startsWith(UTF8_BOM)).toBe(true);
     const lines = csv.slice(UTF8_BOM.length).split(/\r\n/).filter((l) => l.length > 0);
     expect(lines[0]).toBe(
       "Date,Voucher Type,Voucher Number,Party,Reference,Narration,Ledger,Amount,Is Deemed Positive",
     );
     expect(lines).toHaveLength(1 + 2 * 2); // header + 2 vouchers × 2 entries each
+    // A formatted .xlsx is produced alongside the CSV.
+    expect(out.xlsx.path.endsWith(".xlsx")).toBe(true);
+    expect(out.xlsx.sizeBytes).toBeGreaterThan(1000);
   });
 
   it("survives an empty range with header-only output", async () => {
@@ -188,7 +191,7 @@ describe("exportVouchers (streaming CSV)", () => {
       toDate: "20260401",
       outputDir: scratchDir,
     });
-    const csv = readFileSync(out.path, "utf8");
+    const csv = readFileSync(out.csv.path, "utf8");
     const lines = csv.slice(UTF8_BOM.length).split(/\r\n/).filter((l) => l.length > 0);
     expect(lines).toHaveLength(1);
   });
@@ -218,7 +221,7 @@ describe("exportVouchers (streaming CSV)", () => {
       toDate: "20260403",
       outputDir: scratchDir,
     });
-    const csv = readFileSync(out.path, "utf8");
+    const csv = readFileSync(out.csv.path, "utf8");
     expect(csv).toContain(`"Foo, Bar & Co."`);
     expect(csv).toContain(`"Big ""deal"", urgent"`);
   });

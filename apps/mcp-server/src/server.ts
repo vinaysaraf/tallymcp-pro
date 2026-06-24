@@ -250,7 +250,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
   // 10. tally_export_vouchers (gated: voucher-class)
   server.tool(
     "tally_export_vouchers",
-    "Stream the Day Book for a period to a single CSV (memory-safe). Requires Tally edition that can serve voucher collections — see tally_get_capabilities.",
+    "Export the Day Book for a period as both a memory-safe CSV and a formatted Excel workbook (Summary-by-type + Vouchers sheets). Returns both file paths. Requires a Tally edition that can serve voucher collections — see tally_get_capabilities.",
     {
       company: z.string().optional(),
       fromDate: TallyDateSchema,
@@ -263,13 +263,13 @@ function registerTools(server: McpServer, ctx: McpContext): void {
         const target = company ?? ctx.config.tally.defaultCompany;
         if (!target) return errorResult(new Error("No company supplied and no defaultCompany configured."));
         await ctx.assertCompany(target);
-        const file = await exportVouchers(ctx.tallyClient, {
+        const files = await exportVouchers(ctx.tallyClient, {
           company: target,
           fromDate,
           toDate,
           outputDir: ctx.outputDir,
         });
-        return jsonResult(file);
+        return jsonResult(files);
       } catch (err) {
         return errorResult(err);
       }

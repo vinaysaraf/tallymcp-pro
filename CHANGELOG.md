@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.16 — Voucher export now also produces a formatted Excel workbook (2026-06-24)
+
+### Added
+- **`tally_export_vouchers` now writes a formatted `.xlsx` alongside the CSV.** The CSV remains the memory-safe streaming output; the new workbook adds a **Summary-by-type** sheet (per voucher type: # vouchers, # entries, total value with data bars + a TOTAL row) and a **Vouchers** sheet (one row per ledger entry) with styled header, banded rows, and a red-negative Amount column with data bars. The tool now returns both file paths.
+
 ## v1.0.15 — Richer, more insightful Excel exports (2026-06-24)
 
 ### Tests
