@@ -118,6 +118,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             apps/configurator/dist-installer/TallyMCP-Setup-*.exe
+            apps/configurator/dist-installer/TallyMCP-Setup-*.exe.blockmap
             apps/configurator/dist-installer/TallyMCP-Setup-*.exe.sha256
             apps/configurator/dist-installer/latest.yml
             apps/configurator/dist-installer/latest.json

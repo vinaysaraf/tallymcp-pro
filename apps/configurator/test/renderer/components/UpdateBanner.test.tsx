@@ -90,6 +90,47 @@ describe("UpdateBanner", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("renders an actionable error banner when a pending update failed to install", () => {
+    const status: UpdateStatus = {
+      status: "error",
+      currentVersion: "1.0.0",
+      latestVersion: "1.1.0",
+      releaseNotesUrl: "https://example.com/notes",
+      error: "not signed by the application owner",
+    };
+    const onWhatsNewClick = vi.fn();
+    render(
+      <UpdateBanner
+        status={status}
+        onUpdateClick={vi.fn()}
+        onWhatsNewClick={onWhatsNewClick}
+        onDismiss={vi.fn()}
+        onRestartClick={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/couldn't be installed automatically/i)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /Download/i }));
+    expect(onWhatsNewClick).toHaveBeenCalled();
+  });
+
+  it("stays silent on a bare check error with no pending version", () => {
+    const status: UpdateStatus = {
+      status: "error",
+      currentVersion: "1.0.0",
+      error: "network unreachable",
+    };
+    const { container } = render(
+      <UpdateBanner
+        status={status}
+        onUpdateClick={vi.fn()}
+        onWhatsNewClick={vi.fn()}
+        onDismiss={vi.fn()}
+        onRestartClick={vi.fn()}
+      />,
+    );
+    expect(container.textContent).toBe("");
+  });
+
   it("calls onUpdateClick when Update now is clicked", () => {
     const status: UpdateStatus = {
       status: "update-available",

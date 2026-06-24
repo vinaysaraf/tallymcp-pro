@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.9 — In-app updater fix + Help menu (Update / About Me / ICAI Project) (2026-06-24)
+
+### Fixed
+- **In-app auto-update silently failed after downloading ("progress bar completes, then nothing happens").** electron-updater rejected every update because the app is signed with a **self-signed** certificate whose chain doesn't terminate in a CA root Windows trusts (`updater.log`: *"New version X is not signed by the application owner… terminated in a root certificate which is not trusted"*). The download and the SHA-512 integrity check both succeed; only the trusted-root requirement fails. The updater now installs a **publisher-name-pinned** signature check (`verifyPublisherName`) that accepts an intact Authenticode signature whose certificate CN matches the published publisher (`Vinay Saraf`) while tolerating the untrusted self-signed root — and still rejects tampered (`HashMismatch`), unsigned, or wrong-publisher builds. SHA-512 verification against the HTTPS-served `latest.yml` is unchanged. **NOTE:** because the rejecting check runs inside the *currently-installed* app, this fix only takes effect for updates installed **from v1.0.9 onward** — upgrading an existing v1.0.7/v1.0.8 install to v1.0.9 requires a **one-time manual install** of the v1.0.9 setup. (A trusted-CA code-signing certificate would remove even that one-time step and silence SmartScreen warnings.)
+- **Failed updates are no longer invisible.** When a pending update can't be installed automatically, the home screen now shows an amber banner — *"TallyMCP vX couldn't be installed automatically… Download"* — linking to the release page, instead of the update banner vanishing with no feedback. The `error` update state now carries the release-notes URL so the link works.
+- **Differential-download 404.** Releases now also upload the NSIS `.blockmap`, so electron-updater can fetch only the changed blocks instead of always falling back to a full download (`updater.log` previously showed a 404 on `…​.exe.blockmap`).
+
+### Added
+- **Help menu** with three actions:
+  - **Update** — check, then (with consent) download + install, with a "Download from website" fallback whenever the update can't be applied automatically.
+  - **About Me** — CA Vinay Saraf · Membership No. 518215 · vinay@vinaysaraf.com · GitHub (opens the profile).
+  - **ICAI Project** — project summary · Programme: AI ICAI Level II · Batch 44 · Gurugram.
+
 ## v1.0.8 — Report-correctness + company/period safety fixes (2026-06-23)
 
 ### Fixed

@@ -26,7 +26,7 @@ vi.mock("electron-updater", () => ({
 }));
 
 // Re-import after mocks are set up.
-import { createAutoUpdater } from "../../src/main/auto-update.js";
+import { createAutoUpdater, verifyPublisherName } from "../../src/main/auto-update.js";
 
 describe("createAutoUpdater", () => {
   beforeEach(() => {
@@ -112,6 +112,23 @@ describe("createAutoUpdater", () => {
     expect(u.getStatus().currentVersion).toBe("1.0.0");
   });
 
+  it("preserves latestVersion + releaseNotesUrl when an error follows update-available", () => {
+    // A verify/download failure AFTER an update was found must keep the
+    // version + release-page URL so the renderer can offer a manual download.
+    const u = createAutoUpdater({ currentVersion: "1.0.0" });
+    const calls = autoUpdaterMock.on.mock.calls;
+    const availableHandler = calls.find((c) => c[0] === "update-available")?.[1];
+    const errorHandler = calls.find((c) => c[0] === "error")?.[1];
+
+    availableHandler!({ version: "1.1.0" });
+    errorHandler!(new Error("not signed by the application owner"));
+
+    const s = u.getStatus();
+    expect(s.status).toBe("error");
+    expect(s.latestVersion).toBe("1.1.0");
+    expect(s.releaseNotesUrl).toBe("https://github.com/vinaysaraf/tallymcp-pro/releases/tag/v1.1.0");
+  });
+
   it("checkForUpdates() returns the resolved status after a successful check", async () => {
     autoUpdaterMock.checkForUpdates.mockResolvedValueOnce({
       updateInfo: { version: "1.0.0" },
@@ -160,5 +177,68 @@ describe("createAutoUpdater", () => {
 
     u.quitAndInstall();
     expect(autoUpdaterMock.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("verifyPublisherName (self-signed-tolerant signature check)", () => {
+  const runnerReturning =
+    (status: string, subject: string) =>
+    async (): Promise<string> =>
+      JSON.stringify({ status, subject });
+
+  it("accepts a self-signed build whose CN matches the publisher (untrusted root)", async () => {
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      runnerReturning("UnknownError", "CN=Vinay Saraf"),
+    );
+    expect(result).toBeNull();
+  });
+
+  it("accepts a fully-trusted (Valid) build whose CN matches, ignoring extra DN fields", async () => {
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      runnerReturning("Valid", "CN=Vinay Saraf, O=XLURSELF, C=IN"),
+    );
+    expect(result).toBeNull();
+  });
+
+  it("rejects a build signed by a different publisher", async () => {
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      runnerReturning("UnknownError", "CN=Mallory"),
+    );
+    expect(result).toMatch(/not the expected publisher/i);
+  });
+
+  it("rejects a tampered build (HashMismatch) even when the CN matches", async () => {
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      runnerReturning("HashMismatch", "CN=Vinay Saraf"),
+    );
+    expect(result).toMatch(/failed signature verification/i);
+  });
+
+  it("rejects an unsigned build (no certificate)", async () => {
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      runnerReturning("NotSigned", ""),
+    );
+    expect(result).toMatch(/failed signature verification/i);
+  });
+
+  it("fails CLOSED (returns an error) when the signature can't be inspected", async () => {
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      async () => {
+        throw new Error("powershell not found");
+      },
+    );
+    expect(result).toMatch(/could not verify/i);
   });
 });

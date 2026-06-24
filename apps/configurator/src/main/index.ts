@@ -1,10 +1,20 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, dialog, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { registerIpcHandlers } from "./ipc-handlers.js";
 import { createTallyPoller } from "./tally-poller.js";
-import { IPC_CHANNELS, TALLY_STATUS_EVENT, UPDATE_STATUS_EVENT } from "../shared/ipc-types.js";
+import { createAppMenuTemplate } from "./app-menu.js";
+import type { AutoUpdater } from "./auto-update.js";
+import {
+  IPC_CHANNELS,
+  TALLY_STATUS_EVENT,
+  UPDATE_STATUS_EVENT,
+  type UpdateStatus,
+} from "../shared/ipc-types.js";
+
+const GITHUB_PROFILE_URL = "https://github.com/vinaysaraf";
+const RELEASES_URL = "https://github.com/vinaysaraf/tallymcp-pro/releases/latest";
 
 /** Where the preload bundle lives relative to the main bundle dir. */
 export const PRELOAD_RELATIVE_PATH = "../preload/index.js";
@@ -51,6 +61,143 @@ async function createWindow(): Promise<BrowserWindow> {
 
   win.once("ready-to-show", () => win.show());
   return win;
+}
+
+/** Help → About Me dialog. */
+async function showAboutMe(parent: BrowserWindow): Promise<void> {
+  const { response } = await dialog.showMessageBox(parent, {
+    type: "info",
+    title: "About Me",
+    message: "CA Vinay Saraf",
+    detail: [
+      "Membership No. 518215",
+      "Email: vinay@vinaysaraf.com",
+      `GitHub: ${GITHUB_PROFILE_URL}`,
+    ].join("\n"),
+    buttons: ["Open GitHub", "Close"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response === 0) await shell.openExternal(GITHUB_PROFILE_URL);
+}
+
+/** Help → ICAI Project dialog. */
+async function showIcaiProject(parent: BrowserWindow): Promise<void> {
+  await dialog.showMessageBox(parent, {
+    type: "info",
+    title: "ICAI Project",
+    message: "TallyMCP Pro",
+    detail: [
+      "A read-only Model Context Protocol (MCP) server that connects TallyPrime",
+      "to AI assistants (Claude, Cursor, LM Studio, Ollama), letting Chartered",
+      "Accountants query ledgers and generate Trial Balance, P&L, Balance Sheet,",
+      "Day Book and audit-lite reports through natural language.",
+      "",
+      "Programme: AI ICAI Level II",
+      "Batch: 44",
+      "Location: Gurugram",
+    ].join("\n"),
+  });
+}
+
+/** Shared fallback: point the user at the website installer. */
+async function offerManualDownload(
+  parent: BrowserWindow,
+  version: string | undefined,
+  url: string | undefined,
+): Promise<void> {
+  const { response } = await dialog.showMessageBox(parent, {
+    type: "warning",
+    title: "TallyMCP Update",
+    message: version
+      ? `TallyMCP v${version} couldn't be installed automatically.`
+      : "The update couldn't be installed automatically.",
+    detail: "You can download and run the latest installer from the website.",
+    buttons: ["Download from website", "Close"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response === 0) await shell.openExternal(url ?? RELEASES_URL);
+}
+
+/**
+ * Help → Update flow: check, then (with consent) download + install — with a
+ * "download from website" fallback whenever the update can't be applied
+ * automatically (e.g. a self-signed build an OLDER installed version still
+ * rejects at signature verification).
+ */
+async function runMenuUpdateFlow(
+  parent: BrowserWindow,
+  updater: AutoUpdater | undefined,
+): Promise<void> {
+  if (!updater) {
+    await dialog.showMessageBox(parent, {
+      type: "info",
+      title: "TallyMCP Update",
+      message: "Updates run only in the installed app.",
+      detail: "This build can't check for updates.",
+    });
+    return;
+  }
+  const u = updater;
+
+  const status = await u.checkForUpdates();
+  if (status.status === "up-to-date") {
+    await dialog.showMessageBox(parent, {
+      type: "info",
+      title: "TallyMCP Update",
+      message: `You're on the latest version (v${status.currentVersion}).`,
+    });
+    return;
+  }
+  if (status.status === "error") {
+    await offerManualDownload(parent, status.latestVersion, status.releaseNotesUrl);
+    return;
+  }
+  if (status.status !== "update-available") return;
+
+  const choice = await dialog.showMessageBox(parent, {
+    type: "info",
+    title: "TallyMCP Update",
+    message: `TallyMCP v${status.latestVersion} is available.`,
+    detail: `You're on v${status.currentVersion}. Download and install it now?`,
+    buttons: ["Download & Install", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (choice.response !== 0) return;
+
+  // Drive to a terminal state, then prompt to restart — or fall back to a
+  // manual download if the download/verification fails.
+  await new Promise<void>((resolve) => {
+    const unsub = u.subscribe((s: UpdateStatus) => {
+      if (s.status === "ready-to-install") {
+        unsub();
+        void dialog
+          .showMessageBox(parent, {
+            type: "info",
+            title: "TallyMCP Update",
+            message: `TallyMCP v${s.latestVersion} is ready.`,
+            detail: "Restart now to finish updating?",
+            buttons: ["Restart now", "Later"],
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true,
+          })
+          .then((r) => {
+            if (r.response === 0) u.quitAndInstall();
+            resolve();
+          });
+      } else if (s.status === "error") {
+        unsub();
+        void offerManualDownload(parent, s.latestVersion, s.releaseNotesUrl).then(resolve);
+      }
+    });
+    void u.downloadUpdate();
+  });
 }
 
 // Lifecycle wiring — guarded so tests can import the file without booting Electron.
@@ -136,15 +283,21 @@ if (process.argv.includes("--uninstall-cleanup")) {
     // running unpackaged (dev mode, Playwright E2E preview). On failure
     // the renderer's update banner stays hidden — the rest of the app
     // still works because the core IPC handlers were registered above.
+    // Declared here (not inside the try) so the Help → Update menu handler
+    // below can close over it; stays undefined when the updater can't init.
+    let updater: AutoUpdater | undefined;
     try {
       const { createAutoUpdater } = await import("./auto-update.js");
-      const updater = createAutoUpdater({
+      // Local const so the closures below don't trip on `updater` being a
+      // reassignable `let` (TS won't narrow a captured `let` to non-undefined).
+      const u = createAutoUpdater({
         currentVersion: app.getVersion(),
         // Captures download/verify failures so a looping update is diagnosable.
         logFile: join(app.getPath("userData"), "logs", "updater.log"),
       });
+      updater = u;
 
-      const unsubUpdate = updater.subscribe((status) => {
+      const unsubUpdate = u.subscribe((status) => {
         if (!mainWindow.isDestroyed()) {
           mainWindow.webContents.send(UPDATE_STATUS_EVENT, status);
         }
@@ -156,13 +309,13 @@ if (process.argv.includes("--uninstall-cleanup")) {
       // (which may not initialize in dev/E2E). Use IPC_CHANNELS.* so a
       // rename of the channel-string constant updates the handler too
       // (Cursor N-P4-2).
-      ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, () => updater.checkForUpdates());
-      ipcMain.handle(IPC_CHANNELS.DOWNLOAD_UPDATE, () => updater.downloadUpdate());
-      ipcMain.handle(IPC_CHANNELS.QUIT_AND_INSTALL, () => { updater.quitAndInstall(); });
+      ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, () => u.checkForUpdates());
+      ipcMain.handle(IPC_CHANNELS.DOWNLOAD_UPDATE, () => u.downloadUpdate());
+      ipcMain.handle(IPC_CHANNELS.QUIT_AND_INSTALL, () => { u.quitAndInstall(); });
 
       // Initial update check 5 seconds after window opens.
       setTimeout(() => {
-        void updater.checkForUpdates().catch((err) => {
+        void u.checkForUpdates().catch((err) => {
           console.error("[auto-update] initial check failed:", err);
         });
       }, 5_000);
@@ -172,6 +325,19 @@ if (process.argv.includes("--uninstall-cleanup")) {
         (err as Error).message,
       );
     }
+
+    // Application menu — adds Help → Update / About Me / ICAI Project. Built
+    // after the updater so the Update action can drive it (with a manual
+    // download fallback when the updater isn't available or can't verify).
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate(
+        createAppMenuTemplate({
+          onUpdate: () => void runMenuUpdateFlow(mainWindow, updater),
+          onAboutMe: () => void showAboutMe(mainWindow),
+          onIcaiProject: () => void showIcaiProject(mainWindow),
+        }),
+      ),
+    );
 
     app.on("activate", async () => {
       if (BrowserWindow.getAllWindows().length === 0) await createWindow();

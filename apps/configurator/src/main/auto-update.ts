@@ -33,6 +33,7 @@
  */
 
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater";
+import { execFile } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { UpdateStatus } from "../shared/ipc-types.js";
@@ -77,6 +78,95 @@ function makeUpdaterLogger(logFile?: string): {
     error: (...a) => write("error", a),
     debug: (...a) => write("debug", a),
   };
+}
+
+/**
+ * Authenticode statuses that mean "the file carries an intact signature whose
+ * bytes were NOT tampered with" — even when the chain doesn't terminate in a
+ * CA root Windows trusts. A self-signed build reports `UnknownError` /
+ * `NotTrusted` here (valid chain, untrusted root); a tampered or unsigned file
+ * reports `HashMismatch` / `NotSigned`, which we always reject.
+ */
+const SIGNATURE_STATUS_ACCEPTED = new Set(["Valid", "UnknownError", "NotTrusted"]);
+
+export type PowerShellRunner = (script: string) => Promise<string>;
+
+const defaultPowerShellRunner: PowerShellRunner = (script) =>
+  new Promise((resolve, reject) => {
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+      { timeout: 20_000, windowsHide: true, maxBuffer: 1024 * 1024 },
+      (err, stdout) => (err ? reject(err) : resolve(stdout)),
+    );
+  });
+
+function psSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function extractCn(subject: string): string {
+  // Subject looks like `CN=Vinay Saraf, O=..., C=IN` (or just `CN=Vinay Saraf`).
+  const match = /CN=("([^"]*)"|([^,]+))/i.exec(subject);
+  return (match?.[2] ?? match?.[3] ?? "").trim();
+}
+
+/**
+ * Publisher-name-pinned signature check used IN PLACE OF electron-updater's
+ * default Windows verification.
+ *
+ * WHY: the app is signed with a SELF-SIGNED certificate (CN=Vinay Saraf,
+ * issued by itself). electron-updater's stock check requires the signature to
+ * chain to a CA root Windows trusts and therefore REJECTS every self-signed
+ * update ("New version X is not signed by the application owner" — the exact
+ * failure recorded in updater.log). This override deliberately relaxes the ONE
+ * requirement a self-signed cert can never satisfy — the trusted-root chain —
+ * while still PINNING the signer identity: an update is accepted only if it
+ * carries an intact Authenticode signature whose certificate CN matches our
+ * published publisher name. Forging that still needs our private key, and
+ * electron-updater independently verifies the download's SHA-512 against the
+ * (HTTPS-served) latest.yml. User-approved trade-off: drop CA-root trust, keep
+ * signature integrity + identity pinning.
+ *
+ * Returns `null` to ACCEPT (electron-updater's contract) or an error string to
+ * REJECT. Fails CLOSED — any inability to inspect the signature returns an
+ * error string, which the UI now surfaces (an amber "couldn't auto-update,
+ * download manually" banner) instead of letting it vanish silently.
+ */
+export async function verifyPublisherName(
+  publisherNames: string[],
+  filePath: string,
+  runPowerShell: PowerShellRunner = defaultPowerShellRunner,
+): Promise<string | null> {
+  const expected = publisherNames.map((n) => n.trim()).filter(Boolean);
+  // No publisher configured → nothing to pin against (matches electron-updater,
+  // which skips verification entirely when publisherName is unset).
+  if (expected.length === 0) return null;
+
+  let parsed: { status?: string; subject?: string };
+  try {
+    const script =
+      `$ErrorActionPreference='Stop';` +
+      `$s=Get-AuthenticodeSignature -LiteralPath ${psSingleQuote(filePath)};` +
+      `$subject=if($s.SignerCertificate){$s.SignerCertificate.Subject}else{''};` +
+      `[pscustomobject]@{status=$s.Status.ToString();subject=$subject}|ConvertTo-Json -Compress`;
+    parsed = JSON.parse(await runPowerShell(script)) as { status?: string; subject?: string };
+  } catch (err) {
+    return `Could not verify the update's signature (${(err as Error).message}).`;
+  }
+
+  const status = parsed.status ?? "";
+  if (!SIGNATURE_STATUS_ACCEPTED.has(status)) {
+    return `The downloaded update failed signature verification (status: ${status || "unknown"}).`;
+  }
+  const cn = extractCn(parsed.subject ?? "");
+  if (!cn) {
+    return "The downloaded update is not signed by a recognised certificate.";
+  }
+  const matches = expected.some((name) => name.toLowerCase() === cn.toLowerCase());
+  return matches
+    ? null
+    : `The update is signed by "${cn}", not the expected publisher (${expected.join(", ")}).`;
 }
 
 export interface CreateAutoUpdaterInput {
@@ -135,6 +225,17 @@ export function createAutoUpdater(input: CreateAutoUpdaterInput): AutoUpdater {
   autoUpdater.autoDownload = false; // user-clicks-Update UX (spec §10)
   autoUpdater.autoInstallOnAppQuit = false; // explicit consent only
 
+  // Replace electron-updater's default Windows signature verification with a
+  // publisher-name-pinned check that tolerates our self-signed cert's
+  // untrusted root (see verifyPublisherName). Typed via a narrow cast because
+  // `verifyUpdateCodeSignature` lives on the platform-specific NsisUpdater, not
+  // the `AppUpdater` base that `autoUpdater` is typed as.
+  (
+    autoUpdater as unknown as {
+      verifyUpdateCodeSignature?: (publisherNames: string[], path: string) => Promise<string | null>;
+    }
+  ).verifyUpdateCodeSignature = (publisherNames, path) => verifyPublisherName(publisherNames, path);
+
   autoUpdater.on("update-available", (info: UpdateInfo) => {
     setStatus({
       status: "update-available",
@@ -166,6 +267,7 @@ export function createAutoUpdater(input: CreateAutoUpdaterInput): AutoUpdater {
       status: "error",
       currentVersion: input.currentVersion,
       latestVersion: status.latestVersion,
+      releaseNotesUrl: status.releaseNotesUrl,
       error: err.message,
     });
   });
@@ -190,6 +292,7 @@ export function createAutoUpdater(input: CreateAutoUpdaterInput): AutoUpdater {
           status: "error",
           currentVersion: input.currentVersion,
           latestVersion: status.latestVersion,
+          releaseNotesUrl: status.releaseNotesUrl,
           error: (err as Error).message,
         });
       }
@@ -210,6 +313,7 @@ export function createAutoUpdater(input: CreateAutoUpdaterInput): AutoUpdater {
           status: "error",
           currentVersion: input.currentVersion,
           latestVersion: status.latestVersion,
+          releaseNotesUrl: status.releaseNotesUrl,
           error: (err as Error).message,
         });
       }
