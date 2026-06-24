@@ -20,10 +20,14 @@ function stubClient(response: string): TallyClient & { calls: string[] } {
 // All financial connectors now go through @tallymcp/tdl-engine — responses are
 // <DATA><ROW><F01>…<Fnn> projecting the TDL-defined columns.
 
+// TDL columns are signed: a Dr movement comes through as a NEGATIVE F04
+// (debit-turnover) and a Cr movement as a NEGATIVE F05 (credit-turnover) —
+// the template negates $$Number. Closing = F03(opening) + F04 − F05, so a Dr
+// balance is negative and a Cr balance positive.
 const TB_XML = `<ENVELOPE><BODY><DATA>
-  <ROW><F01>Sundry Debtors Total</F01><F02></F02><F03>0</F03><F04>150000</F04><F05>0</F05><F06>150000</F06></ROW>
-  <ROW><F01>Acme &amp; Co</F01><F02>Sundry Debtors</F02><F03>0</F03><F04>50000</F04><F05>0</F05><F06>50000</F06></ROW>
-  <ROW><F01>Sundry Creditors Total</F01><F02></F02><F03>0</F03><F04>0</F04><F05>75000</F05><F06>-75000</F06></ROW>
+  <ROW><F01>Sundry Debtors Total</F01><F02></F02><F03>0</F03><F04>-150000</F04><F05>0</F05><F06>-150000</F06></ROW>
+  <ROW><F01>Acme &amp; Co</F01><F02>Sundry Debtors</F02><F03>0</F03><F04>-50000</F04><F05>0</F05><F06>-50000</F06></ROW>
+  <ROW><F01>Sundry Creditors Total</F01><F02></F02><F03>0</F03><F04>0</F04><F05>-75000</F05><F06>75000</F06></ROW>
 </DATA></BODY></ENVELOPE>`;
 
 const PL_XML = `<ENVELOPE><BODY><DATA>
@@ -70,6 +74,22 @@ describe("getTrialBalance (TDL-backed)", () => {
     await expect(getTrialBalance(stubClient(EXCEPTION_XML), PERIOD)).rejects.toThrow(
       /Tally returned <EXCEPTION>/,
     );
+  });
+
+  it("derives closing balances that tie out, including nominal/P&L ledgers", async () => {
+    // Cash: Dr balance (F04 negative). Sales: a nominal ledger whose
+    // $ClosingBalance (F06) is 0 over the XML interface — its closing must
+    // still be derived from turnover (F05) so the TB ties out.
+    const xml = `<ENVELOPE><BODY><DATA>
+      <ROW><F01>Cash</F01><F02>Cash-in-hand</F02><F03>0</F03><F04>-100000</F04><F05>0</F05><F06>-100000</F06></ROW>
+      <ROW><F01>Sales</F01><F02>Sales Accounts</F02><F03>0</F03><F04>0</F04><F05>-100000</F05><F06>0</F06></ROW>
+    </DATA></BODY></ENVELOPE>`;
+    const rows = await getTrialBalance(stubClient(xml), PERIOD);
+    expect(rows[0]).toMatchObject({ ledgerName: "Cash", debit: 100000, credit: 0 });
+    expect(rows[1]).toMatchObject({ ledgerName: "Sales", debit: 0, credit: 100000 });
+    const dr = rows.reduce((s, r) => s + r.debit, 0);
+    const cr = rows.reduce((s, r) => s + r.credit, 0);
+    expect(dr).toBe(cr); // 100000 == 100000 — ties out
   });
 });
 

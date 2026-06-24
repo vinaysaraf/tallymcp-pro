@@ -20,10 +20,16 @@ interface TdlTbRow {
  *
  * Each TDL output row represents a leaf Ledger object. `parent` is the
  * containing group ("" when the ledger is at the chart-of-accounts root).
- * We map to the existing `TrialBalanceRow` contract for backward compatibility
- * with consumers in v0.6 — opening and closing balances are dropped at this
- * layer in v0.7.0 and surface via the dedicated `getLedgerClosingBalance` /
- * `getGroupClosingBalances` connectors in v0.7.1.
+ *
+ * A Trial Balance lists each ledger's CLOSING balance (Dr or Cr) and the two
+ * columns tie out. We derive closing = opening + debit − credit (all signed
+ * TDL columns, where a Dr balance is negative and a Cr balance positive). This
+ * equals Tally's `$ClosingBalance` for balance-sheet ledgers AND gives the
+ * correct net for nominal/P&L ledgers — for which `$ClosingBalance` reports 0
+ * over the XML interface, which would otherwise leave the TB un-tied (off by
+ * the period's profit). Because every voucher balances, Σ debit = Σ credit, so
+ * the derived TB ties out. (Earlier versions surfaced raw debit/credit
+ * *turnover* here, which is movement, not balances, and isn't a true TB.)
  */
 export async function getTrialBalance(
   client: TallyClient,
@@ -41,11 +47,14 @@ export async function getTrialBalance(
 
 function toTbRow(row: TdlTbRow): TrialBalanceRow {
   const groupName = row.parent.trim() === "" ? "(top-level)" : row.parent;
+  // Signed closing: opening + debit-turnover − credit-turnover. Dr balances are
+  // negative, Cr balances positive (the TDL fields encode $$IsDebit this way).
+  const signedClosing = row.opening + row.debit - row.credit;
   return TrialBalanceRowSchema.parse({
     groupName,
     ledgerName: row.ledger,
-    debit: row.debit,
-    credit: row.credit,
+    debit: signedClosing < 0 ? -signedClosing : 0,
+    credit: signedClosing > 0 ? signedClosing : 0,
   });
 }
 

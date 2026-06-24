@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.13 — Trial Balance shows closing balances and ties out (2026-06-24)
+
+### Fixed
+- **Trial Balance reported period *turnover* instead of *closing balances*, so it didn't behave like a real TB.** The connector mapped the TDL debit/credit *turnover* columns (total movement during the period) into the report and discarded the closing balance — so each ledger showed *both* a debit and a credit figure (movement), not its net Dr/Cr standing. The report now derives each ledger's **closing balance = opening + debit − credit** and presents it in a single Dr **or** Cr column. This equals Tally's `$ClosingBalance` for balance-sheet ledgers **and** gives the correct net for nominal/P&L ledgers — for which `$ClosingBalance` returns 0 over the XML interface, which would otherwise leave the TB un-tied (off by the year's profit). Because every voucher balances, **Σ debit = Σ credit, so the Trial Balance now ties out.** Verified live on TallyPrime Silver (Σ Dr = Σ Cr; every ledger single-sided). Regression test added covering tie-out and the nominal-ledger (`$ClosingBalance = 0`) case. This also makes audit-lite's negative-cash and suspense-balance checks read true closing balances rather than gross movement.
+
 ## v1.0.12 — Date parameters accept numeric input (every date-taking tool) (2026-06-24)
 
 ### Fixed
