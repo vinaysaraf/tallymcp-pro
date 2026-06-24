@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createContext } from "../src/context.js";
+import type { TallyCapabilities } from "../src/capability.js";
 import { registerTallyMcp } from "../src/server.js";
 
 let scratchDir: string;
@@ -20,11 +21,12 @@ afterEach(() => {
   rmSync(scratchDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
-async function bootServerPair() {
+async function bootServerPair(capabilitiesOverride?: TallyCapabilities) {
   const ctx = await createContext({
     configPath,
     outputDir: join(scratchDir, "out"),
     skipCapabilityProbe: true,
+    capabilitiesOverride,
   });
   const server = new McpServer(
     { name: "tallymcp-pro", version: "0.0.1" },
@@ -40,6 +42,29 @@ async function bootServerPair() {
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   return { server, client };
 }
+
+/** Silver-class: report-form works, but $ClosingBalance is too slow. */
+const SILVER_CAPS: TallyCapabilities = {
+  reachable: true,
+  edition: "silver",
+  reportFormViable: true,
+  computedBalancesViable: false,
+  detectedAt: "2026-06-24T00:00:00.000Z",
+  message: "Silver test caps.",
+};
+
+/** Unreachable / no company: nothing is viable. */
+const UNREACHABLE_CAPS: TallyCapabilities = {
+  reachable: false,
+  edition: "unknown",
+  reportFormViable: false,
+  computedBalancesViable: false,
+  detectedAt: "2026-06-24T00:00:00.000Z",
+  message: "Unreachable test caps.",
+};
+
+const textOf = (result: { content?: Array<{ type: string; text?: string }> }): string =>
+  result.content?.[0]?.type === "text" ? String(result.content[0]?.text ?? "") : "";
 
 describe("MCP server integration (in-process)", () => {
   it("exposes 19 tools — and zero post/write/alter names (C-R1, C-R2)", async () => {
@@ -162,5 +187,61 @@ describe("MCP server integration (in-process)", () => {
     const text = result.content?.[0]?.type === "text" ? result.content[0].text : "";
     const config = JSON.parse(String(text));
     expect(config.security.readOnly).toBe(true);
+  });
+});
+
+// Edition gating (#OMAI Codex iter-1): the report-form voucher/audit/dashboard tools
+// must NOT be blocked on Silver-class editions — only the computed-balance tools are.
+// We assert this at the MCP-tool boundary: with Silver caps and NO company supplied,
+// the report-form tools fall through the gate to the "No company supplied" path
+// (proving the gate passed), while the computed-balance tools return the gate error.
+describe("edition gating (report-form vs computed-balance)", () => {
+  const GATE_REPORT_FORM = /needs TallyPrime reachable with a company loaded/i;
+  const GATE_COMPUTED = /closing-balance tools are disabled/i;
+  const NO_COMPANY = /No company supplied/i;
+
+  it("Silver: tally_export_vouchers reaches the service path (not the edition gate)", async () => {
+    const { client } = await bootServerPair(SILVER_CAPS);
+    const out = await client.callTool({
+      name: "tally_export_vouchers",
+      arguments: { fromDate: "20250401", toDate: "20260331" },
+    });
+    const text = textOf(out);
+    expect(text).toMatch(NO_COMPANY); // passed the gate → hit company resolution
+    expect(text).not.toMatch(GATE_REPORT_FORM);
+    expect(text).not.toMatch(GATE_COMPUTED);
+  });
+
+  it("Silver: tally_run_audit_lite reaches the service path (not the edition gate)", async () => {
+    const { client } = await bootServerPair(SILVER_CAPS);
+    const out = await client.callTool({ name: "tally_run_audit_lite", arguments: {} });
+    expect(textOf(out)).toMatch(NO_COMPANY);
+  });
+
+  it("Silver: tally_export_dashboard reaches the service path (not the edition gate)", async () => {
+    const { client } = await bootServerPair(SILVER_CAPS);
+    const out = await client.callTool({
+      name: "tally_export_dashboard",
+      arguments: { kind: "ManagementSnapshot" },
+    });
+    expect(textOf(out)).toMatch(NO_COMPANY);
+  });
+
+  it("Silver: tally_get_ledger_closing_balance STAYS gated (slow $ClosingBalance)", async () => {
+    const { client } = await bootServerPair(SILVER_CAPS);
+    const out = await client.callTool({
+      name: "tally_get_ledger_closing_balance",
+      arguments: { ledger: "Cash" },
+    });
+    expect(textOf(out)).toMatch(GATE_COMPUTED);
+  });
+
+  it("Unreachable: tally_export_vouchers is gated (needs a reachable company)", async () => {
+    const { client } = await bootServerPair(UNREACHABLE_CAPS);
+    const out = await client.callTool({
+      name: "tally_export_vouchers",
+      arguments: { fromDate: "20250401", toDate: "20260331" },
+    });
+    expect(textOf(out)).toMatch(GATE_REPORT_FORM);
   });
 });

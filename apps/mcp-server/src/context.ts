@@ -16,6 +16,8 @@ export interface McpContextOptions {
   outputDir?: string;
   /** Skip the boot-time capability probe (tests). Forces edition="unknown". */
   skipCapabilityProbe?: boolean;
+  /** Inject capabilities directly (tests) — bypasses the probe entirely. */
+  capabilitiesOverride?: TallyCapabilities;
 }
 
 export interface McpContext {
@@ -74,7 +76,8 @@ async function detectCapabilities(
     return {
       reachable: false,
       edition: "unknown",
-      voucherQueriesViable: false,
+      reportFormViable: false,
+      computedBalancesViable: false,
       detectedAt: new Date().toISOString(),
       message: "Capability probe skipped (test context).",
     };
@@ -92,7 +95,9 @@ export async function createContext(options: McpContextOptions): Promise<McpCont
   let conn = pickConnection(config);
   let tallyClient = buildClient(conn, resolveTimeoutMs(config));
   let networkGuard = createNetworkGuard({ host: conn.host, port: conn.port });
-  let capabilities = await detectCapabilities(config, tallyClient, options.skipCapabilityProbe);
+  let capabilities =
+    options.capabilitiesOverride ??
+    (await detectCapabilities(config, tallyClient, options.skipCapabilityProbe));
   // Resolve a relative output folder (the default is "./tallymcp-output")
   // against the user's HOME dir, never the spawn CWD — see resolveOutputDir.
   const outputDir = options.outputDir ?? resolveOutputDir(config.output.folder);
@@ -117,11 +122,9 @@ export async function createContext(options: McpContextOptions): Promise<McpCont
       conn = pickConnection(configStore.get());
       tallyClient = buildClient(conn, resolveTimeoutMs(configStore.get()));
       networkGuard = createNetworkGuard({ host: conn.host, port: conn.port });
-      capabilities = await detectCapabilities(
-        configStore.get(),
-        tallyClient,
-        options.skipCapabilityProbe,
-      );
+      capabilities =
+        options.capabilitiesOverride ??
+        (await detectCapabilities(configStore.get(), tallyClient, options.skipCapabilityProbe));
     },
     async assertCompany(company: string) {
       verifyCompanyMatch(company, await getCurrentCompany(tallyClient, company));

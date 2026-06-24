@@ -31,19 +31,37 @@ const PERIOD_OPTIONAL = {
 };
 
 /**
- * Refuses voucher / closing-balance / audit-lite work when the boot-time
- * capability probe found Tally to be Silver-class (or unreachable). Returning
- * `null` means "proceed"; otherwise the returned object is an MCP error
- * result to bail out with.
+ * Refuses report-form work (Day Book / voucher export / audit-lite / dashboards)
+ * only when Tally is unreachable or has no company loaded. The report-form TDL
+ * is period-scoped and works on EVERY edition (incl. Silver), so this no longer
+ * gates on edition. Returning `null` means "proceed".
+ *
+ * Override: set `config.tally.unsafeSlow=true` to attempt anyway.
+ */
+function gateOnReportForm(ctx: McpContext): null | ReturnType<typeof errorResult> {
+  if (ctx.config.tally.unsafeSlow) return null;
+  if (ctx.capabilities.reportFormViable) return null;
+  return errorResult(
+    new Error(
+      `This tool needs TallyPrime reachable with a company loaded (edition=${ctx.capabilities.edition}). ${ctx.capabilities.message}`,
+    ),
+  );
+}
+
+/**
+ * Refuses per-ledger / per-group `$ClosingBalance` work when the boot-time probe
+ * found Tally to be Silver-class (or unreachable). This is the genuinely slow
+ * path on Silver — unlike the report-form tools, which are gated separately by
+ * {@link gateOnReportForm}. Returning `null` means "proceed".
  *
  * Override: set `config.tally.unsafeSlow=true` (e.g., on a small Silver book).
  */
-function gateOnVouchers(ctx: McpContext): null | ReturnType<typeof errorResult> {
+function gateOnComputedBalances(ctx: McpContext): null | ReturnType<typeof errorResult> {
   if (ctx.config.tally.unsafeSlow) return null;
-  if (ctx.capabilities.voucherQueriesViable) return null;
+  if (ctx.capabilities.computedBalancesViable) return null;
   return errorResult(
     new Error(
-      `Voucher / balance / audit tools are disabled on this Tally instance (edition=${ctx.capabilities.edition}). ${ctx.capabilities.message} Either (a) export from Tally UI and call tally_import_vouchers_from_file, or (b) set config tally.unsafeSlow=true to attempt anyway.`,
+      `Per-ledger / per-group closing-balance tools are disabled on this Tally instance (edition=${ctx.capabilities.edition}) because $ClosingBalance evaluation is slow here. ${ctx.capabilities.message} Use TallyPrime 4.x, or set config tally.unsafeSlow=true to attempt anyway.`,
     ),
   );
 }
@@ -247,17 +265,17 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 10. tally_export_vouchers (gated: voucher-class)
+  // 10. tally_export_vouchers (report-form: works on all editions)
   server.tool(
     "tally_export_vouchers",
-    "Export the Day Book for a period as both a memory-safe CSV and a formatted Excel workbook (Summary-by-type + Vouchers sheets). Returns both file paths. Requires a Tally edition that can serve voucher collections — see tally_get_capabilities.",
+    "Export the Day Book for a period as both a memory-safe CSV and a formatted Excel workbook (Summary-by-type + Vouchers sheets). Returns both file paths. Works on every TallyPrime edition (uses the period-scoped Day Book report-form).",
     {
       company: z.string().optional(),
       fromDate: TallyDateSchema,
       toDate: TallyDateSchema,
     },
     async ({ company, fromDate, toDate }) => {
-      const gate = gateOnVouchers(ctx);
+      const gate = gateOnReportForm(ctx);
       if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
@@ -286,7 +304,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       ...PERIOD_OPTIONAL,
     },
     async ({ ledger, company, fromDate, toDate }) => {
-      const gate = gateOnVouchers(ctx);
+      const gate = gateOnComputedBalances(ctx);
       if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
@@ -323,7 +341,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
       ...PERIOD_OPTIONAL,
     },
     async ({ groupName, company, fromDate, toDate }) => {
-      const gate = gateOnVouchers(ctx);
+      const gate = gateOnComputedBalances(ctx);
       if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
@@ -347,16 +365,16 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 12. tally_run_audit_lite — wired in S4.3 (gated: needs voucher data)
+  // 12. tally_run_audit_lite — wired in S4.3 (report-form: works on all editions)
   server.tool(
     "tally_run_audit_lite",
-    "Run the 18 rule-based audit-lite checks against the company books and return findings + books score. Requires voucher-viable Tally — gated off on Silver; use tally_import_vouchers_from_file first.",
+    "Run the 18 rule-based audit-lite checks against the company books and return findings + books score. Works on every TallyPrime edition (reads masters, the period-scoped Day Book, and the Trial Balance via the report-form).",
     {
       company: z.string().optional(),
       ...PERIOD_OPTIONAL,
     },
     async ({ company, fromDate, toDate }) => {
-      const gate = gateOnVouchers(ctx);
+      const gate = gateOnReportForm(ctx);
       if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
@@ -372,17 +390,17 @@ function registerTools(server: McpServer, ctx: McpContext): void {
     },
   );
 
-  // 13. tally_export_dashboard — wired in S4.3 (gated: pulls TB/PL/BS/vouchers)
+  // 13. tally_export_dashboard — wired in S4.3 (report-form: pulls TB/PL/BS/sales/audit)
   server.tool(
     "tally_export_dashboard",
-    "Render one of the 3 Excel dashboards (ManagementSnapshot, SalesTrend, ExceptionsOverview). Gated on Silver.",
+    "Render one of the 3 Excel dashboards (ManagementSnapshot, SalesTrend, ExceptionsOverview). Works on every TallyPrime edition (built from the report-form Trial Balance / P&L / Balance Sheet / Sales Register / audit-lite).",
     {
       kind: z.enum(["ManagementSnapshot", "SalesTrend", "ExceptionsOverview"]),
       company: z.string().optional(),
       ...PERIOD_OPTIONAL,
     },
     async ({ kind, company, fromDate, toDate }) => {
-      const gate = gateOnVouchers(ctx);
+      const gate = gateOnReportForm(ctx);
       if (gate) return gate;
       try {
         const target = company ?? ctx.config.tally.defaultCompany;
@@ -427,7 +445,7 @@ function registerTools(server: McpServer, ctx: McpContext): void {
   // 16. tally_get_capabilities — what this Tally instance can and can't serve
   server.tool(
     "tally_get_capabilities",
-    "Returns the boot-time capability probe: edition (silver/gold/unknown), whether voucher / balance / audit tools are viable on this Tally, and a human-readable explanation. The LLM should read this BEFORE attempting voucher-class work.",
+    "Returns the boot-time capability probe: edition (silver/gold/unknown), `reportFormViable` (Day Book / voucher export / audit-lite / dashboards — works on every edition), `computedBalancesViable` (per-ledger/-group $ClosingBalance — slow on Silver, gated there), and a human-readable explanation.",
     {},
     async () => jsonResult(ctx.capabilities),
   );

@@ -11,14 +11,27 @@ import { listCompanies, type TallyClient } from "@tallymcp/report-engine";
  *      ask Tally to scan vouchers, so it cannot lock the instance the way a
  *      Voucher collection does.
  *
- * Used by `gateOnVouchers` in the MCP server: when `voucherQueriesViable` is
- * false the voucher / closing-balance / audit-lite tools fail fast with a
- * clear pointer to the file-import path, instead of hanging Tally for minutes.
+ * Two INDEPENDENT capability flags, because the data paths differ:
+ *   - `reportFormViable` — the period-scoped report-form TDL works (Trial
+ *     Balance, P&L, Balance Sheet, Day Book, Sales Register → and therefore
+ *     `tally_export_vouchers`, `tally_run_audit_lite`, `tally_export_dashboard`).
+ *     This works on EVERY reachable edition with a company loaded, including
+ *     Silver — the Day Book TDL uses `<BELONGSTO>Yes</BELONGSTO>` so it honors
+ *     the requested period and does not depend on `$ClosingBalance`.
+ *   - `computedBalancesViable` — per-ledger / per-group `$ClosingBalance`
+ *     evaluation is fast enough (`tally_get_ledger_closing_balance`,
+ *     `tally_get_group_closing_balances`). This is the genuinely slow path on
+ *     Silver, so it stays gated there.
+ *
+ * `gateOnReportForm` / `gateOnComputedBalances` in the MCP server use these.
  */
 export interface TallyCapabilities {
   reachable: boolean;
   edition: "silver" | "gold" | "unknown";
-  voucherQueriesViable: boolean;
+  /** Period-scoped report-form TDL works (Day Book / vouchers / audit / dashboards). */
+  reportFormViable: boolean;
+  /** Per-ledger/-group `$ClosingBalance` evaluation is viable (slow on Silver). */
+  computedBalancesViable: boolean;
   detectedAt: string;
   /** Human-readable explanation surfaced through `tally_get_capabilities`. */
   message: string;
@@ -62,7 +75,8 @@ export async function probeTallyCapabilities(
         return {
           reachable: true,
           edition: "unknown",
-          voucherQueriesViable: false,
+          reportFormViable: false,
+          computedBalancesViable: false,
           detectedAt,
           message:
             "Tally is reachable but no companies are loaded. Open a company in TallyPrime and call tally_test_connection again.",
@@ -73,7 +87,8 @@ export async function probeTallyCapabilities(
       return {
         reachable: false,
         edition: "unknown",
-        voucherQueriesViable: false,
+        reportFormViable: false,
+        computedBalancesViable: false,
         detectedAt,
         message: `Could not reach Tally (list-companies failed): ${(err as Error).message}. Make sure TallyPrime is running with XML/HTTP enabled on the configured port.`,
       };
@@ -83,7 +98,8 @@ export async function probeTallyCapabilities(
     return {
       reachable: true,
       edition: "unknown",
-      voucherQueriesViable: false,
+      reportFormViable: false,
+      computedBalancesViable: false,
       detectedAt,
       message: "No company name available for the edition probe.",
     };
@@ -101,27 +117,33 @@ export async function probeTallyCapabilities(
       return {
         reachable: true,
         edition: "gold",
-        voucherQueriesViable: true,
+        reportFormViable: true,
+        computedBalancesViable: true,
         detectedAt,
         message:
-          "TallyPrime 4.x / Gold detected. Voucher, balance, audit-lite, and dashboard tools are enabled.",
+          "TallyPrime 4.x / Gold detected. All tools enabled (reports, vouchers, audit-lite, dashboards, and per-ledger closing balances).",
       };
     }
     return {
       reachable: true,
       edition: "silver",
-      voucherQueriesViable: false,
+      reportFormViable: true,
+      computedBalancesViable: false,
       detectedAt,
       message:
-        "TallyPrime Silver (or older) detected — XML voucher and computed-balance queries are not viable here. Masters and connection tools work fine; for vouchers, export from Tally UI (Display → Day Book → E: Export → XML) and use tally_import_vouchers_from_file. To override (e.g., on a small dataset), set config tally.unsafeSlow=true.",
+        "TallyPrime Silver (or older) detected. Reports, Day Book / voucher export, audit-lite, and dashboards work here (period-scoped report-form). Only the per-ledger / per-group closing-balance tools are disabled — `$ClosingBalance` evaluation is slow on this edition; use TallyPrime 4.x for those, or set config tally.unsafeSlow=true to attempt them anyway.",
     };
   } catch (err) {
+    // The list-companies probe already succeeded (we have a company), so Tally is
+    // reachable and the report-form path is viable; only the legacy TB probe timed
+    // out. Treat computed balances as not-viable for safety.
     return {
       reachable: true,
       edition: "unknown",
-      voucherQueriesViable: false,
+      reportFormViable: true,
+      computedBalancesViable: false,
       detectedAt,
-      message: `Edition probe timed out (${(err as Error).message}). Treating as Silver-class for safety. To override, set config tally.unsafeSlow=true.`,
+      message: `Edition probe timed out (${(err as Error).message}); report-form tools (reports/vouchers/audit/dashboards) remain available. Treating per-ledger closing-balance tools as Silver-class for safety — set config tally.unsafeSlow=true to attempt them.`,
     };
   }
 }
@@ -133,7 +155,9 @@ export function fromAssumedEdition(
   return {
     reachable: true,
     edition: assumed,
-    voucherQueriesViable: assumed === "gold",
+    // Report-form TDL works on both editions; only computed balances differ.
+    reportFormViable: true,
+    computedBalancesViable: assumed === "gold",
     detectedAt: new Date().toISOString(),
     message: `Edition forced via ${reason}.`,
   };

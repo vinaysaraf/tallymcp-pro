@@ -89,7 +89,8 @@ async function main(): Promise<void> {
 
   console.log(
     `\n[run-all-features] Tally edition: ${ctx.capabilities.edition} | ` +
-      `voucher-class viable: ${ctx.capabilities.voucherQueriesViable}`,
+      `report-form viable: ${ctx.capabilities.reportFormViable} | ` +
+      `computed-balances viable: ${ctx.capabilities.computedBalancesViable}`,
   );
 
   // ── Pick the company ───────────────────────────────────────────────
@@ -180,11 +181,11 @@ async function main(): Promise<void> {
     return `→ ${r.workbook.fileName}`;
   });
 
-  // On Silver the capability probe gates voucher-class tools off (slow
-  // $ClosingBalance). --force-vouchers runs them anyway so the streaming
-  // voucher path (toVoucher) and dashboard/audit exports get live coverage.
+  // Vouchers / audit-lite / dashboards run on every edition via the period-scoped
+  // report-form (reportFormViable). --force-vouchers keeps the manual override for
+  // diagnosing an unreachable / no-company instance.
   const forceVouchers = args["force-vouchers"] === "true";
-  if ((ctx.capabilities.voucherQueriesViable || forceVouchers) && period) {
+  if ((ctx.capabilities.reportFormViable || forceVouchers) && period) {
     await run(results, "vouchers CSV + XLSX export", async () => {
       const files = await exportVouchers(ctx.tallyClient, {
         company,
