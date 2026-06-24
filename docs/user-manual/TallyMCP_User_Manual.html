@@ -1,0 +1,217 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<title>TallyMCP User Manual</title>
+<style>
+body{font-family:Segoe UI,Arial,sans-serif;margin:48px;line-height:1.45;color:#111}
+h1{font-size:26px;margin:0 0 12px}
+h2{font-size:18px;margin:22px 0 10px}
+h3{font-size:15px;margin:18px 0 8px}
+p{margin:8px 0}
+code{font-family:Consolas,Menlo,monospace;font-size:12px;background:#f2f4f7;padding:2px 4px;border-radius:4px}
+pre{background:#f2f4f7;padding:10px;border-radius:8px;overflow:auto}
+hr{border:none;border-top:1px solid #e5e7eb;margin:18px 0}
+ul{margin:6px 0 6px 22px}
+li{margin:4px 0}
+.muted{color:#444}
+</style>
+</head><body>
+<h1>TallyMCP Pro — User Manual (Non‑technical)</h1>
+<div style="height:8px"></div>
+<p>**Version:** v1.0.1  </p>
+<p>**Audience:** Chartered Accountants, accountants, finance teams  </p>
+<p>**Goal:** Read Tally data safely and export professional reports (no posting)</p>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>Quick start (1 minute)</h2>
+<div style="height:8px"></div>
+<h3>Step A — Confirm Tally is ready</h3>
+<div style="height:8px"></div>
+<p>1. Open **TallyPrime**</p>
+<p>2. **Load the company** you want to work with</p>
+<p>3. In TallyPrime:</p>
+<p>   - **F1 (Help) → Settings → Connectivity → Client/Server Configuration**</p>
+<p>   - Set to **Both**</p>
+<p>   - Port **9000**</p>
+<div style="height:8px"></div>
+<h3>Step B — Confirm TallyMCP is ready</h3>
+<div style="height:8px"></div>
+<p>Open **TallyMCP Configurator** and confirm:</p>
+<ul>
+<li>**Tally connected** (green dot)</li>
+<li>**MCP server running** (green dot)</li>
+</ul>
+<div style="height:8px"></div>
+<p>If you see any red/yellow warnings, open **Health Check** and click **Re-check**.</p>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>How to use TallyMCP in Claude Desktop / Cursor</h2>
+<div style="height:8px"></div>
+<p>You will type normal questions, but these **starter commands** work best:</p>
+<div style="height:8px"></div>
+<ul>
+<li>**<code>/config</code>** — first-time setup, connection test, choose company</li>
+<li>**<code>/read</code>** — read a report inside chat (Trial Balance, P&amp;L, etc.)</li>
+<li>**<code>/export</code>** — export an Excel/JSON file (for working papers)</li>
+<li>**<code>/audit</code>** — audit-lite checks + findings + workbook</li>
+<li>**<code>/dashboard</code>** — management dashboards (Excel)</li>
+</ul>
+<div style="height:8px"></div>
+<p>Tip: If you are unsure, start with **<code>/config</code>**.</p>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>1) First-time setup (`/config`)</h2>
+<div style="height:8px"></div>
+<p>Copy-paste this prompt:</p>
+<div style="height:8px"></div>
+<p>**<code>/config</code>**  </p>
+<p>“Set up TallyMCP for me. First test the connection. Then show the list of companies and ask me which company to set as default.”</p>
+<div style="height:8px"></div>
+<p>What happens next:</p>
+<ul>
+<li>The assistant runs a connection test</li>
+<li>It lists companies available in Tally</li>
+<li>You choose one company as the **default**</li>
+</ul>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>2) Read reports inside chat (`/read`)</h2>
+<div style="height:8px"></div>
+<p>Use this template:</p>
+<div style="height:8px"></div>
+<p>**<code>/read</code>**  </p>
+<p>“Read **&lt;Report Name&gt;** for **&lt;Company&gt;** for period **&lt;FromDate&gt; to &lt;ToDate&gt;**. If I don’t give dates, use current financial year.”</p>
+<div style="height:8px"></div>
+<h3>Common examples (copy-paste)</h3>
+<div style="height:8px"></div>
+<p>**Trial Balance (current FY)**</p>
+<div style="height:8px"></div>
+<p><code>/read</code> “Trial Balance for my default company.”</p>
+<div style="height:8px"></div>
+<p>**Profit &amp; Loss (FY 2025–26)**</p>
+<div style="height:8px"></div>
+<p><code>/read</code> “Profit &amp; Loss from 20250401 to 20260331.”</p>
+<div style="height:8px"></div>
+<p>**Balance Sheet (as on 31‑03‑2026)**</p>
+<div style="height:8px"></div>
+<p><code>/read</code> “Balance Sheet as on 20260331.”</p>
+<div style="height:8px"></div>
+<p>**Sales Register (April 2025)**</p>
+<div style="height:8px"></div>
+<p><code>/read</code> “Sales Register from 20250401 to 20250430.”</p>
+<div style="height:8px"></div>
+<p>**Purchase Register (April 2025)**</p>
+<div style="height:8px"></div>
+<p><code>/read</code> “Purchase Register from 20250401 to 20250430.”</p>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>3) Export to Excel / JSON (`/export`)</h2>
+<div style="height:8px"></div>
+<p>Use this template:</p>
+<div style="height:8px"></div>
+<p>**<code>/export</code>**  </p>
+<p>“Export **&lt;Report Name&gt;** for **&lt;period&gt;** to **Excel** and give me the file.”</p>
+<div style="height:8px"></div>
+<h3>Common examples (copy-paste)</h3>
+<div style="height:8px"></div>
+<p>**Export Trial Balance to Excel**</p>
+<div style="height:8px"></div>
+<p><code>/export</code> “Export Trial Balance to Excel for 20250401 to 20260331.”</p>
+<div style="height:8px"></div>
+<p>**Export Profit &amp; Loss to Excel**</p>
+<div style="height:8px"></div>
+<p><code>/export</code> “Export Profit &amp; Loss to Excel for 20250401 to 20260331.”</p>
+<div style="height:8px"></div>
+<p>**Export Balance Sheet to Excel**</p>
+<div style="height:8px"></div>
+<p><code>/export</code> “Export Balance Sheet to Excel as on 20260331.”</p>
+<div style="height:8px"></div>
+<p>**Export Masters (Ledgers / Groups / Voucher Types)**</p>
+<div style="height:8px"></div>
+<p><code>/export</code> “Export Masters to Excel for my default company.”</p>
+<div style="height:8px"></div>
+<p>What you get:</p>
+<ul>
+<li>A file path to a generated **Excel workbook** (and sometimes a JSON export option)</li>
+</ul>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>4) Audit-lite (`/audit`)</h2>
+<div style="height:8px"></div>
+<p>Audit-lite is **analytical support only**. It highlights **risk indicators** and suggests checks.</p>
+<p>It is **not** a statutory audit opinion.</p>
+<div style="height:8px"></div>
+<p>Copy-paste this prompt:</p>
+<div style="height:8px"></div>
+<p>**<code>/audit</code>**  </p>
+<p>“Run audit-lite for my default company for 20250401 to 20260331. Summarize findings by severity and give me the Excel working paper.”</p>
+<div style="height:8px"></div>
+<p>What you get:</p>
+<ul>
+<li>Findings (what looks wrong + why it matters)</li>
+<li>Suggested audit procedures</li>
+<li>Excel working paper path</li>
+</ul>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>5) Dashboards (Excel) (`/dashboard`)</h2>
+<div style="height:8px"></div>
+<p>Dashboards are Excel files. Available kinds:</p>
+<ul>
+<li>**ManagementSnapshot**</li>
+<li>**SalesTrend**</li>
+<li>**ExceptionsOverview**</li>
+</ul>
+<div style="height:8px"></div>
+<p>Copy-paste examples:</p>
+<div style="height:8px"></div>
+<p><code>/dashboard</code> “Generate ManagementSnapshot for 20250401 to 20260331 and give me the Excel file.”</p>
+<div style="height:8px"></div>
+<p><code>/dashboard</code> “Generate SalesTrend for 20250401 to 20260331 and give me the Excel file.”</p>
+<div style="height:8px"></div>
+<p><code>/dashboard</code> “Generate ExceptionsOverview for 20250401 to 20260331 and give me the Excel file.”</p>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>Common problems and quick fixes</h2>
+<div style="height:8px"></div>
+<h3>A) “Tally not reachable” / “Port refused”</h3>
+<div style="height:8px"></div>
+<p>1. Keep TallyPrime open and load the company</p>
+<p>2. Check: **Connectivity → Both**, Port **9000**</p>
+<p>3. In Configurator → **Health Check → Re-check**</p>
+<div style="height:8px"></div>
+<h3>B) “Firewall rule missing”</h3>
+<div style="height:8px"></div>
+<ul>
+<li>If AI client and Tally are on the **same PC**, it often still works</li>
+<li>If AI client is on a **different PC** (LAN), the firewall rule must be added</li>
+<li>Fix: Run Configurator as **Administrator** → Health Check → **Fix both**</li>
+</ul>
+<div style="height:8px"></div>
+<h3>C) Tally becomes slow or hangs</h3>
+<div style="height:8px"></div>
+<ul>
+<li>Do not run heavy exports from **Claude and Cursor at the same time**</li>
+<li>Start with smaller reports first (Trial Balance / Company Info)</li>
+<li>If it still hangs: close the AI client, restart TallyPrime, try again</li>
+</ul>
+<div style="height:8px"></div>
+<hr/>
+<div style="height:8px"></div>
+<h2>Recommended daily workflow</h2>
+<div style="height:8px"></div>
+<p>1. <code>/config</code> once (set default company)</p>
+<p>2. <code>/read</code> to check numbers quickly</p>
+<p>3. <code>/export</code> when you need Excel for working papers</p>
+<p>4. <code>/audit</code> for exception-based review</p>
+<p>5. <code>/dashboard</code> for management reporting</p>
+<div style="height:8px"></div>
+<div style="height:8px"></div>
+</body></html>
