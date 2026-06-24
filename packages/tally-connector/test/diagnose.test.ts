@@ -54,6 +54,26 @@ describe("analyzeDiagnoseResponse", () => {
       code: "NO_COMPANY_LOADED",
     });
   });
+
+  it("counts only real <COMPANY NAME=…> entries, ignoring the <CMPINFO> counter (v1.0.11)", () => {
+    // The Collection+TDL response carries a <CMPINFO><COMPANY>0</COMPANY></CMPINFO>
+    // *counter* alongside the actual loaded companies. It must NOT be counted.
+    const body = `<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY>
+      <DESC><CMPINFO><COMPANY>0</COMPANY></CMPINFO></DESC>
+      <DATA><COLLECTION>
+        <COMPANY NAME="OM"><NAME>OM</NAME></COMPANY>
+        <COMPANY NAME="XL - Testing One"><NAME>XL - Testing One</NAME></COMPANY>
+      </COLLECTION></DATA></BODY></ENVELOPE>`;
+    const result = analyzeDiagnoseResponse(body);
+    expect(result).toMatchObject({ ok: true, companiesLoaded: 2 });
+  });
+
+  it("treats a CMPINFO-only response (no named companies) as NO_COMPANY_LOADED (v1.0.11)", () => {
+    const body = `<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY>
+      <DESC><CMPINFO><COMPANY>0</COMPANY></CMPINFO></DESC>
+      <DATA><COLLECTION></COLLECTION></DATA></BODY></ENVELOPE>`;
+    expect(analyzeDiagnoseResponse(body)).toMatchObject({ ok: false, code: "NO_COMPANY_LOADED" });
+  });
 });
 
 describe("mapDiagnoseError", () => {

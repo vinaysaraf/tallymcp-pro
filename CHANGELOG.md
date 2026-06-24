@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.11 — Connection test detects loaded companies on Silver / multi-company (2026-06-24)
+
+### Fixed
+- **`tally_test_connection` falsely reported "no company loaded" on the installed app (TallyPrime Silver / multi-company).** The connection diagnostic (`diagnoseTally`) used a fallback "List of Companies" request in the bare `TALLYREQUEST=Export Data, TYPE=Data` form, which on TallyPrime Silver and multi-company setups returns an **empty `<DATA></DATA>`** even when companies are loaded — so it reported `NO_COMPANY_LOADED` and the entire `config` flow stalled. It worked only from a dev checkout (which has `samples/list-companies.request.xml`, the correct **Collection + TDL** form); the **deployed bundle ships no `samples/` folder**, so the installed server always fell back to the broken form. Fixes: (1) the inline `LIST_COMPANIES_ENVELOPE` is now the cross-edition **Collection + TDL** form — no dependency on a deployed `samples/` file; (2) `countCompanies` now matches real `<COMPANY …>` entries (those carry a `NAME` attribute), so the `<CMPINFO><COMPANY>0</COMPANY></CMPINFO>` *counter* element can no longer cause a false positive. Verified live against TallyPrime Silver with 3 companies loaded; regression tests added. (`tally_list_companies` already used the correct envelope and was unaffected.)
+
 ## v1.0.10 — Thumbprint-pinned update verification + license (2026-06-24)
 
 ### Security

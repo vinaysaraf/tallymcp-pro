@@ -25,9 +25,15 @@ function countCompanies(body: string): number {
   // Tally varies the element name across editions:
   //   TallyPrime 4.x:   <COMPANY NAME="...">
   //   TallyPrime Silver / older: <COMPANYNAME>...</COMPANYNAME> under <CMPINFO>
-  // Prefer the rich <COMPANY> count when present; fall back to the bare
-  // <COMPANYNAME> count so older editions still register as "loaded".
-  const richMatches = body.match(/<COMPANY[\s>]/gi);
+  // Prefer the rich count when present; fall back to the bare <COMPANYNAME>
+  // count so older editions still register as "loaded".
+  //
+  // IMPORTANT: match `<COMPANY ` (with a following space → real company entries
+  // carry a NAME attribute), NOT `<COMPANY>`. The response's <CMPINFO> block
+  // contains a bare `<COMPANY>0</COMPANY>` *counter* element that would
+  // otherwise be miscounted as a loaded company — yielding a false "ok" when no
+  // company is actually loaded.
+  const richMatches = body.match(/<COMPANY\s/gi);
   if (richMatches && richMatches.length > 0) return richMatches.length;
   const nameMatches = body.match(/<COMPANYNAME[\s>]/gi);
   return nameMatches?.length ?? 0;
