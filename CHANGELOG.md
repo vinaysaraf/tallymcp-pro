@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.17 — Live voucher reads work on every edition (export + audit-lite voucher checks) (2026-06-24)
+
+### Fixed
+- **`tally_export_vouchers` returned an empty file, and audit-lite's voucher-level checks never fired, on TallyPrime Silver (and other editions that don't answer standalone collection exports).** The live voucher streamer (`getDayBookStream`) built a bare `TYPE=Collection` **Voucher** request. On those editions that request returns an **empty set** *and* ignores `SVFROMDATE`/`SVTODATE` (Tally serves whatever period is loaded), so voucher exports came back blank and the audit's no-narration / duplicate-number / round-figure / large-journal / backdated checks had no data to run on. The streamer now reads each chunk through the **report-form TDL** — the exact path `runReport("DayBook")` / `getDayBook` already use — which returns the vouchers **and honors the requested period natively**. Because the report-form is period-correct, the previous *loaded-period gate* (added as a workaround for the collection's period-blindness, which refused to stream unless Tally's loaded period covered the request) is **removed**: you no longer have to set the period in TallyPrime to match your query. Verified live on TallyPrime Silver — the FY streamed 317 vouchers (previously 0); an April-only request returned exactly the 28 April vouchers (proving the period is honored); audit-lite now surfaces its voucher-level findings.
+- **Audit-lite over-/under-valued single-entry vouchers.** `voucherGross` used a half-sum of absolute entry amounts (which assumes both Dr and Cr sides are present). The report-form exposes one signed `$Amount` per voucher, so a single-entry voucher was valued at **half** its real amount — under-counting materiality. It now takes the larger of the two sides, which equals the voucher value for both single-entry and balanced double-entry vouchers. The voucher-export Summary-by-type "Value" total uses the same correct measure (previously it summed only positive entries, which could read 0 when the lone entry was a debit).
+
+### Removed
+- Dead, edition-broken XML builders that the report-form path replaces: the bare `Voucher`-collection envelopes (`dayBookEnvelope`, `salesRegisterEnvelope`) and the loaded-period probe machinery (`currentPeriodEnvelope`, `getLoadedPeriod`). Master-object collection exports (companies / ledgers / groups / voucher types) are unchanged.
+
 ## v1.0.16 — Voucher export now also produces a formatted Excel workbook (2026-06-24)
 
 ### Added

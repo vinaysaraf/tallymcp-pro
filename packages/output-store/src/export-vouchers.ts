@@ -21,6 +21,17 @@ export interface ExportVouchersResult {
   xlsx: GeneratedFile;
 }
 
+/** Voucher value = the larger of the debit-side / credit-side totals. */
+function voucherValue(entries: ReadonlyArray<{ amount: number }>): number {
+  let positive = 0;
+  let negative = 0;
+  for (const e of entries) {
+    if (e.amount >= 0) positive += e.amount;
+    else negative += -e.amount;
+  }
+  return Math.max(positive, negative);
+}
+
 const HEADER = [
   "Date",
   "Voucher Type",
@@ -34,12 +45,14 @@ const HEADER = [
 ] as const;
 
 /**
- * Exports the Day Book as one row per ledger entry, in two formats:
+ * Exports the Day Book — one row per voucher (the report-form TDL exposes each
+ * voucher's primary ledger + signed `$Amount`) — in two formats:
  *  - a **CSV** written by streaming each {@link getDayBookStream} chunk (the
- *    full FY is never held in memory) — UTF-8 BOM so Excel opens it directly;
+ *    full FY is never held in memory at once) — UTF-8 BOM so Excel opens it
+ *    directly;
  *  - a **formatted .xlsx** (styled header, in-cell data bars, banded rows) with
  *    a by-voucher-type Summary sheet. The xlsx necessarily buffers the rows
- *    (ExcelJS builds in memory), so the CSV remains the memory-safe path.
+ *    (ExcelJS builds in memory), so the CSV remains the memory-leaner path.
  */
 export async function exportVouchers(
   client: TallyClient,
@@ -75,8 +88,11 @@ export async function exportVouchers(
           byType.get(voucher.voucherType) ??
           { type: voucher.voucherType, vouchers: 0, entries: 0, value: 0 };
         slot.vouchers += 1;
-        // Voucher value ≈ sum of positive (credit-side) entries.
-        slot.value += voucher.entries.filter((e) => e.amount > 0).reduce((a, e) => a + e.amount, 0);
+        // Voucher value = the larger of the two sides. For a single signed entry
+        // (the report-form's per-voucher amount) that is |amount|; for a balanced
+        // multi-entry voucher it is the matched side total — never a misleading 0
+        // when the only entry is a debit (negative).
+        slot.value += voucherValue(voucher.entries);
         for (const entry of voucher.entries) {
           slot.entries += 1;
           stream.write(

@@ -6,7 +6,6 @@ export {
   getBalanceSheet,
   getCompanyInfo,
   getCurrentCompany,
-  getLoadedPeriod,
   getDayBook,
   getDayBookStream,
   getGroupClosingBalances,

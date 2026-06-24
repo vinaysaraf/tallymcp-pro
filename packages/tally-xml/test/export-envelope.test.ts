@@ -7,14 +7,11 @@ import {
   buildExportEnvelope,
   companyInfoEnvelope,
   currentCompanyEnvelope,
-  currentPeriodEnvelope,
-  dayBookEnvelope,
   listCompaniesEnvelope,
   listGroupsEnvelope,
   listLedgersEnvelope,
   listVoucherTypesEnvelope,
   profitAndLossEnvelope,
-  salesRegisterEnvelope,
   trialBalanceEnvelope,
 } from "../src/export-envelope.js";
 
@@ -90,28 +87,12 @@ describe("per-report envelope helpers", () => {
     );
   });
 
-  it("dayBookEnvelope matches samples/day-book.request.xml", () => {
-    expect(
-      dayBookEnvelope({ company: "10000 - Acme Trading", fromDate: "20250401", toDate: "20260331" }).trim(),
-    ).toBe(readSample("day-book.request.xml").trim());
-  });
-
   it("currentCompanyEnvelope probes $$CurrentCompany with UTF-8 encoding + escaped name", () => {
     const xml = currentCompanyEnvelope("Acme & Co <Pvt>");
     expect(xml).toContain("$$CurrentCompany");
     expect(xml).toContain("<ENCODINGTYPE>UTF8</ENCODINGTYPE>");
     // Company name is XML-escaped (injection-safe, non-ASCII-safe).
     expect(xml).toContain("<SVCURRENTCOMPANY>Acme &amp; Co &lt;Pvt&gt;</SVCURRENTCOMPANY>");
-  });
-
-  it("currentPeriodEnvelope probes the loaded period (##SVFROMDATE/##SVTODATE) with UTF-8", () => {
-    const xml = currentPeriodEnvelope("Acme & Co");
-    expect(xml).toContain("##SVFROMDATE");
-    expect(xml).toContain("##SVTODATE");
-    expect(xml).toContain("<ENCODINGTYPE>UTF8</ENCODINGTYPE>");
-    expect(xml).toContain("<SVCURRENTCOMPANY>Acme &amp; Co</SVCURRENTCOMPANY>");
-    // Does NOT set SVFROMDATE/SVTODATE itself, so they default to the loaded period.
-    expect(xml).not.toContain("<SVFROMDATE>");
   });
 
   it("listLedgersEnvelope targets List of Ledgers for the company", () => {
@@ -128,15 +109,6 @@ describe("per-report envelope helpers", () => {
     expect(listVoucherTypesEnvelope({ company: "Acme" })).toContain(
       "<ID>List of Voucher Types</ID>",
     );
-  });
-
-  it("dayBookEnvelope targets a Voucher collection for the period (Narration in FETCH)", () => {
-    const xml = dayBookEnvelope(PERIOD);
-    expect(xml).toContain("<ID>Day Book</ID>");
-    expect(xml).toContain("<TYPE>Voucher</TYPE>");
-    expect(xml).toMatch(/Narration/);
-    expect(xml).toContain("<SVFROMDATE>20250401</SVFROMDATE>");
-    expect(xml).toContain("<SVTODATE>20260331</SVTODATE>");
   });
 
   it("trialBalanceEnvelope targets Trial Balance with grand total and period", () => {
@@ -156,11 +128,5 @@ describe("per-report envelope helpers", () => {
     const xml = balanceSheetEnvelope(PERIOD);
     expect(xml).toContain("<ID>Balance Sheet</ID>");
     expect(xml).toContain("<SVTODATE>20260331</SVTODATE>");
-  });
-
-  it("salesRegisterEnvelope targets Sales Register with period", () => {
-    const xml = salesRegisterEnvelope(PERIOD);
-    expect(xml).toContain("<ID>Sales Register</ID>");
-    expect(xml).toContain("<SVFROMDATE>20250401</SVFROMDATE>");
   });
 });

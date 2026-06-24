@@ -15,7 +15,11 @@ import { escapeXmlText } from "./escape.js";
  *
  *  - {@link buildCollectionEnvelope} — `TALLYREQUEST=Export, TYPE=Collection`
  *    with an inline TDL `<COLLECTION>` definition. Works across editions
- *    (including TallyPrime Silver) and is what masters and vouchers use.
+ *    (including TallyPrime Silver) for MASTER objects (companies, ledgers,
+ *    groups, voucher types). Note: a `TYPE=Collection` *Voucher* request returns
+ *    nothing on those same editions and ignores the requested period, so Day
+ *    Book / voucher reads go through the report-form TDL in `tdl-engine`
+ *    (`runReport("DayBook")` / `getDayBook`), not this builder.
  */
 
 /** A Tally date in `YYYYMMDD` form (Tally XML uses no separators). */
@@ -126,38 +130,6 @@ export function currentCompanyEnvelope(company: string): string {
 </ENVELOPE>`;
 }
 
-/**
- * Probe envelope returning the company's currently-loaded period
- * (`##SVFROMDATE` / `##SVTODATE`, which default to the loaded period when not
- * set in the request) as `<PFROM>`/`<PTO>` in `YYYY-MM-DD`. Used to gate live
- * voucher streaming: a bare `Voucher` collection only ever serves the loaded
- * period, so a request extending beyond it can't be satisfied live.
- */
-export function currentPeriodEnvelope(company: string): string {
-  return `<ENVELOPE>
-  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>TallyMcpCurrentPeriod</ID></HEADER>
-  <BODY>
-    <DESC>
-      <STATICVARIABLES>
-        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-        <ENCODINGTYPE>UTF8</ENCODINGTYPE>
-        <SVCURRENTCOMPANY>${escapeXmlText(company)}</SVCURRENTCOMPANY>
-      </STATICVARIABLES>
-      <TDL>
-        <TDLMESSAGE>
-          <REPORT NAME="TallyMcpCurrentPeriod"><FORMS>TallyMcpCPForm</FORMS></REPORT>
-          <FORM NAME="TallyMcpCPForm"><PARTS>TallyMcpCPPart</PARTS><XMLTAG>DATA</XMLTAG></FORM>
-          <PART NAME="TallyMcpCPPart"><LINES>TallyMcpCPLine</LINES><SCROLLED>Vertical</SCROLLED></PART>
-          <LINE NAME="TallyMcpCPLine"><FIELDS>TallyMcpCPFrom,TallyMcpCPTo</FIELDS><XMLTAG>ROW</XMLTAG></LINE>
-          <FIELD NAME="TallyMcpCPFrom"><SET>$$PyrlYYYYMMDDFormat:##SVFROMDATE:"-"</SET><XMLTAG>PFROM</XMLTAG></FIELD>
-          <FIELD NAME="TallyMcpCPTo"><SET>$$PyrlYYYYMMDDFormat:##SVTODATE:"-"</SET><XMLTAG>PTO</XMLTAG></FIELD>
-        </TDLMESSAGE>
-      </TDL>
-    </DESC>
-  </BODY>
-</ENVELOPE>`;
-}
-
 export interface CollectionEnvelopeOptions {
   /** Used both as `<ID>` and the `<COLLECTION NAME="...">` attribute. */
   name: string;
@@ -214,11 +186,13 @@ ${vars}
 
 // ─── Per-report envelope helpers ─────────────────────────────────────────────
 //
-// Masters and vouchers use the cross-edition-safe Collection+TDL form. Period
-// reports (Trial Balance, Profit & Loss, Balance Sheet) stay on the legacy
-// Report form for now; on TallyPrime Silver these return STATUS=0 and need a
-// dedicated TDL Ledger-balance projection to surface data — tracked as a
-// v0.5.1 follow-up.
+// Masters (companies, ledgers, groups, voucher types) use the cross-edition-safe
+// Collection+TDL form. Period reports (Trial Balance, Profit & Loss, Balance
+// Sheet) stay on the legacy Report form for now; on TallyPrime Silver these
+// return STATUS=0 and need a dedicated TDL Ledger-balance projection to surface
+// data — tracked as a v0.5.1 follow-up. Day Book / voucher reads do NOT live
+// here: a Voucher collection is empty + period-blind on some editions, so they
+// go through the report-form TDL in `tdl-engine`.
 
 const COMPANY_FETCH = [
   "Name",
@@ -248,18 +222,6 @@ const GROUP_FETCH = [
 ] as const;
 
 const VOUCHER_TYPE_FETCH = ["Name", "Parent", "NumberingMethod"] as const;
-
-const VOUCHER_FETCH = [
-  "Date",
-  "VoucherTypeName",
-  "VoucherNumber",
-  "Narration",
-  "PartyLedgerName",
-  "Reference",
-  "AllLedgerEntries.LedgerName",
-  "AllLedgerEntries.Amount",
-  "AllLedgerEntries.IsDeemedPositive",
-] as const;
 
 /** List of Companies — Collection + TDL form (cross-edition). */
 export const listCompaniesEnvelope = (): string =>
@@ -305,17 +267,6 @@ export const listVoucherTypesEnvelope = (o: { company: string }): string =>
     company: o.company,
   });
 
-/** Day Book — Voucher collection scoped to the period. */
-export const dayBookEnvelope = (o: PeriodOptions): string =>
-  buildCollectionEnvelope({
-    name: "Day Book",
-    type: "Voucher",
-    fetch: VOUCHER_FETCH,
-    company: o.company,
-    fromDate: o.fromDate,
-    toDate: o.toDate,
-  });
-
 /** Trial Balance — legacy Report form (needs TDL projection on Silver — v0.5.1). */
 export const trialBalanceEnvelope = (o: PeriodOptions): string =>
   buildExportEnvelope({
@@ -339,21 +290,6 @@ export const profitAndLossEnvelope = (o: PeriodOptions): string =>
 export const balanceSheetEnvelope = (o: PeriodOptions): string =>
   buildExportEnvelope({
     reportId: "Balance Sheet",
-    company: o.company,
-    fromDate: o.fromDate,
-    toDate: o.toDate,
-  });
-
-/**
- * Sales Register — fetched as the full Voucher collection for the period.
- * The connector filters to `VoucherTypeName="Sales"` client-side because
- * cross-edition TDL FILTER syntax is brittle.
- */
-export const salesRegisterEnvelope = (o: PeriodOptions): string =>
-  buildCollectionEnvelope({
-    name: "Sales Register",
-    type: "Voucher",
-    fetch: VOUCHER_FETCH,
     company: o.company,
     fromDate: o.fromDate,
     toDate: o.toDate,

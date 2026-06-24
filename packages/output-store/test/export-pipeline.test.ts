@@ -26,12 +26,6 @@ function stubClient(responses: string | string[]): TallyClient & { calls: string
     calls,
     async post(xml: string) {
       calls.push(xml);
-      // getDayBookStream first probes Tally's loaded period; answer that with a
-      // wide covering range so the period gate passes, and serve the queued
-      // voucher responses for the actual Day Book chunk requests.
-      if (xml.includes("TallyMcpCurrentPeriod")) {
-        return `<ENVELOPE><BODY><DATA><ROW><PFROM>2000-04-01</PFROM><PTO>2099-03-31</PTO></ROW></DATA></BODY></ENVELOPE>`;
-      }
       const r = queue.shift();
       if (r === undefined) throw new Error("StubClient: no more responses queued");
       return r;
@@ -43,24 +37,18 @@ function wrap(inner: string): string {
   return `<ENVELOPE><BODY><DATA>${inner}</DATA></BODY></ENVELOPE>`;
 }
 
-function voucherXml(date: string, num: string): string {
-  return `<VOUCHER VCHTYPE="Sales">
-    <DATE>${date}</DATE>
-    <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
-    <VOUCHERNUMBER>${num}</VOUCHERNUMBER>
-    <NARRATION>Sale</NARRATION>
-    <PARTYLEDGERNAME>Acme &amp; Co</PARTYLEDGERNAME>
-    <ALLLEDGERENTRIES.LIST>
-      <LEDGERNAME>Acme &amp; Co</LEDGERNAME>
-      <AMOUNT>-1,000.00</AMOUNT>
-      <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-    </ALLLEDGERENTRIES.LIST>
-    <ALLLEDGERENTRIES.LIST>
-      <LEDGERNAME>Sales</LEDGERNAME>
-      <AMOUNT>1,000.00</AMOUNT>
-      <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-    </ALLLEDGERENTRIES.LIST>
-  </VOUCHER>`;
+/**
+ * A Day Book report-form row (one per voucher: F01 date … F08 ledger). The
+ * voucher streamer reads vouchers via the TDL report-form, so the stub answers
+ * with `<ROW>` responses rather than a Voucher collection. The parser is
+ * fail-loud, so every row carries all eight fields.
+ */
+function voucherRow(date: string, num: string): string {
+  return (
+    `<ROW><F01>${date}</F01><F02>Sales</F02><F03>${num}</F03>` +
+    `<F04>Acme &amp; Co</F04><F05></F05><F06>Sale</F06>` +
+    `<F07>-1000</F07><F08>Acme &amp; Co</F08></ROW>`
+  );
 }
 
 function fakeResult(): ReadReportResult {
@@ -157,27 +145,29 @@ describe("exportMasters", () => {
 });
 
 describe("exportVouchers (streaming CSV)", () => {
-  it("writes header + one row per ledger entry across chunks", async () => {
+  it("writes header + one row per voucher across chunks", async () => {
     const client = stubClient([
-      wrap(voucherXml("20260402", "A")),
-      wrap(voucherXml("20260408", "B")),
+      wrap(voucherRow("2026-04-02", "A")),
+      wrap(voucherRow("2026-04-08", "B")),
     ]);
     const out = await exportVouchers(client, {
       company: "Acme",
       fromDate: "20260401",
       toDate: "20260408",
       outputDir: scratchDir,
+      chunkDays: 7, // force 2 windows over the 8-day range
     });
-    // 1 loaded-period probe + 2 Day Book chunk requests (8-day range).
-    expect(client.calls.filter((c) => c.includes("TallyMcpCurrentPeriod"))).toHaveLength(1);
-    expect(client.calls.filter((c) => !c.includes("TallyMcpCurrentPeriod"))).toHaveLength(2);
+    // 2 Day Book report-form requests (one per window); no loaded-period probe.
+    expect(client.calls).toHaveLength(2);
+    expect(client.calls.every((c) => c.includes("TallyMcpTdlReport"))).toBe(true);
     const csv = readFileSync(out.csv.path, "utf8");
     expect(csv.startsWith(UTF8_BOM)).toBe(true);
     const lines = csv.slice(UTF8_BOM.length).split(/\r\n/).filter((l) => l.length > 0);
     expect(lines[0]).toBe(
       "Date,Voucher Type,Voucher Number,Party,Reference,Narration,Ledger,Amount,Is Deemed Positive",
     );
-    expect(lines).toHaveLength(1 + 2 * 2); // header + 2 vouchers × 2 entries each
+    expect(lines).toHaveLength(1 + 2); // header + 2 vouchers (one primary entry each)
+    expect(lines[1]).toContain("20260402"); // dashed date normalized to compact
     // A formatted .xlsx is produced alongside the CSV.
     expect(out.xlsx.path.endsWith(".xlsx")).toBe(true);
     expect(out.xlsx.sizeBytes).toBeGreaterThan(1000);
@@ -197,24 +187,11 @@ describe("exportVouchers (streaming CSV)", () => {
   });
 
   it("escapes commas and quotes inside party/narration", async () => {
-    const v = `<VOUCHER VCHTYPE="Sales">
-      <DATE>20260403</DATE>
-      <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
-      <VOUCHERNUMBER>S-1</VOUCHERNUMBER>
-      <NARRATION>Big "deal", urgent</NARRATION>
-      <PARTYLEDGERNAME>Foo, Bar &amp; Co.</PARTYLEDGERNAME>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>Cash</LEDGERNAME>
-        <AMOUNT>-100</AMOUNT>
-        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-      </ALLLEDGERENTRIES.LIST>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>Sales</LEDGERNAME>
-        <AMOUNT>100</AMOUNT>
-        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-      </ALLLEDGERENTRIES.LIST>
-    </VOUCHER>`;
-    const client = stubClient(wrap(v));
+    const row =
+      `<ROW><F01>2026-04-03</F01><F02>Sales</F02><F03>S-1</F03>` +
+      `<F04>Foo, Bar &amp; Co.</F04><F05></F05><F06>Big "deal", urgent</F06>` +
+      `<F07>-100</F07><F08>Cash</F08></ROW>`;
+    const client = stubClient(wrap(row));
     const out = await exportVouchers(client, {
       company: "Acme",
       fromDate: "20260403",

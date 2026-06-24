@@ -1,88 +1,40 @@
 import type { TallyDate, Voucher } from "@tallymcp/shared-types";
-import { dayBookEnvelope, findAllObjects, parseTallyResponse } from "@tallymcp/tally-xml";
 import type { TallyClient } from "../client.js";
-import { TallyReportError } from "../errors.js";
-import { toVoucher } from "../voucher-normalize.js";
-import { getLoadedPeriod } from "./current-company.js";
-import type { GetDayBookOptions } from "./day-book.js";
+import { getDayBook, type GetDayBookOptions } from "./day-book.js";
 
 /**
- * Memory-safe Day Book reader.
+ * Memory-bounded Day Book reader.
  *
- * Yields one `Voucher[]` per chunked Tally request so callers (e.g. the CSV
- * voucher export) can stream rows to disk without ever holding the full FY in
- * memory.
+ * Yields one `Voucher[]` per chunk window so callers (the CSV voucher export
+ * and audit-lite) can process a long period without holding the whole FY at
+ * once. Each window is fetched through {@link getDayBook} — i.e. the SAME
+ * inline report-form TDL the non-streaming reader and `runReport("DayBook")`
+ * use.
+ *
+ * Why not a bare `Voucher` collection (the pre-v1.0.6 approach)? On TallyPrime
+ * Silver (and other editions that don't answer standalone collection exports) a
+ * `TYPE=Collection` Voucher request returns an empty set, AND it ignores
+ * `SVFROMDATE`/`SVTODATE` — Tally serves whatever period is loaded. The
+ * report-form TDL honors the requested period natively (proven by the per-FY
+ * Day Book count grid in `run-all-features --probe`), so there is no longer any
+ * need to probe and gate on Tally's loaded period. Disjoint windows can't
+ * produce cross-window duplicates, so no de-duplication is required either.
+ *
+ * Each row becomes one `Voucher` whose single entry carries the voucher's
+ * primary `$Amount` (Tally's signed per-voucher total); see {@link getDayBook}.
  */
 export async function* getDayBookStream(
   client: TallyClient,
   options: GetDayBookOptions,
 ): AsyncGenerator<Voucher[], void, undefined> {
-  const chunkDays = options.chunkDays ?? 7;
-  const seen = new Set<string>();
-  const { fromDate, toDate } = options;
-
-  // A bare `Voucher` collection ignores SVFROMDATE/SVTODATE — Tally serves the
-  // company's currently-loaded period for EVERY request. So the only way to
-  // guarantee the requested range is fully covered is to prove the loaded
-  // period contains it. Gate up front and FAIL CLOSED: refuse unless coverage
-  // is proven. (Refusing rather than returning a partial set keeps the
-  // "exact period, never silently understated" guarantee.) A request that fits
-  // inside the loaded period is then date-filtered to exactly the range; an
-  // empty in-range result is valid (that period simply has no vouchers).
-  const loaded = await getLoadedPeriod(client, options.company);
-  if (!loaded) {
-    throw new TallyReportError("DayBook", [
-      `Could not confirm TallyPrime's currently-loaded period, so live voucher streaming cannot ` +
-        `prove it covers ${fromDate}–${toDate} and might silently return a partial set. Set the period ` +
-        `in TallyPrime (Gateway of Tally → F2: Date) to cover that range, or use ` +
-        `tally_import_vouchers_from_file.`,
-    ]);
-  }
-  if (fromDate < loaded.from || toDate > loaded.to) {
-    throw new TallyReportError("DayBook", [
-      `Live voucher streaming can read only TallyPrime's currently-loaded period ` +
-        `(${loaded.from}–${loaded.to}); the requested range ${fromDate}–${toDate} extends beyond it, so ` +
-        `the result would be incomplete. Set the period in TallyPrime (Gateway of Tally → F2: Date) to ` +
-        `cover ${fromDate}–${toDate}, or use tally_import_vouchers_from_file for an out-of-period range.`,
-    ]);
-  }
-
+  const chunkDays = options.chunkDays && options.chunkDays > 0 ? options.chunkDays : 31;
   for (const window of chunkDateRange(options.fromDate, options.toDate, chunkDays)) {
-    const xml = await client.post(
-      dayBookEnvelope({
-        company: options.company,
-        fromDate: window.fromDate,
-        toDate: window.toDate,
-      }),
-      { charset: "utf-8" },
-    );
-    const { raw, lineErrors } = parseTallyResponse(xml);
-    if (lineErrors.length) throw new TallyReportError("DayBook", lineErrors);
-    const batch: Voucher[] = [];
-    for (const node of findAllObjects(raw, "VOUCHER")) {
-      const v = toVoucher(node);
-      // Keep only the requested range; Tally returns the whole loaded period.
-      if (v.date < fromDate || v.date > toDate) continue;
-      // Fingerprint covers every distinguishing field — date, type, number,
-      // party, reference, narration, and each posting (ledger/amount/Dr-Cr) — so
-      // byte-identical chunk repeats collapse while two genuinely different
-      // vouchers (even sharing a number) keep distinct fingerprints and survive.
-      // JSON.stringify keeps it unambiguous and text-diffable (no separator
-      // collisions, no control characters in the source).
-      const fingerprint = JSON.stringify([
-        v.date,
-        v.voucherType,
-        v.voucherNumber ?? "",
-        v.party ?? "",
-        v.reference ?? "",
-        v.narration ?? "",
-        v.entries.map((e) => [e.ledger, e.amount, e.isDeemedPositive]),
-      ]);
-      if (seen.has(fingerprint)) continue;
-      seen.add(fingerprint);
-      batch.push(v);
-    }
-    if (batch.length) yield batch;
+    const vouchers = await getDayBook(client, {
+      company: options.company,
+      fromDate: window.fromDate,
+      toDate: window.toDate,
+    });
+    if (vouchers.length > 0) yield vouchers;
   }
 }
 

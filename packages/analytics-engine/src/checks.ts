@@ -210,8 +210,18 @@ function isMaterial(amount: number, threshold: number): boolean {
 }
 
 function voucherGross(v: { entries: ReadonlyArray<{ amount: number }> }): number {
-  // Half-sum of absolute amounts ≈ voucher value (debits = credits).
-  return v.entries.reduce((a, e) => a + Math.abs(e.amount), 0) / 2;
+  // Voucher value = the larger of the two sides. For a balanced double-entry
+  // voucher both sides equal the voucher value; for a single-entry voucher (the
+  // Day Book report-form exposes one signed $Amount per voucher) it is the
+  // |amount|. max() is correct for both — unlike a half-sum of |amounts|, which
+  // halves a single-entry voucher's value.
+  let positive = 0;
+  let negative = 0;
+  for (const e of v.entries) {
+    if (e.amount >= 0) positive += e.amount;
+    else negative += -e.amount;
+  }
+  return Math.max(positive, negative);
 }
 
 function checkVoucherNoNarration(ctx: DataQualityContext): Finding[] {

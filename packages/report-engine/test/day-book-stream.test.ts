@@ -2,116 +2,107 @@ import { describe, expect, it } from "vitest";
 import { getDayBookStream } from "../src/connectors/index.js";
 import type { TallyClient } from "../src/client.js";
 
-const dashed = (yyyymmdd: string): string =>
-  `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
-
 /**
- * Stub mimicking Tally's real behaviour: the loaded-period probe
- * (`TallyMcpCurrentPeriod`) returns `loaded` (or an empty body when null), and
- * every Voucher-collection chunk returns the SAME `vouchersXml` (Tally ignores
- * SVFROMDATE/SVTODATE and serves the loaded period for each chunk).
+ * The stream fetches each chunk window through the Day Book report-form TDL, so
+ * the stub answers every request with a `<ROW>F01..F08</ROW>` Day Book response
+ * (the parser is fail-loud, so each row MUST carry all eight fields). There is
+ * no loaded-period probe and no de-duplication any more — the report-form
+ * honors SVFROMDATE/SVTODATE and the windows are disjoint.
  */
-function tallyStub(
-  loaded: { from: string; to: string } | null,
-  vouchersXml: string,
-): TallyClient & { calls: string[] } {
+function dayBookRow(f: {
+  date: string; // dashed YYYY-MM-DD, as the TDL formats $Date
+  type: string;
+  num: string;
+  party?: string;
+  ref?: string;
+  narr?: string;
+  amount: string;
+  ledger: string;
+}): string {
+  return (
+    `<ROW><F01>${f.date}</F01><F02>${f.type}</F02><F03>${f.num}</F03>` +
+    `<F04>${f.party ?? ""}</F04><F05>${f.ref ?? ""}</F05><F06>${f.narr ?? ""}</F06>` +
+    `<F07>${f.amount}</F07><F08>${f.ledger}</F08></ROW>`
+  );
+}
+
+const wrap = (rows: string): string => `<ENVELOPE><BODY><DATA>${rows}</DATA></BODY></ENVELOPE>`;
+
+function stubClient(responses: string[]): TallyClient & { calls: string[] } {
+  const queue = [...responses];
   const calls: string[] = [];
   return {
     calls,
     async post(xml: string) {
       calls.push(xml);
-      if (xml.includes("TallyMcpCurrentPeriod")) {
-        return loaded
-          ? `<ENVELOPE><BODY><DATA><ROW><PFROM>${dashed(loaded.from)}</PFROM><PTO>${dashed(loaded.to)}</PTO></ROW></DATA></BODY></ENVELOPE>`
-          : `<ENVELOPE><BODY><DATA></DATA></BODY></ENVELOPE>`;
-      }
-      return vouchersXml;
+      const r = queue.shift();
+      if (r === undefined) throw new Error("stubClient: no more responses queued");
+      return r;
     },
   };
 }
 
-const VOUCHERS_XML = `<ENVELOPE><BODY><DATA><COLLECTION>
-  <VOUCHER>
-    <DATE>20260405</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME><VOUCHERNUMBER>P-1</VOUCHERNUMBER>
-    <PARTYLEDGERNAME>HDFC Bank</PARTYLEDGERNAME>
-    <ALLLEDGERENTRIES.LIST><LEDGERNAME>Rent</LEDGERNAME><AMOUNT>-1000</AMOUNT><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST>
-  </VOUCHER>
-  <VOUCHER>
-    <DATE>20250101</DATE><VOUCHERTYPENAME>Journal</VOUCHERTYPENAME><VOUCHERNUMBER>J-99</VOUCHERNUMBER>
-    <ALLLEDGERENTRIES.LIST><LEDGERNAME>Suspense</LEDGERNAME><AMOUNT>500</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST>
-  </VOUCHER>
-</COLLECTION></DATA></BODY></ENVELOPE>`;
-
-async function collect(company: string, fromDate: string, toDate: string, client: TallyClient) {
+async function collect(
+  company: string,
+  fromDate: string,
+  toDate: string,
+  client: TallyClient,
+  chunkDays?: number,
+) {
   const out = [];
   for await (const chunk of getDayBookStream(client, {
     company,
     fromDate: fromDate as never,
     toDate: toDate as never,
+    chunkDays,
   })) {
     out.push(...chunk);
   }
   return out;
 }
 
-describe("getDayBookStream (period-safe)", () => {
-  it("filters out vouchers outside the requested period and de-duplicates chunk repeats", async () => {
-    // Loaded period fully covers the request → gate passes; then filter + dedup.
-    const client = tallyStub({ from: "20260401", to: "20261231" }, VOUCHERS_XML);
-    const vouchers = await collect("Acme", "20260401", "20260414", client);
-    expect(client.calls.length).toBeGreaterThan(1); // probe + ≥1 chunk
-    // Only P-1 (20260405) is in range; J-99 (20250101) is filtered; the chunk
-    // repeat of P-1 is de-duplicated → exactly one voucher.
+describe("getDayBookStream", () => {
+  it("reconstructs one single-entry voucher per Day Book row", async () => {
+    const client = stubClient([
+      wrap(
+        dayBookRow({
+          date: "2026-04-05",
+          type: "Payment",
+          num: "P-1",
+          party: "HDFC Bank",
+          narr: "Rent paid",
+          amount: "-1000",
+          ledger: "Rent",
+        }),
+      ),
+    ]);
+    const vouchers = await collect("Acme", "20260401", "20260430", client);
     expect(vouchers).toHaveLength(1);
-    expect(vouchers[0]?.voucherNumber).toBe("P-1");
-    expect(vouchers[0]?.entries[0]?.ledger).toBe("Rent");
+    const v = vouchers[0]!;
+    expect(v.date).toBe("20260405"); // dashed → compact YYYYMMDD
+    expect(v.voucherType).toBe("Payment");
+    expect(v.voucherNumber).toBe("P-1");
+    expect(v.party).toBe("HDFC Bank");
+    expect(v.narration).toBe("Rent paid");
+    expect(v.entries).toHaveLength(1);
+    expect(v.entries[0]).toMatchObject({ ledger: "Rent", amount: -1000, isDeemedPositive: false });
   });
 
-  it("keeps genuine same-number vouchers that differ in date/entries", async () => {
-    const XML = `<ENVELOPE><BODY><DATA><COLLECTION>
-      <VOUCHER><DATE>20260405</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>1</VOUCHERNUMBER>
-        <ALLLEDGERENTRIES.LIST><LEDGERNAME>A</LEDGERNAME><AMOUNT>100</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST></VOUCHER>
-      <VOUCHER><DATE>20260406</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>1</VOUCHERNUMBER>
-        <ALLLEDGERENTRIES.LIST><LEDGERNAME>B</LEDGERNAME><AMOUNT>200</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST></VOUCHER>
-    </COLLECTION></DATA></BODY></ENVELOPE>`;
-    const vouchers = await collect("Acme", "20260401", "20260407", tallyStub({ from: "20260401", to: "20260430" }, XML));
-    expect(vouchers).toHaveLength(2);
+  it("fetches each chunk window with its own request", async () => {
+    // 8-day range, 7-day chunks → 2 windows → 2 report-form requests.
+    const client = stubClient([
+      wrap(dayBookRow({ date: "2026-04-02", type: "Sales", num: "A", amount: "1000", ledger: "Sales" })),
+      wrap(dayBookRow({ date: "2026-04-08", type: "Sales", num: "B", amount: "2000", ledger: "Sales" })),
+    ]);
+    const vouchers = await collect("Acme", "20260401", "20260408", client, 7);
+    expect(client.calls).toHaveLength(2);
+    expect(client.calls.every((c) => c.includes("TallyMcpTdlReport"))).toBe(true);
+    expect(vouchers.map((v) => v.voucherNumber)).toEqual(["A", "B"]);
   });
 
-  it("keeps same date/type/number/entries vouchers that differ only in reference", async () => {
-    const XML = `<ENVELOPE><BODY><DATA><COLLECTION>
-      <VOUCHER><DATE>20260405</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>1</VOUCHERNUMBER><REFERENCE>INV-A</REFERENCE>
-        <ALLLEDGERENTRIES.LIST><LEDGERNAME>A</LEDGERNAME><AMOUNT>100</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST></VOUCHER>
-      <VOUCHER><DATE>20260405</DATE><VOUCHERTYPENAME>Sales</VOUCHERTYPENAME><VOUCHERNUMBER>1</VOUCHERNUMBER><REFERENCE>INV-B</REFERENCE>
-        <ALLLEDGERENTRIES.LIST><LEDGERNAME>A</LEDGERNAME><AMOUNT>100</AMOUNT><ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE></ALLLEDGERENTRIES.LIST></VOUCHER>
-    </COLLECTION></DATA></BODY></ENVELOPE>`;
-    const vouchers = await collect("Acme", "20260401", "20260407", tallyStub({ from: "20260401", to: "20260430" }, XML));
-    // Identical except Reference → fingerprint includes reference → both kept.
-    expect(vouchers).toHaveLength(2);
-  });
-
-  it("fails loudly when the requested range extends BEYOND Tally's loaded period", async () => {
-    // Loaded period is a narrow window; requested month is wider. Completing
-    // would silently return only the loaded sub-set (Codex's wider-request case).
-    await expect(
-      collect("Acme", "20260401", "20260430", tallyStub({ from: "20260415", to: "20260425" }, VOUCHERS_XML)),
-    ).rejects.toThrow(/currently-loaded period/);
-  });
-
-  it("fails CLOSED when the loaded period cannot be determined (null probe)", async () => {
-    // Probe returns no period → coverage can't be proven → refuse rather than
-    // risk a silent partial set.
-    await expect(
-      collect("Acme", "20200401", "20200414", tallyStub(null, VOUCHERS_XML)),
-    ).rejects.toThrow(/Could not confirm TallyPrime's currently-loaded period/);
-  });
-
-  it("fails CLOSED on a null probe even when the served data overlaps the request", async () => {
-    // Null probe + a voucher (20260405) that DOES fall in the requested range
-    // 20260401-20260430. Without fail-closed this would have completed with the
-    // overlapping sub-set; it must instead refuse (the partial-overlap case).
-    await expect(
-      collect("Acme", "20260401", "20260430", tallyStub(null, VOUCHERS_XML)),
-    ).rejects.toThrow(/Could not confirm TallyPrime's currently-loaded period/);
+  it("yields nothing for an empty period (header-only export upstream)", async () => {
+    const client = stubClient([wrap("")]);
+    const vouchers = await collect("Acme", "20260401", "20260401", client);
+    expect(vouchers).toHaveLength(0);
   });
 });

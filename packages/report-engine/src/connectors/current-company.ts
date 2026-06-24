@@ -1,11 +1,9 @@
 import {
   currentCompanyEnvelope,
-  currentPeriodEnvelope,
   findAll,
   nodeText,
   parseTallyResponse,
 } from "@tallymcp/tally-xml";
-import type { TallyDate } from "@tallymcp/shared-types";
 import type { TallyClient } from "../client.js";
 import { TallyReportError } from "../errors.js";
 
@@ -26,23 +24,4 @@ export async function getCurrentCompany(client: TallyClient, company: string): P
   if (lineErrors.length) throw new TallyReportError("CompanyInfo", lineErrors);
   const [cmp] = findAll(raw, "CMP");
   return nodeText(cmp).trim();
-}
-
-/**
- * Returns the company's currently-loaded period as `YYYYMMDD` bounds, or `null`
- * if Tally doesn't report it (older/transient). A bare `Voucher` collection
- * only ever serves this period, so callers use it to refuse a live voucher
- * request that extends beyond it (which would silently return incomplete data).
- */
-export async function getLoadedPeriod(
-  client: TallyClient,
-  company: string,
-): Promise<{ from: TallyDate; to: TallyDate } | null> {
-  const xml = await client.post(currentPeriodEnvelope(company), { charset: "utf-8" });
-  const { raw, lineErrors } = parseTallyResponse(xml);
-  if (lineErrors.length) throw new TallyReportError("CompanyInfo", lineErrors);
-  const from = nodeText(findAll(raw, "PFROM")[0]).replace(/-/g, "").trim();
-  const to = nodeText(findAll(raw, "PTO")[0]).replace(/-/g, "").trim();
-  if (!/^\d{8}$/.test(from) || !/^\d{8}$/.test(to)) return null;
-  return { from: from as TallyDate, to: to as TallyDate };
 }

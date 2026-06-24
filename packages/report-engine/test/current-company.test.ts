@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCurrentCompany, getLoadedPeriod } from "../src/connectors/index.js";
+import { getCurrentCompany } from "../src/connectors/index.js";
 import type { TallyClient } from "../src/client.js";
 
 function stubClient(response: string): TallyClient & { calls: string[] } {
@@ -45,20 +45,5 @@ describe("getCurrentCompany", () => {
       `<ENVELOPE><BODY><DATA><LINEERROR>Could not find Company</LINEERROR></DATA></BODY></ENVELOPE>`,
     );
     await expect(getCurrentCompany(client, "Ghost Co")).rejects.toThrow(/Could not find Company/);
-  });
-});
-
-describe("getLoadedPeriod", () => {
-  it("returns the loaded period as YYYYMMDD bounds (dashes stripped)", async () => {
-    const client = stubClient(
-      `<ENVELOPE><BODY><DATA><ROW><PFROM>2026-04-01</PFROM><PTO>2027-03-31</PTO></ROW></DATA></BODY></ENVELOPE>`,
-    );
-    expect(await getLoadedPeriod(client, "Acme")).toEqual({ from: "20260401", to: "20270331" });
-    expect(client.calls[0]).toContain("TallyMcpCurrentPeriod");
-  });
-
-  it("returns null when Tally does not report a usable period", async () => {
-    const client = stubClient(`<ENVELOPE><BODY><DATA></DATA></BODY></ENVELOPE>`);
-    expect(await getLoadedPeriod(client, "Acme")).toBeNull();
   });
 });
