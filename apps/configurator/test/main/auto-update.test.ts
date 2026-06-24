@@ -180,44 +180,68 @@ describe("createAutoUpdater", () => {
   });
 });
 
-describe("verifyPublisherName (self-signed-tolerant signature check)", () => {
-  const runnerReturning =
-    (status: string, subject: string) =>
-    async (): Promise<string> =>
-      JSON.stringify({ status, subject });
+describe("verifyPublisherName (thumbprint-pinned signature check)", () => {
+  // The thumbprint pinned in auto-update.ts (EXPECTED_CERT_THUMBPRINTS).
+  const GOOD_THUMBPRINT = "8EB4845848E2785A76A3052AA1F075319086381C";
+  const WRONG_THUMBPRINT = "DEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEF";
 
-  it("accepts a self-signed build whose CN matches the publisher (untrusted root)", async () => {
+  const runnerReturning =
+    (status: string, subject: string, thumbprint: string) =>
+    async (): Promise<string> =>
+      JSON.stringify({ status, subject, thumbprint });
+
+  it("accepts a self-signed build signed by the pinned cert (untrusted root)", async () => {
     const result = await verifyPublisherName(
       ["Vinay Saraf"],
       "C:\\Temp\\TallyMCP-Setup.exe",
-      runnerReturning("UnknownError", "CN=Vinay Saraf"),
+      runnerReturning("UnknownError", "CN=Vinay Saraf", GOOD_THUMBPRINT),
     );
     expect(result).toBeNull();
   });
 
-  it("accepts a fully-trusted (Valid) build whose CN matches, ignoring extra DN fields", async () => {
+  it("accepts a fully-trusted (Valid) build signed by the pinned cert", async () => {
     const result = await verifyPublisherName(
       ["Vinay Saraf"],
       "C:\\Temp\\TallyMCP-Setup.exe",
-      runnerReturning("Valid", "CN=Vinay Saraf, O=XLURSELF, C=IN"),
+      runnerReturning("Valid", "CN=Vinay Saraf, O=XLURSELF, C=IN", GOOD_THUMBPRINT),
     );
     expect(result).toBeNull();
+  });
+
+  it("normalises thumbprint spacing/case before comparing", async () => {
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      runnerReturning("UnknownError", "CN=Vinay Saraf", "8e b4 84 58 48 e2 78 5a 76 a3 05 2a a1 f0 75 31 90 86 38 1c"),
+    );
+    expect(result).toBeNull();
+  });
+
+  it("REJECTS a spoofed-CN attack: right CN, wrong certificate", async () => {
+    // The exact attack the security review flagged — an attacker mints their
+    // own self-signed cert with CN=Vinay Saraf. CN matches; thumbprint does not.
+    const result = await verifyPublisherName(
+      ["Vinay Saraf"],
+      "C:\\Temp\\TallyMCP-Setup.exe",
+      runnerReturning("UnknownError", "CN=Vinay Saraf", WRONG_THUMBPRINT),
+    );
+    expect(result).toMatch(/unexpected certificate/i);
   });
 
   it("rejects a build signed by a different publisher", async () => {
     const result = await verifyPublisherName(
       ["Vinay Saraf"],
       "C:\\Temp\\TallyMCP-Setup.exe",
-      runnerReturning("UnknownError", "CN=Mallory"),
+      runnerReturning("UnknownError", "CN=Mallory", WRONG_THUMBPRINT),
     );
-    expect(result).toMatch(/not the expected publisher/i);
+    expect(result).toMatch(/unexpected certificate/i);
   });
 
-  it("rejects a tampered build (HashMismatch) even when the CN matches", async () => {
+  it("rejects a tampered build (HashMismatch) even when the thumbprint matches", async () => {
     const result = await verifyPublisherName(
       ["Vinay Saraf"],
       "C:\\Temp\\TallyMCP-Setup.exe",
-      runnerReturning("HashMismatch", "CN=Vinay Saraf"),
+      runnerReturning("HashMismatch", "CN=Vinay Saraf", GOOD_THUMBPRINT),
     );
     expect(result).toMatch(/failed signature verification/i);
   });
@@ -226,7 +250,7 @@ describe("verifyPublisherName (self-signed-tolerant signature check)", () => {
     const result = await verifyPublisherName(
       ["Vinay Saraf"],
       "C:\\Temp\\TallyMCP-Setup.exe",
-      runnerReturning("NotSigned", ""),
+      runnerReturning("NotSigned", "", ""),
     );
     expect(result).toMatch(/failed signature verification/i);
   });

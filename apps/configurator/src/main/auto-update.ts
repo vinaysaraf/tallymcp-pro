@@ -89,6 +89,27 @@ function makeUpdaterLogger(logFile?: string): {
  */
 const SIGNATURE_STATUS_ACCEPTED = new Set(["Valid", "UnknownError", "NotTrusted"]);
 
+/**
+ * SHA-1 Authenticode thumbprint(s) of the code-signing certificate(s) the
+ * build is signed with (the `CSC_LINK` secret used in CI). We pin on the
+ * thumbprint — NOT just the certificate CN, which any self-signed cert can
+ * trivially spoof — so that ONLY a build signed by this exact certificate is
+ * accepted. Even an attacker who could replace the GitHub release artifacts
+ * and sign a malicious installer with their own `CN=Vinay Saraf` self-signed
+ * cert would be rejected here (their thumbprint won't match).
+ *
+ * Rotating the signing cert: ADD the new thumbprint to this set in a release
+ * that ships BEFORE the cert actually changes, so the already-installed
+ * version still trusts the next (new-cert) build. Remove the old one a release
+ * later. Thumbprints are compared case-insensitively with non-hex separators
+ * stripped.
+ */
+const EXPECTED_CERT_THUMBPRINTS = new Set(["8EB4845848E2785A76A3052AA1F075319086381C"]);
+
+function normaliseThumbprint(thumbprint: string): string {
+  return thumbprint.replace(/[^0-9a-f]/gi, "").toUpperCase();
+}
+
 export type PowerShellRunner = (script: string) => Promise<string>;
 
 const defaultPowerShellRunner: PowerShellRunner = (script) =>
@@ -112,7 +133,7 @@ function extractCn(subject: string): string {
 }
 
 /**
- * Publisher-name-pinned signature check used IN PLACE OF electron-updater's
+ * Thumbprint-pinned signature check used IN PLACE OF electron-updater's
  * default Windows verification.
  *
  * WHY: the app is signed with a SELF-SIGNED certificate (CN=Vinay Saraf,
@@ -121,12 +142,15 @@ function extractCn(subject: string): string {
  * update ("New version X is not signed by the application owner" — the exact
  * failure recorded in updater.log). This override deliberately relaxes the ONE
  * requirement a self-signed cert can never satisfy — the trusted-root chain —
- * while still PINNING the signer identity: an update is accepted only if it
- * carries an intact Authenticode signature whose certificate CN matches our
- * published publisher name. Forging that still needs our private key, and
- * electron-updater independently verifies the download's SHA-512 against the
- * (HTTPS-served) latest.yml. User-approved trade-off: drop CA-root trust, keep
- * signature integrity + identity pinning.
+ * while still PINNING the signer to our exact certificate by its SHA-1
+ * thumbprint (see EXPECTED_CERT_THUMBPRINTS). The thumbprint — not the CN,
+ * which any self-signed cert can spoof — is the authoritative check: forging
+ * it requires our private key, and electron-updater independently verifies the
+ * download's SHA-512 against the (HTTPS-served) latest.yml. User-approved
+ * trade-off: drop CA-root trust, keep signature integrity + exact-cert pinning.
+ *
+ * `publisherNames` (from electron-updater's config) is used only for a clearer
+ * rejection message; the thumbprint is what gates acceptance.
  *
  * Returns `null` to ACCEPT (electron-updater's contract) or an error string to
  * REJECT. Fails CLOSED — any inability to inspect the signature returns an
@@ -138,19 +162,22 @@ export async function verifyPublisherName(
   filePath: string,
   runPowerShell: PowerShellRunner = defaultPowerShellRunner,
 ): Promise<string | null> {
-  const expected = publisherNames.map((n) => n.trim()).filter(Boolean);
-  // No publisher configured → nothing to pin against (matches electron-updater,
-  // which skips verification entirely when publisherName is unset).
-  if (expected.length === 0) return null;
+  void publisherNames; // identity is pinned by thumbprint, not CN (see above)
 
-  let parsed: { status?: string; subject?: string };
+  let parsed: { status?: string; subject?: string; thumbprint?: string };
   try {
     const script =
       `$ErrorActionPreference='Stop';` +
       `$s=Get-AuthenticodeSignature -LiteralPath ${psSingleQuote(filePath)};` +
-      `$subject=if($s.SignerCertificate){$s.SignerCertificate.Subject}else{''};` +
-      `[pscustomobject]@{status=$s.Status.ToString();subject=$subject}|ConvertTo-Json -Compress`;
-    parsed = JSON.parse(await runPowerShell(script)) as { status?: string; subject?: string };
+      `$c=$s.SignerCertificate;` +
+      `$subject=if($c){$c.Subject}else{''};` +
+      `$thumbprint=if($c){$c.Thumbprint}else{''};` +
+      `[pscustomobject]@{status=$s.Status.ToString();subject=$subject;thumbprint=$thumbprint}|ConvertTo-Json -Compress`;
+    parsed = JSON.parse(await runPowerShell(script)) as {
+      status?: string;
+      subject?: string;
+      thumbprint?: string;
+    };
   } catch (err) {
     return `Could not verify the update's signature (${(err as Error).message}).`;
   }
@@ -159,14 +186,18 @@ export async function verifyPublisherName(
   if (!SIGNATURE_STATUS_ACCEPTED.has(status)) {
     return `The downloaded update failed signature verification (status: ${status || "unknown"}).`;
   }
-  const cn = extractCn(parsed.subject ?? "");
-  if (!cn) {
+  const thumbprint = normaliseThumbprint(parsed.thumbprint ?? "");
+  if (!thumbprint) {
     return "The downloaded update is not signed by a recognised certificate.";
   }
-  const matches = expected.some((name) => name.toLowerCase() === cn.toLowerCase());
-  return matches
-    ? null
-    : `The update is signed by "${cn}", not the expected publisher (${expected.join(", ")}).`;
+  if (!EXPECTED_CERT_THUMBPRINTS.has(thumbprint)) {
+    const cn = extractCn(parsed.subject ?? "");
+    return (
+      `The downloaded update is signed by an unexpected certificate ` +
+      `(CN "${cn || "unknown"}", thumbprint ${thumbprint}) and was rejected.`
+    );
+  }
+  return null;
 }
 
 export interface CreateAutoUpdaterInput {

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.10 — Thumbprint-pinned update verification + license (2026-06-24)
+
+### Security
+- **Update signature is now pinned to the certificate THUMBPRINT, not just the CN.** v1.0.9's self-signed-tolerant check matched the certificate's *common name* (`CN=Vinay Saraf`), which any attacker could spoof by minting their own self-signed cert with the same CN — so a compromised GitHub release could have shipped a malicious installer that passed verification. The check (`verifyPublisherName`) now pins on the exact SHA-1 Authenticode **thumbprint** of the release-signing certificate (`EXPECTED_CERT_THUMBPRINTS`); a build signed by any other certificate — even one carrying the right CN — is rejected. Tampered (`HashMismatch`), unsigned, and untrusted-but-wrong-cert builds are still refused, SHA-512 verification against the HTTPS-served `latest.yml` is unchanged, and the check still fails closed (visible error) when the signature can't be inspected. (Resolves the automated security review's HIGH finding on the v1.0.9 bypass.)
+
+### Added
+- **`LICENSE` — PolyForm Noncommercial License 1.0.0.** The project is now explicitly free to use, modify, and distribute for any **noncommercial** purpose (personal, educational, research, charitable, government); commercial use requires a separate license (vinay@vinaysaraf.com). README + root `package.json` updated accordingly.
+
 ## v1.0.9 — In-app updater fix + Help menu (Update / About Me / ICAI Project) (2026-06-24)
 
 ### Fixed

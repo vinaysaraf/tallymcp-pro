@@ -118,4 +118,10 @@ Issues and pull requests are welcome. Every change must pass `pnpm build`,
 
 ## License
 
-© 2026 Vinay Saraf. All rights reserved.
+Licensed under the **[PolyForm Noncommercial License 1.0.0](./LICENSE)** —
+free to use, copy, modify, and distribute for any **noncommercial** purpose
+(personal, educational, research, charitable, or government use). **Commercial
+use is not permitted** under this license; for a commercial license, contact
+vinay@vinaysaraf.com.
+
+Copyright © 2026 Vinay Saraf.
