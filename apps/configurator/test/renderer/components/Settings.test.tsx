@@ -77,4 +77,17 @@ describe("Settings", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/server's IP/i);
   });
+
+  it.each(["http://tally-server", "tally-server/path", "host:9001", "user@host"])(
+    "rejects URL-ish host %j client-side without calling onSave",
+    (badHost) => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      renderSettings({ onSaveTallyConnection: onSave });
+      fireEvent.click(screen.getByLabelText(/Server \/ another PC/i));
+      fireEvent.change(screen.getByLabelText(/Host \/ IP/i), { target: { value: badHost } });
+      fireEvent.click(screen.getByRole("button", { name: /Save Tally location/i }));
+      expect(onSave).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert").textContent).toMatch(/hostname or IPv4/i);
+    },
+  );
 });

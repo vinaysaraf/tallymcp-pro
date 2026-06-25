@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleWireMcp, handleUnwireMcp, handleHealthCheck, handleTallyFix, handleTallyRestore, handleGetConfig, handleSetTallyConnection, readTallyConnection, tallyUrlFromConfig } from "../../src/main/ipc-handlers.js";
@@ -404,5 +405,46 @@ describe("Tally connection (set / read / url)", () => {
     await expect(
       handleSetTallyConnection({ host: "   ", port: 9000 }, { installDir, version: "1.0.18" }),
     ).rejects.toThrow(/host can't be empty/i);
+  });
+
+  // Codex iter-1: the host must be a bare hostname/IPv4 — anything that would
+  // change the endpoint when interpolated into `http://${host}:${port}` is
+  // rejected, so the validated host:port is the ACTUAL endpoint reached.
+  it.each([
+    "http://tally-server",
+    "https://tally-server",
+    "tally-server/path",
+    "tally-server?x=y",
+    "tally-server#frag",
+    "host:9001",
+    "user@host",
+    "::1",
+    "[::1]",
+    "192.168.1.50 9000",
+  ])("rejects URL-ish / unsafe host %j (never silently redirects traffic)", async (badHost) => {
+    const installDir = join(dir, "TallyMCP");
+    await mkdir(installDir, { recursive: true });
+    await expect(
+      handleSetTallyConnection({ host: badHost, port: 9000 }, { installDir, version: "1.0.18" }),
+    ).rejects.toThrow(/isn't a valid Tally host/i);
+    // Nothing was written.
+    expect(existsSync(join(installDir, "config.json"))).toBe(false);
+  });
+
+  it.each([
+    ["192.168.1.50", "server"],
+    ["tally-server", "server"],
+    ["tally.office.local", "server"],
+    ["127.0.0.1", "local"],
+    ["localhost", "local"],
+  ])("accepts bare host %j and classifies it as %s", async (goodHost, expectedType) => {
+    const installDir = join(dir, "TallyMCP");
+    await mkdir(installDir, { recursive: true });
+    const snap = await handleSetTallyConnection(
+      { host: goodHost, port: 9000 },
+      { installDir, version: "1.0.18" },
+    );
+    expect(snap.tallyHost).toBe(goodHost);
+    expect(snap.tallyConnectionType).toBe(expectedType);
   });
 });

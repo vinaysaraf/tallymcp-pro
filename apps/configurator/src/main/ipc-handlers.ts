@@ -65,7 +65,21 @@ function tallyConfigPath(installDir: string): string {
 
 function isLoopbackHost(host: string): boolean {
   const h = host.trim().toLowerCase();
-  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+  return h === "127.0.0.1" || h === "localhost";
+}
+
+// A bare hostname or IPv4 literal — letters, digits, dot, hyphen, underscore.
+// Deliberately rejects anything that would change the endpoint when interpolated
+// into `http://${host}:${port}`: schemes (`://`), credentials (`@`), paths (`/`),
+// query (`?`), fragment (`#`), an embedded port or IPv6 (`:`), and whitespace.
+// This keeps the validated host:port the ACTUAL endpoint Tally traffic reaches
+// (a raw host like "tally-server/x" or "host:9001" would otherwise silently
+// redirect the request). IPv6 literals would need bracketing in the URL, so they
+// are rejected here rather than producing a malformed URL. (Codex review iter-1.)
+const TALLY_HOST_RE = /^[A-Za-z0-9._-]+$/;
+
+function isValidTallyHost(host: string): boolean {
+  return host.length > 0 && host.length <= 253 && TALLY_HOST_RE.test(host);
 }
 
 /** Reads the configured (default) Tally connection, or sensible defaults. */
@@ -113,6 +127,13 @@ export async function writeTallyConnection(
   const trimmedHost = host.trim();
   if (!trimmedHost) {
     throw new Error("Tally host can't be empty. Use 127.0.0.1 for this PC, or the server's IP/hostname.");
+  }
+  if (!isValidTallyHost(trimmedHost)) {
+    throw new Error(
+      `"${trimmedHost}" isn't a valid Tally host. Enter just a hostname or IPv4 address ` +
+        `(e.g. 192.168.1.50 or tally-server) — no "http://", no slashes, and put the port in the Port field. ` +
+        `IPv6 addresses aren't supported yet.`,
+    );
   }
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error(`Tally port must be a whole number between 1 and 65535 (got "${port}"). The Tally default is 9000.`);

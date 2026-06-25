@@ -13,6 +13,9 @@ type Mode = "local" | "server";
 
 const LOCAL_HOST = "127.0.0.1";
 const DEFAULT_PORT = 9000;
+// Bare hostname / IPv4 only — rejects schemes, slashes, ports, credentials, IPv6.
+// Mirrors the authoritative check in the main process (writeTallyConnection).
+const HOST_RE = /^[A-Za-z0-9._-]+$/;
 
 export function Settings({
   config,
@@ -37,6 +40,12 @@ export function Settings({
     const portNum = Number(port);
     if (mode === "server" && !effectiveHost) {
       setError("Enter the server's IP address or hostname (e.g. 192.168.1.50).");
+      return;
+    }
+    if (mode === "server" && !HOST_RE.test(effectiveHost)) {
+      setError(
+        'Enter just a hostname or IPv4 address (e.g. 192.168.1.50 or tally-server) — no "http://", slashes, or port. Put the port in the Port field.',
+      );
       return;
     }
     if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
