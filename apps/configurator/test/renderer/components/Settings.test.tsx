@@ -78,8 +78,8 @@ describe("Settings", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/server's IP/i);
   });
 
-  it.each(["http://tally-server", "tally-server/path", "host:9001", "user@host"])(
-    "rejects URL-ish host %j client-side without calling onSave",
+  it.each(["http://tally-server", "tally-server/path", "host:9001", "user@host", "010.0.0.1", "2130706433"])(
+    "rejects URL-ish / canonicalizing host %j client-side without calling onSave",
     (badHost) => {
       const onSave = vi.fn().mockResolvedValue(undefined);
       renderSettings({ onSaveTallyConnection: onSave });

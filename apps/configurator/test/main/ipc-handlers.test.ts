@@ -411,6 +411,7 @@ describe("Tally connection (set / read / url)", () => {
   // change the endpoint when interpolated into `http://${host}:${port}` is
   // rejected, so the validated host:port is the ACTUAL endpoint reached.
   it.each([
+    // URL syntax that would change the endpoint (Codex iter-1).
     "http://tally-server",
     "https://tally-server",
     "tally-server/path",
@@ -421,7 +422,16 @@ describe("Tally connection (set / read / url)", () => {
     "::1",
     "[::1]",
     "192.168.1.50 9000",
-  ])("rejects URL-ish / unsafe host %j (never silently redirects traffic)", async (badHost) => {
+    // IPv4 shorthand / alternate-radix forms the URL parser canonicalizes to a
+    // DIFFERENT address (Codex iter-2): 010.0.0.1 -> 8.0.0.1; 2130706433 /
+    // 0x7f000001 / 127.1 / 127.0.1 / 0x7f.1 -> 127.0.0.1.
+    "010.0.0.1",
+    "2130706433",
+    "0x7f000001",
+    "127.1",
+    "127.0.1",
+    "0x7f.1",
+  ])("rejects URL-ish / canonicalizing host %j (saved host == actual endpoint)", async (badHost) => {
     const installDir = join(dir, "TallyMCP");
     await mkdir(installDir, { recursive: true });
     await expect(

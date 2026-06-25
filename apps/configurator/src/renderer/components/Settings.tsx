@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ConfigSnapshot } from "../../shared/ipc-types.js";
+import { isValidTallyHost } from "../../shared/validate-host.js";
 
 export interface SettingsProps {
   config: ConfigSnapshot;
@@ -13,9 +14,6 @@ type Mode = "local" | "server";
 
 const LOCAL_HOST = "127.0.0.1";
 const DEFAULT_PORT = 9000;
-// Bare hostname / IPv4 only — rejects schemes, slashes, ports, credentials, IPv6.
-// Mirrors the authoritative check in the main process (writeTallyConnection).
-const HOST_RE = /^[A-Za-z0-9._-]+$/;
 
 export function Settings({
   config,
@@ -42,9 +40,9 @@ export function Settings({
       setError("Enter the server's IP address or hostname (e.g. 192.168.1.50).");
       return;
     }
-    if (mode === "server" && !HOST_RE.test(effectiveHost)) {
+    if (mode === "server" && !isValidTallyHost(effectiveHost)) {
       setError(
-        'Enter just a hostname or IPv4 address (e.g. 192.168.1.50 or tally-server) — no "http://", slashes, or port. Put the port in the Port field.',
+        'Enter a plain hostname or IPv4 address (e.g. 192.168.1.50 or tally-server) — no "http://", slashes, or port, and no shorthand/octal/hex IP forms. Put the port in the Port field.',
       );
       return;
     }
