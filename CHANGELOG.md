@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.20 — Add GitHub (open-source) link to the ICAI Project dialog (2026-06-25)
+
+### Changed
+- **Help → ICAI Project** now shows the project's **GitHub link** under the submission date, reinforcing that the tool is open source. A small, user-visible change used to demonstrate the end-to-end auto-update flow (edit → push → GitHub Actions builds + signs the installer → the in-app updater offers the new version). Also normalised a stray tab indent on the submission-date line.
+
 ## v1.0.19 — Show the submission date in the ICAI Project dialog (2026-06-25)
 
 ### Changed
