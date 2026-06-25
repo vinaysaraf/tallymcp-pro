@@ -11,13 +11,14 @@ import {
 } from "../../src/shared/ipc-types.js";
 
 describe("IPC types", () => {
-  it("exports the 9 required channel names", () => {
+  it("exports the required channel names", () => {
     expect(IPC_CHANNELS.WIRE_MCP).toBe("wire-mcp");
     expect(IPC_CHANNELS.UNWIRE_MCP).toBe("unwire-mcp");
     expect(IPC_CHANNELS.HEALTH_CHECK).toBe("health-check");
     expect(IPC_CHANNELS.TALLY_FIX).toBe("tally-fix");
     expect(IPC_CHANNELS.TALLY_RESTORE).toBe("tally-restore");
     expect(IPC_CHANNELS.GET_CONFIG).toBe("get-config");
+    expect(IPC_CHANNELS.SET_TALLY_CONNECTION).toBe("set-tally-connection");
     expect(IPC_CHANNELS.CHECK_FOR_UPDATES).toBe("check-for-updates");
     expect(IPC_CHANNELS.DOWNLOAD_UPDATE).toBe("download-update");
     expect(IPC_CHANNELS.QUIT_AND_INSTALL).toBe("quit-and-install");

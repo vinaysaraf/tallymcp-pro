@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   TALLY_FIX: "tally-fix",
   TALLY_RESTORE: "tally-restore",
   GET_CONFIG: "get-config",
+  SET_TALLY_CONNECTION: "set-tally-connection",
   CHECK_FOR_UPDATES: "check-for-updates",
   DOWNLOAD_UPDATE: "download-update",
   QUIT_AND_INSTALL: "quit-and-install",
@@ -178,6 +179,23 @@ export interface ConfigSnapshot {
   tallyInstallDir?: string;
   /** Version string from package.json — surfaced in Settings. */
   version: string;
+  /** Configured Tally host the MCP server connects to (default 127.0.0.1). */
+  tallyHost: string;
+  /** Configured Tally port (default 9000). */
+  tallyPort: number;
+  /** "local" for this PC; "lan"/"server" for a networked/server Tally. */
+  tallyConnectionType: "local" | "lan" | "server";
+}
+
+/**
+ * Sets where the MCP server looks for TallyPrime. `host` is `127.0.0.1` for a
+ * Tally on this PC, or the server/LAN machine's IP or hostname for a networked
+ * (server) Tally. Persisted to the MCP server's config.json — no manual file
+ * editing. `type` is derived in main (loopback → "local", else "server").
+ */
+export interface SetTallyConnectionRequest {
+  host: string;
+  port: number;
 }
 
 export interface TallyStatus {
@@ -232,6 +250,8 @@ export interface TallymcpApi {
   tallyFix: () => Promise<TallyFixResponse>;
   tallyRestore: () => Promise<TallyRestoreResponse>;
   getConfig: () => Promise<ConfigSnapshot>;
+  /** Persist the Tally connection (This PC / Server host:port). Returns the updated snapshot. */
+  setTallyConnection: (req: SetTallyConnectionRequest) => Promise<ConfigSnapshot>;
   subscribeTallyStatus: (cb: (status: TallyStatus) => void) => () => void;
   /** Trigger an explicit update check. Resolves with the current state. */
   checkForUpdates: () => Promise<UpdateStatus>;
@@ -259,6 +279,7 @@ export interface IpcContract {
   [IPC_CHANNELS.TALLY_FIX]: { req: void; res: TallyFixResponse };
   [IPC_CHANNELS.TALLY_RESTORE]: { req: void; res: TallyRestoreResponse };
   [IPC_CHANNELS.GET_CONFIG]: { req: void; res: ConfigSnapshot };
+  [IPC_CHANNELS.SET_TALLY_CONNECTION]: { req: SetTallyConnectionRequest; res: ConfigSnapshot };
   [IPC_CHANNELS.CHECK_FOR_UPDATES]: { req: void; res: UpdateStatus };
   [IPC_CHANNELS.DOWNLOAD_UPDATE]: { req: void; res: void };
   [IPC_CHANNELS.QUIT_AND_INSTALL]: { req: void; res: void };

@@ -13,6 +13,7 @@ import {
   type TallyStatus,
   type UpdateStatus,
   type TallymcpApi,
+  type SetTallyConnectionRequest,
 } from "../shared/ipc-types.js";
 
 // Re-export so existing callers can still `import type { TallymcpApi } from "../preload/..."`.
@@ -38,6 +39,8 @@ export function buildTallymcpApi(bridge: IpcBridge): TallymcpApi {
     tallyFix: () => bridge.invoke(IPC_CHANNELS.TALLY_FIX) as Promise<TallyFixResponse>,
     tallyRestore: () => bridge.invoke(IPC_CHANNELS.TALLY_RESTORE) as Promise<TallyRestoreResponse>,
     getConfig: () => bridge.invoke(IPC_CHANNELS.GET_CONFIG) as Promise<ConfigSnapshot>,
+    setTallyConnection: (req: SetTallyConnectionRequest) =>
+      bridge.invoke(IPC_CHANNELS.SET_TALLY_CONNECTION, req) as Promise<ConfigSnapshot>,
     subscribeTallyStatus: (cb) => {
       const handler = (_event: unknown, status: unknown) => cb(status as TallyStatus);
       bridge.on(TALLY_STATUS_EVENT, handler);

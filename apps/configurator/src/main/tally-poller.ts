@@ -33,7 +33,14 @@ export async function probeTallyOnce(opts: ProbeOptions): Promise<TallyStatus> {
   }
 }
 
-export interface PollerOptions extends ProbeOptions {
+export interface PollerOptions {
+  /**
+   * The Tally URL to probe, or a provider resolved fresh on every tick. A
+   * provider lets the poller follow a connection change (This PC ↔ Server)
+   * written to config.json without restarting the poller.
+   */
+  url: string | (() => string | Promise<string>);
+  fetcher?: typeof fetch;
   intervalMs: number;
   onStatus: (status: TallyStatus) => void;
 }
@@ -49,7 +56,9 @@ export function createTallyPoller(opts: PollerOptions): Poller {
 
   const tick = async (): Promise<void> => {
     if (stopped) return;
-    const status = await probeTallyOnce({ url: opts.url, fetcher: opts.fetcher });
+    const url = typeof opts.url === "function" ? await opts.url() : opts.url;
+    if (stopped) return;
+    const status = await probeTallyOnce({ url, fetcher: opts.fetcher });
     if (!stopped) opts.onStatus(status);
   };
 

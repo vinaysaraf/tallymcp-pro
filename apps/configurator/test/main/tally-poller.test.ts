@@ -56,4 +56,33 @@ describe("createTallyPoller", () => {
     poller.stop();
     vi.useRealTimers();
   });
+
+  it("resolves a function URL provider fresh on every tick (follows a connection change)", async () => {
+    vi.useFakeTimers();
+    const emitter = vi.fn();
+    const fetcher = vi.fn().mockResolvedValue(new Response("<ENVELOPE/>", { status: 200 }));
+    // Provider returns a different URL on each call — simulates the user
+    // switching This-PC → Server between ticks.
+    const urls = ["http://127.0.0.1:9000", "http://192.168.1.50:9000"];
+    let i = 0;
+    const urlProvider = vi.fn(() => urls[Math.min(i++, urls.length - 1)]!);
+
+    const poller = createTallyPoller({
+      url: urlProvider,
+      intervalMs: 100,
+      fetcher,
+      onStatus: emitter,
+    });
+    poller.start();
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("http://127.0.0.1:9000");
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetcher.mock.calls[1]?.[0]).toBe("http://192.168.1.50:9000");
+    expect(urlProvider).toHaveBeenCalledTimes(2);
+
+    poller.stop();
+    vi.useRealTimers();
+  });
 });

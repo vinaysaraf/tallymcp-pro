@@ -35,6 +35,18 @@ describe("buildTallymcpApi", () => {
     expect(invoke).toHaveBeenCalledWith(IPC_CHANNELS.HEALTH_CHECK);
   });
 
+  it("invokes the correct channel for setTallyConnection with host + port", async () => {
+    const invoke = vi.fn().mockResolvedValue({ tallyHost: "192.168.1.50", tallyPort: 9000 });
+    const api = buildTallymcpApi({ invoke, on: vi.fn() });
+
+    await api.setTallyConnection({ host: "192.168.1.50", port: 9000 });
+
+    expect(invoke).toHaveBeenCalledWith(IPC_CHANNELS.SET_TALLY_CONNECTION, {
+      host: "192.168.1.50",
+      port: 9000,
+    });
+  });
+
   it("subscribes to tally-status events and returns an unsubscriber", () => {
     const handlers: Record<string, (...args: unknown[]) => void> = {};
     const on = vi.fn((channel: string, h: (...args: unknown[]) => void) => {

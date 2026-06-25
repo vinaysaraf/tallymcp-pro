@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, readdirSync } from "node:fs";
 import {
   ClientWirer,
@@ -33,7 +33,109 @@ import {
   type HealthCheckResponse,
   type TallyFixResponse,
   type TallyRestoreResponse,
+  type SetTallyConnectionRequest,
 } from "../shared/ipc-types.js";
+
+// ── Tally connection (host/port) read/write ──────────────────────────────────
+//
+// The MCP server reads its config from <installDir>\config.json (wired via the
+// TALLYMCP_CONFIG env var — see handleWireMcp). We read/write that SAME file so
+// a user can point the tool at a Tally on this PC or on a server, from the GUI,
+// with no manual file editing. Reads/writes are raw JSON (matching the existing
+// raw config read in handleHealthCheck) and preserve every other config field;
+// the MCP server's ConfigStore fills any missing defaults on next load.
+
+type TallyConnectionType = "local" | "lan" | "server";
+
+interface ResolvedTallyConnection {
+  host: string;
+  port: number;
+  type: TallyConnectionType;
+}
+
+const DEFAULT_TALLY_CONNECTION: ResolvedTallyConnection = {
+  host: "127.0.0.1",
+  port: 9000,
+  type: "local",
+};
+
+function tallyConfigPath(installDir: string): string {
+  return join(installDir, "config.json");
+}
+
+function isLoopbackHost(host: string): boolean {
+  const h = host.trim().toLowerCase();
+  return h === "127.0.0.1" || h === "localhost" || h === "::1";
+}
+
+/** Reads the configured (default) Tally connection, or sensible defaults. */
+export async function readTallyConnection(installDir: string): Promise<ResolvedTallyConnection> {
+  try {
+    const raw = await readFile(tallyConfigPath(installDir), "utf8");
+    const cfg = JSON.parse(raw) as { tally?: { connections?: unknown } };
+    const conns = cfg.tally?.connections;
+    if (Array.isArray(conns) && conns.length > 0) {
+      const c =
+        (conns.find((x) => (x as { default?: boolean }).default) as Record<string, unknown>) ??
+        (conns[0] as Record<string, unknown>);
+      const host = typeof c.host === "string" && c.host.trim() ? c.host : DEFAULT_TALLY_CONNECTION.host;
+      const port = Number.isInteger(c.port) ? (c.port as number) : DEFAULT_TALLY_CONNECTION.port;
+      const type: TallyConnectionType =
+        c.type === "server" || c.type === "lan" || c.type === "local"
+          ? c.type
+          : isLoopbackHost(host)
+            ? "local"
+            : "server";
+      return { host, port, type };
+    }
+  } catch {
+    // Missing or malformed config — fall through to defaults.
+  }
+  return { ...DEFAULT_TALLY_CONNECTION };
+}
+
+/** `http://host:port` for the Configurator's status poller. */
+export async function tallyUrlFromConfig(installDir: string): Promise<string> {
+  const { host, port } = await readTallyConnection(installDir);
+  return `http://${host}:${port}`;
+}
+
+/**
+ * Persists the Tally connection as the single default connection, preserving
+ * all other config fields. Validates input at the boundary (Zod-equivalent:
+ * non-empty host, port 1..65535) and throws a plain-English error otherwise.
+ */
+export async function writeTallyConnection(
+  installDir: string,
+  host: string,
+  port: number,
+): Promise<ResolvedTallyConnection> {
+  const trimmedHost = host.trim();
+  if (!trimmedHost) {
+    throw new Error("Tally host can't be empty. Use 127.0.0.1 for this PC, or the server's IP/hostname.");
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Tally port must be a whole number between 1 and 65535 (got "${port}"). The Tally default is 9000.`);
+  }
+  const path = tallyConfigPath(installDir);
+  let cfg: Record<string, unknown> = {};
+  try {
+    cfg = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+    if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) cfg = {};
+  } catch {
+    cfg = {};
+  }
+  if (typeof cfg.schemaVersion !== "number") cfg.schemaVersion = 1;
+  const type: TallyConnectionType = isLoopbackHost(trimmedHost) ? "local" : "server";
+  const tally =
+    cfg.tally && typeof cfg.tally === "object" && !Array.isArray(cfg.tally)
+      ? (cfg.tally as Record<string, unknown>)
+      : {};
+  tally.connections = [{ host: trimmedHost, port, type, default: true }];
+  cfg.tally = tally;
+  await writeFile(path, JSON.stringify(cfg, null, 2), "utf8");
+  return { host: trimmedHost, port, type };
+}
 
 /**
  * Test injection point — production callers pass `installDir` (resolved
@@ -357,11 +459,34 @@ export async function handleGetConfig(
     scanRoots: ctx.scanRoots,
     returnAll: true,
   })) as TallyInstall[];
+  const conn = await readTallyConnection(ctx.installDir);
   return {
     installDir: ctx.installDir,
     version: ctx.version,
     tallyInstallDir: found[0]?.installDir,
+    tallyHost: conn.host,
+    tallyPort: conn.port,
+    tallyConnectionType: conn.type,
   };
+}
+
+export interface SetTallyConnectionContext {
+  installDir: string;
+  version: string;
+  scanRoots?: string[];
+}
+
+export async function handleSetTallyConnection(
+  req: SetTallyConnectionRequest,
+  ctx: SetTallyConnectionContext,
+): Promise<ConfigSnapshot> {
+  await writeTallyConnection(ctx.installDir, req.host, req.port);
+  // Return a fresh snapshot so the renderer reflects the persisted values.
+  return handleGetConfig({
+    installDir: ctx.installDir,
+    version: ctx.version,
+    scanRoots: ctx.scanRoots,
+  });
 }
 
 export interface RegisterContext {
@@ -395,5 +520,11 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.TALLY_RESTORE, () => handleTallyRestore());
   ipcMain.handle(IPC_CHANNELS.GET_CONFIG, () =>
     handleGetConfig({ installDir: ctx.installDir, version: ctx.version }),
+  );
+  ipcMain.handle(IPC_CHANNELS.SET_TALLY_CONNECTION, (_evt, payload) =>
+    handleSetTallyConnection(payload as SetTallyConnectionRequest, {
+      installDir: ctx.installDir,
+      version: ctx.version,
+    }),
   );
 }

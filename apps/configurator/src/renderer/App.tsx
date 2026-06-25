@@ -238,6 +238,15 @@ export function App(): JSX.Element {
     }
   };
 
+  const handleSaveTallyConnection = async (host: string, port: number): Promise<void> => {
+    // Persist via main, then refresh the config snapshot + status so the UI
+    // reflects the new Tally location immediately. Errors bubble to Settings'
+    // own inline message (it awaits this promise).
+    const updated = await getApi().setTallyConnection({ host, port });
+    setConfig(updated);
+    void handleReCheck();
+  };
+
   const handleUpdateClick = async (): Promise<void> => {
     try {
       await getApi().downloadUpdate();
@@ -345,7 +354,12 @@ export function App(): JSX.Element {
         />
       )}
       {currentScreen === "settings" && config && (
-        <Settings config={config} onRestoreTallySettings={handleRestoreClick} onReCheck={handleReCheck} />
+        <Settings
+          config={config}
+          onRestoreTallySettings={handleRestoreClick}
+          onReCheck={handleReCheck}
+          onSaveTallyConnection={handleSaveTallyConnection}
+        />
       )}
 
       {modalFor !== undefined && (

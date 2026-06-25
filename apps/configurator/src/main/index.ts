@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, dialog, shell } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { registerIpcHandlers } from "./ipc-handlers.js";
+import { registerIpcHandlers, tallyUrlFromConfig } from "./ipc-handlers.js";
 import { createTallyPoller } from "./tally-poller.js";
 import { createAppMenuTemplate } from "./app-menu.js";
 import type { AutoUpdater } from "./auto-update.js";
@@ -266,7 +266,9 @@ if (process.argv.includes("--uninstall-cleanup")) {
 
     const mainWindow = await createWindow();
     const poller = createTallyPoller({
-      url: "http://127.0.0.1:9000",
+      // Resolve the URL each tick from config.json so the status follows a
+      // This-PC ↔ Server connection change without restarting the poller.
+      url: () => tallyUrlFromConfig(installDir),
       intervalMs: 5_000,
       onStatus: (status) => {
         if (!mainWindow.isDestroyed()) {

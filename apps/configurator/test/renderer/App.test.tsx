@@ -57,6 +57,17 @@ function buildFakeApi(overrides: Partial<TallymcpApi> = {}): TallymcpApi {
       installDir: "C:\\TallyMCP",
       tallyInstallDir: "C:\\Tally",
       version: "v0.0.1",
+      tallyHost: "127.0.0.1",
+      tallyPort: 9000,
+      tallyConnectionType: "local",
+    }),
+    setTallyConnection: vi.fn().mockResolvedValue({
+      installDir: "C:\\TallyMCP",
+      tallyInstallDir: "C:\\Tally",
+      version: "v0.0.1",
+      tallyHost: "192.168.1.50",
+      tallyPort: 9000,
+      tallyConnectionType: "server",
     }),
     subscribeTallyStatus: vi.fn().mockReturnValue(() => {}),
     checkForUpdates: vi.fn().mockResolvedValue({

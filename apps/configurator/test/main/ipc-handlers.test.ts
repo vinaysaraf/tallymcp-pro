@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleWireMcp, handleUnwireMcp, handleHealthCheck, handleTallyFix, handleTallyRestore, handleGetConfig } from "../../src/main/ipc-handlers.js";
+import { handleWireMcp, handleUnwireMcp, handleHealthCheck, handleTallyFix, handleTallyRestore, handleGetConfig, handleSetTallyConnection, readTallyConnection, tallyUrlFromConfig } from "../../src/main/ipc-handlers.js";
 import { FakeExecRunner, type ExecResult } from "@tallymcp/tally-autofix";
 
 describe("handleWireMcp", () => {
@@ -321,5 +321,88 @@ describe("handleGetConfig", () => {
     expect(cfg.installDir).toBe("C:\\X\\TallyMCP");
     expect(cfg.version).toBe("0.0.1");
     expect(cfg.tallyInstallDir).toBeUndefined();
+  });
+
+  it("defaults the Tally connection to this-PC when no config.json exists", async () => {
+    const cfg = await handleGetConfig({
+      installDir: "C:\\X\\TallyMCP-missing",
+      version: "0.0.1",
+      scanRoots: ["C:\\nonexistent"],
+    });
+    expect(cfg.tallyHost).toBe("127.0.0.1");
+    expect(cfg.tallyPort).toBe(9000);
+    expect(cfg.tallyConnectionType).toBe("local");
+  });
+});
+
+describe("Tally connection (set / read / url)", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "configurator-ipc-conn-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("persists a Server connection and reads it back, preserving other config", async () => {
+    const installDir = join(dir, "TallyMCP");
+    await mkdir(installDir, { recursive: true });
+    // Pre-existing config with an unrelated field that must survive the write.
+    await writeFile(
+      join(installDir, "config.json"),
+      JSON.stringify({ schemaVersion: 1, tally: { defaultCompany: "ACME", connections: [] } }, null, 2),
+      "utf8",
+    );
+
+    const snap = await handleSetTallyConnection(
+      { host: "192.168.1.50", port: 9000 },
+      { installDir, version: "1.0.18", scanRoots: ["C:\\nonexistent"] },
+    );
+    expect(snap.tallyHost).toBe("192.168.1.50");
+    expect(snap.tallyPort).toBe(9000);
+    expect(snap.tallyConnectionType).toBe("server");
+
+    const conn = await readTallyConnection(installDir);
+    expect(conn).toEqual({ host: "192.168.1.50", port: 9000, type: "server" });
+
+    // Unrelated field preserved.
+    const written = JSON.parse(await readFile(join(installDir, "config.json"), "utf8"));
+    expect(written.tally.defaultCompany).toBe("ACME");
+    expect(written.tally.connections).toEqual([
+      { host: "192.168.1.50", port: 9000, type: "server", default: true },
+    ]);
+  });
+
+  it("marks a loopback host as a local connection", async () => {
+    const installDir = join(dir, "TallyMCP");
+    await mkdir(installDir, { recursive: true });
+    const snap = await handleSetTallyConnection(
+      { host: "127.0.0.1", port: 9000 },
+      { installDir, version: "1.0.18" },
+    );
+    expect(snap.tallyConnectionType).toBe("local");
+  });
+
+  it("tallyUrlFromConfig builds http://host:port from the saved connection", async () => {
+    const installDir = join(dir, "TallyMCP");
+    await mkdir(installDir, { recursive: true });
+    await handleSetTallyConnection({ host: "10.0.0.7", port: 9001 }, { installDir, version: "1.0.18" });
+    expect(await tallyUrlFromConfig(installDir)).toBe("http://10.0.0.7:9001");
+  });
+
+  it("rejects an out-of-range port", async () => {
+    const installDir = join(dir, "TallyMCP");
+    await mkdir(installDir, { recursive: true });
+    await expect(
+      handleSetTallyConnection({ host: "192.168.1.50", port: 70000 }, { installDir, version: "1.0.18" }),
+    ).rejects.toThrow(/between 1 and 65535/);
+  });
+
+  it("rejects an empty host", async () => {
+    const installDir = join(dir, "TallyMCP");
+    await mkdir(installDir, { recursive: true });
+    await expect(
+      handleSetTallyConnection({ host: "   ", port: 9000 }, { installDir, version: "1.0.18" }),
+    ).rejects.toThrow(/host can't be empty/i);
   });
 });
