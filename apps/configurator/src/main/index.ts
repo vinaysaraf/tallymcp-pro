@@ -97,8 +97,6 @@ async function showIcaiProject(parent: BrowserWindow): Promise<void> {
       "Programme: AI ICAI Level II",
       "Batch: 44",
       "Location: Gurugram",
-      "Submission Date: 25th Jun 2026",
-      "GitHub: github.com/vinaysaraf/tallymcp-pro",
     ].join("\n"),
   });
 }

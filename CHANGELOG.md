@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.21 — Reset the ICAI Project dialog to a clean baseline (2026-06-25)
+
+### Changed
+- **Help → ICAI Project** temporarily drops the **Submission Date** and **GitHub** lines, returning the dialog to a clean baseline. This is the "before" build for an end-to-end auto-update demo: install this version, then a later release re-adds both lines so the update is visibly observable in-app.
+
 ## v1.0.20 — Add GitHub (open-source) link to the ICAI Project dialog (2026-06-25)
 
 ### Changed
