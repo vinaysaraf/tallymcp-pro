@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.22 — Re-add the Submission Date and GitHub lines to the ICAI Project dialog (2026-06-25)
+
+### Changed
+- **Help → ICAI Project** restores the **Submission Date** and **GitHub** lines that v1.0.21 had removed. This is the "after" build for the end-to-end auto-update demo: with the v1.0.21 clean baseline installed, this release re-adds both lines so the in-app updater visibly brings them back after the update.
+
 ## v1.0.21 — Reset the ICAI Project dialog to a clean baseline (2026-06-25)
 
 ### Changed
