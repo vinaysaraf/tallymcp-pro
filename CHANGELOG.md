@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.0.19 — Show the submission date in the ICAI Project dialog (2026-06-25)
+
+### Changed
+- **Help → ICAI Project** now shows a **Submission Date** line under Location. A small, user-visible change used to demonstrate the end-to-end auto-update flow (edit → push → GitHub Actions builds + signs the installer → the in-app updater offers the new version).
+
 ## v1.0.18 — Connect to a Server / networked TallyPrime from the GUI (no config editing) (2026-06-24)
 
 ### Added
