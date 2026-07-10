@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased — Open-source promotion readiness
+
+### Changed
+- **Relicensed from PolyForm Noncommercial 1.0.0 to the [MIT License](./LICENSE).** The project is now genuinely open source (OSI-approved) — free to use, copy, modify, and distribute, including for commercial purposes, with attribution. `"license"` set to `MIT` in the root `package.json` and in every workspace package under `apps/*` and `packages/*`. This supersedes the earlier PolyForm Noncommercial entry further down this file (kept as a historical record of what shipped at that time).
+- **README:** added a prominent **Download** section (latest-release link, one-line install, minimum requirements, an honest Windows SmartScreen note, and a `Get-FileHash` SHA-256 verification walkthrough); corrected the Status counts to match source — **19** MCP tools and **4** resources (the section previously listed 15 tools / 3 resources); and rewrote the License section (MIT + "Capstone Project for ICAI AI Level Batch 2" credit + XLURSELF open-source link).
+
+### Added
+- **Release trust hygiene:** SHA-256 checksums for every published release asset, surfaced in the GitHub Release notes and as a `checksums.txt` asset, with a documented PowerShell `Get-FileHash` verification path and a SmartScreen explanation for downloaders.
+
 ## v1.0.22 — Re-add the Submission Date and GitHub lines to the ICAI Project dialog (2026-06-25)
 
 ### Changed

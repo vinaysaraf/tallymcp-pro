@@ -6,17 +6,50 @@ server that connects **TallyPrime** to AI tools (Claude Desktop, Cursor, LM Stud
 It exposes Tally accounting data — reports, masters, vouchers — as MCP tools and
 generates CA-grade Excel workbooks, without ever writing back to Tally.
 
+## Download
+
+**[⬇ Download the latest Windows installer](https://github.com/vinaysaraf/tallymcp-pro/releases/latest)**
+
+Grab `TallyMCP-Setup-v<version>.exe` from the latest release and double-click to
+install. The bundled **Configurator** installs the MCP server and wires it into
+your AI client (Claude Desktop, Cursor, LM Studio, Ollama) for you — no manual
+config editing.
+
+**Minimum requirements**
+
+- **Windows 10 or 11** (64-bit)
+- **TallyPrime 4.x**, running with a company loaded and the XML interface enabled
+  on port **9000** (Gateway of Tally → F1 Help → Settings → Connectivity →
+  Client/Server configuration → set to *Both*)
+
+**Windows SmartScreen note.** The installer is **not yet code-signed**, so Windows
+SmartScreen may warn *"Windows protected your PC."* — this is expected for a new
+open-source publisher, not a sign of malware. Click **More info → Run anyway**.
+(A code-signing certificate is a planned improvement — tracked in
+[issue #17](https://github.com/vinaysaraf/tallymcp-pro/issues/17).)
+
+**Verify your download (recommended).** Every release publishes a SHA-256 for each
+asset — in the release notes, in `checksums.txt`, and in
+`TallyMCP-Setup-v<version>.exe.sha256`. After downloading, confirm the hash matches:
+
+```powershell
+Get-FileHash .\TallyMCP-Setup-v<version>.exe -Algorithm SHA256
+```
+
+If the printed hash matches the value in the release notes, the download is intact
+and untampered. If it does **not** match, delete the file and download again.
+
 ## Status
 
-**Read-only v0.5 MVP — feature complete.** The stdio MCP server is live with:
+**Read-only MCP server — feature complete.** The stdio MCP server is live with:
 
-- 15 MCP tools (10 reports, masters/voucher CSV export, audit-lite, dashboards, config)
-- 6 prompts and 3 resources for guided AI flows
+- 19 MCP tools — reads across 10 report types, Excel/JSON/CSV exports, masters &
+  voucher export, ledger/group closing balances, audit-lite, dashboards, a
+  capabilities probe, and config
+- 6 prompts and 4 resources for guided AI flows
 - 18 rule-based audit-lite checks + explainable 0–100 books score
 - 3 Excel dashboards (Management Snapshot, Sales Trend, Exceptions Overview)
 - Network guard restricting egress to the configured Tally host
-
-Next: live-Tally calibration and the demo screen recording.
 
 ## Prerequisites
 
@@ -118,10 +151,12 @@ Issues and pull requests are welcome. Every change must pass `pnpm build`,
 
 ## License
 
-Licensed under the **[PolyForm Noncommercial License 1.0.0](./LICENSE)** —
-free to use, copy, modify, and distribute for any **noncommercial** purpose
-(personal, educational, research, charitable, or government use). **Commercial
-use is not permitted** under this license; for a commercial license, contact
-vinay@vinaysaraf.com.
+Licensed under the **[MIT License](./LICENSE)** — free to use, copy, modify, and
+distribute, including for commercial purposes, with attribution.
+
+Developed by **Vinay Saraf (CA)** as the Capstone Project for **ICAI AI Level
+Batch 2**.
+
+More open-source finance tools by XLURSELF: https://www.xlurself.com/open-source
 
 Copyright © 2026 Vinay Saraf.
