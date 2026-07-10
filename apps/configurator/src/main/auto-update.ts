@@ -103,6 +103,13 @@ const SIGNATURE_STATUS_ACCEPTED = new Set(["Valid", "UnknownError", "NotTrusted"
  * version still trusts the next (new-cert) build. Remove the old one a release
  * later. Thumbprints are compared case-insensitively with non-hex separators
  * stripped.
+ *
+ * SignPath transition (issue #17): the CI SignPath signing steps in
+ * .github/workflows/release.yml are DORMANT until the SIGNPATH_API_TOKEN secret
+ * is set. Before the first SignPath-signed build, add SignPath's certificate
+ * thumbprint to this set and ship that (still self-signed) release first — else
+ * forward-only clients will reject the SignPath-signed update. Keep BOTH
+ * thumbprints for one release, then drop this self-signed one.
  */
 const EXPECTED_CERT_THUMBPRINTS = new Set(["8EB4845848E2785A76A3052AA1F075319086381C"]);
 

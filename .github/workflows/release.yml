@@ -17,6 +17,12 @@ jobs:
   build-and-release:
     runs-on: windows-latest
     timeout-minutes: 30
+    # Mapped to env so the optional SignPath steps below can gate on it in
+    # `if:` (the `secrets` context is not available in step `if:` conditions).
+    # Unset today ⇒ those steps are skipped ⇒ the self-signed pipeline is
+    # completely unaffected.
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:
       - name: Determine ref
         id: ref
@@ -87,6 +93,48 @@ jobs:
         env:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: pnpm package
+
+      # ─────────────────────────────────────────────────────────────────────
+      # OPTIONAL: SignPath Foundation signing — DORMANT until configured.
+      # Both steps run ONLY when the SIGNPATH_API_TOKEN secret is set. With it
+      # unset (the default today) they are skipped and every step around them is
+      # byte-for-byte unchanged — the self-signed release path above is intact.
+      #
+      # ⚠️ DO NOT ENABLE without first rotating the updater's pinned thumbprint.
+      # The in-app updater PINS the signing cert's SHA-1 thumbprint
+      # (apps/configurator/src/main/auto-update.ts → EXPECTED_CERT_THUMBPRINTS).
+      # A SignPath cert has a DIFFERENT thumbprint, and auto-update is
+      # forward-only, so a SignPath-signed build shipped before the pin is
+      # updated is REJECTED by every already-installed client. Required order:
+      #   Release N   (still self-signed): ADD SignPath's thumbprint to the pin.
+      #   Release N+1 (SignPath-signed):   set the secret/vars below; ship.
+      #   Release N+2:                     drop the old self-signed thumbprint.
+      # This block + installer/scripts/regenerate-signed-metadata.mjs are
+      # UNTESTED against a real SignPath artifact — validate on a throwaway
+      # pre-release tag first. Tracking: issue #17.
+      #
+      # NOTE: the action inputs below follow SignPath's documented template;
+      # confirm the exact input names + your organization/project/policy slugs
+      # against the current SignPath docs before the first real run.
+      - name: Sign installer via SignPath (dormant — unset secret skips this)
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          wait-for-completion: true
+          artifact-directory: apps/configurator/dist-installer
+          signed-artifact-directory: apps/configurator/dist-installer
+
+      # Recompute latest.yml (sha512 + size), the blockmap, and the .sha256
+      # sidecar against the SIGNED exe — otherwise electron-updater rejects the
+      # download on a SHA-512 mismatch. Fail-closed self-check inside the script.
+      - name: Regenerate update metadata for signed installer (dormant)
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        run: node installer/scripts/regenerate-signed-metadata.mjs
 
       # Assert latest.yml landed (Cursor v1.0.0 review hardening). It's
       # required by electron-updater (Phase 4 spec §10); a missing file
